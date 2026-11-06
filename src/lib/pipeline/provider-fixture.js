@@ -195,7 +195,9 @@ export function createFixtureProvider({ delayMs = Number(process.env.TAKSH_FIXTU
     model: FIXTURE_MODEL,
     async complete({ stage, input }) {
       if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
-      const data = { intent: fixtureIntent, generate: fixtureSpec, revise: fixtureRevision, triage: fixtureTriage, draft: fixtureDraft, repair: fixtureDraft }[stage](input);
+      // A player request borrows the intent and generate stages, and says which task it is.
+      const answer = { triage: fixtureTriage, draft: fixtureDraft, repair: fixtureDraft }[input?.task] ?? { intent: fixtureIntent, generate: fixtureSpec, revise: fixtureRevision }[stage];
+      const data = answer(input);
       return { data: structuredClone(data), ms: 0, usage: null };
     },
   };

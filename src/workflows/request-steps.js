@@ -5,16 +5,31 @@ import { getProvider } from "../lib/pipeline/provider.js";
 import { KINDS, TRIAGE_SCHEMA, kindInfo } from "../lib/requests/kinds.js";
 import { draftMessage, draftPrompt, repairMessage, triagePrompt, triageMessage } from "../lib/requests/prompt.js";
 
-// Provider errors say whether trying again could help; the step turns that into the workflow's retry.
-// A failure that will not get better carries its reason in front of the message, for the workflow.
-async function ask(stage, request) {
+// Every provider already knows the stages "intent" (short, quick) and "generate" (long, careful), with
+// their token limits and effort, so a request borrows them. `task` tells the fixtures which answer to give.
+const STAGE = { triage: "intent", draft: "generate", repair: "generate" };
+
+// Whether trying again could help, from what the provider says went wrong. A key or balance problem
+// and a refused request will not change on a retry; a rate limit, a busy provider, a timeout or a
+// broken reply might. The reason goes in front of the message, for the workflow to word for the player.
+export function classify(error) {
+  const status = error?.status;
+  if (status === 401 || status === 402 || status === 403) return { retry: false, reason: "setup" };
+  if (/declined|refus/i.test(error?.message ?? "") && !status) return { retry: false, reason: "declined" };
+  if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) return { retry: false, reason: "request" };
+  return { retry: true, reason: null };
+}
+
+async function ask(task, request) {
   const { provider } = await getProvider();
   try {
-    const { data, ms } = await provider.complete({ stage, ...request });
+    const { data, ms } = await provider.complete({ stage: STAGE[task], task, ...request, input: { ...request.input, task } });
     return { data, ms, source: provider.source, model: provider.model };
   } catch (error) {
-    if (error.retryable === false) throw new FatalError(`${error.reason ?? "request"}: ${error.message}`);
-    throw new RetryableError(error.message, { retryAfter: error.retryAfterMs ?? 10000 });
+    const { retry, reason } = classify(error);
+    if (!retry) throw new FatalError(`${reason}: ${error.message}`);
+    const after = Number(error.headers?.get?.("retry-after"));
+    throw new RetryableError(error.message, { retryAfter: Number.isFinite(after) && after > 0 ? after * 1000 : 10000 });
   }
 }
 

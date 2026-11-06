@@ -1,7 +1,9 @@
 # Player requests
 
 Players can ask for a new world, art style, character, boss or game from the look screen ("Ask for
-something new"). GLM-5.3 drafts it, code checks it, and the player gets something to play.
+something new"). The game's model drafts it, code checks it, and the player gets something to play.
+In production that model is GLM-5.3 on the 0G Router's private tier, from the 0G pull request (#1);
+the request workflow uses whatever provider `getProvider()` picks, as game generation does.
 
 ## What a player gets
 
@@ -20,16 +22,18 @@ player made (`localStorage`, key `taksh.made`), shown beside the built-in worlds
 
 ## How a request runs
 
-GLM-5.3 always thinks before answering, and at high effort that can take minutes. So a request never
-waits on one HTTP response:
+A request makes two or three model calls, and any one of them can be slow: a busy private provider, a
+rate limit, a long answer. So a request never waits on one HTTP response:
 
 1. `POST /api/requests` with `{ text, kind? }` starts the `handleRequest` workflow
    (`src/workflows/request.js`) and answers `202 { id }` at once.
 2. The workflow runs its steps (`src/workflows/request-steps.js`), each in its own function call:
-   - **triage** (GLM, low effort): which kind, decline anything the shared rules forbid, restate it.
-   - **draft** (GLM, high effort): the kind's skill, plus the live catalogue, produces one JSON object.
+   - **triage** (the provider's short `intent` stage): which kind, decline anything the shared rules
+     forbid, restate it.
+   - **draft** (the provider's careful `generate` stage): the kind's skill, plus the live catalogue,
+     produces one JSON object.
    - **check** (code): `src/lib/requests/kinds.js` and `made.js` check every field.
-   - **repair** (GLM, high effort): once, with the list of problems, if the check failed.
+   - **repair** (`generate` again): once, with the list of problems, if the check failed.
    - **result** (code): ready, queued for a build, declined or failed.
 3. The browser polls `GET /api/requests/:id` (2 s, slowing to 8 s). It shows the stage from the run's
    attributes (`reading`, `drafting`, `checking`, `fixing`) and the result when the run completes. A
@@ -37,11 +41,12 @@ waits on one HTTP response:
 
 Waiting is handled at three levels:
 
-- **Each model call** is streamed, so the connection stays busy while GLM thinks, and is cut at
-  `GLM_TIMEOUT_MS` (240 s by default, under a Vercel function's 300 s).
-- **Each step** is retried up to three times on a timeout, a broken stream, a rate limit (after the
-  `Retry-After` the API sends) or a server error. A 4xx other than 429 is not retried. A step that
-  has succeeded is never run again, even if the workflow replays.
+- **Each model call** has the provider's own timeout (120 s on 0G, which also retries a 429, 502 or
+  503 once by itself) inside a Vercel function's 300 s.
+- **Each step** is retried up to three times, ten seconds apart, on a timeout, a rate limit, a busy
+  provider, a server error or malformed JSON. A key or balance problem (401, 402, 403) or another
+  4xx is not retried (`classify` in `request-steps.js`). A step that has succeeded is never run
+  again, even if the workflow replays.
 - **The player** sees each stage as it happens and can keep playing; after 20 minutes the panel
   stops polling and says so, while the run finishes on its own.
 
@@ -56,16 +61,16 @@ for every request (originality, reuse before build, reliable body moves, onboard
 has a `SKILL.md`. Production reads them into the system prompt, without their front matter; Claude
 Code finds them through `.claude/skills/taksh-new-*`. Change the skill when a lesson is learned.
 
-GLM's API has a JSON mode but no schema mode, so each kind's JSON Schema is written into the system
-prompt and the answer is checked in code. The schemas live with the checks in `kinds.js`.
+Each kind's answer has a strict JSON Schema, sent through the provider's structured output. The
+schemas use only `type`, `properties`, `required`, `additionalProperties`, `items` and `enum`, which
+both Claude and the 0G router accept; colours, ranges and counts are checked in code instead. The
+schemas live with the checks in `kinds.js`.
 
 ## Setup
 
-- `ZAI_API_KEY`: the Z.ai key, server-side only. With it set, GLM-5.3 answers every model call,
-  including game ideas, and Claude is not used. Add it on Vercel with
-  `vercel env add ZAI_API_KEY production` (and `preview` if previews should use it).
-- Optional: `GLM_MODEL` (default `glm-5.3`), `GLM_BASE_URL` (default `https://api.z.ai/api/paas/v4`;
-  Z.ai lists a separate base for its coding plan), `GLM_TIMEOUT_MS` (default 240000).
+- The provider comes from `getProvider()`: with the 0G pull request merged, `OG_API_KEY` selects
+  GLM-5.3 on 0G's private tier; otherwise Claude with `ANTHROPIC_API_KEY`; otherwise fixtures.
+  Neither key is set on the Vercel project today, so the live site runs on fixtures.
 - Without a key, everything runs on labelled fixtures. `TAKSH_FIXTURE_DELAY_MS=4000` makes each
   fixture call slow, to try the waiting screens.
 
@@ -86,9 +91,12 @@ design by following the "Building it" section of that skill. `npx workflow web` 
 
 ## Not done yet
 
-- No request has been sent to the real GLM-5.3 API: there was no key. The provider was tested with
-  a stand-in server that streams reasoning for eight seconds, refuses with a 401 and so on. Send a
+- No request has been sent to a real model: there was no key. The steps were tested on fixtures,
+  slowed down, and against a stand-in that refuses with a 401. Once `OG_API_KEY` is set, send a
   handful of real requests of each kind before opening this to players, and read what comes back.
+- With the Arkiv pull request (#2), a game in a made world publishes and loads, but a leaderboard
+  filtered by world refuses a made world's id (`readScope` checks the built-in list). Boards
+  scoped by spec hash work.
 - Made worlds and styles are checked by code, not by eye. A model can still pick colours that pass
   the contrast checks and look wrong. `npm run world:check` takes a world id from `WORLD_LOOKS`; it
   does not yet render a made world.

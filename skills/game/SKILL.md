@@ -1,6 +1,6 @@
 ---
 name: taksh-new-game
-description: Turn a player's idea for a game Taksh cannot already make into a game design on body moves that track reliably on a webcam, with onboarding, scoring and a difficulty ramp, plus the closest template to play today. Use in production through GLM-5.3, and as the build guide when a developer codes a queued game as a new template.
+description: Turn a player's idea for a game Taksh cannot already make into a game design on body moves that track reliably on a webcam, with onboarding, scoring and a difficulty ramp, plus the closest template to play today. Use in production through the game's model (GLM-5.3), and as the build guide when a developer codes a queued game as a new template.
 ---
 
 # A new game design

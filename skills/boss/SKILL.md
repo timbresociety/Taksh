@@ -1,6 +1,6 @@
 ---
 name: taksh-new-boss
-description: Turn a player's request for a new enemy or boss in Taksh ("a ten-armed robot", "a monsoon crocodile", "the traffic police uncle") into a boss design for Blade March and Twin Sights that a developer can build, plus the closest existing boss to fight today. Use in production through GLM-5.3, and as the build guide when a developer codes a queued boss.
+description: Turn a player's request for a new enemy or boss in Taksh ("a ten-armed robot", "a monsoon crocodile", "the traffic police uncle") into a boss design for Blade March and Twin Sights that a developer can build, plus the closest existing boss to fight today. Use in production through the game's model (GLM-5.3), and as the build guide when a developer codes a queued boss.
 ---
 
 # A new boss

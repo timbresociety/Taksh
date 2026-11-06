@@ -98,7 +98,7 @@ export default function RequestDesk({ onUse, onStandIn }) {
         setError("This one is taking very long. It keeps going on our side; come back to it later.");
         return;
       }
-      wait = Math.min(8000, wait * 1.3); // a thinking model can take minutes, so ask less often as it goes
+      wait = Math.min(8000, wait * 1.3); // a busy model can take minutes, so ask less often as it goes
       timer = setTimeout(tick, wait);
     };
     timer = setTimeout(tick, 1200);

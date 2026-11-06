@@ -1,6 +1,6 @@
 ---
 name: taksh-new-style
-description: Turn a player's request for a new Taksh art style ("make it look like a watercolour", "80s VHS", "black and white noir") into a style built from the renderer's material modes and its one full-screen pass, inside ranges that keep the game readable. Use in production through GLM-5.3 and when a developer adds a style by hand.
+description: Turn a player's request for a new Taksh art style ("make it look like a watercolour", "80s VHS", "black and white noir") into a style built from the renderer's material modes and its one full-screen pass, inside ranges that keep the game readable. Use in production through the game's model (GLM-5.3) and when a developer adds a style by hand.
 ---
 
 # A new art style

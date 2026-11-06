@@ -1,6 +1,6 @@
 ---
 name: taksh-new-world
-description: Turn a player's request for a new Taksh world (a place to play in) into a world made of kit parts the game already has, on top of an existing base world. Use for "make a Goa beach", "a snowy Himalayan road", "a cyberpunk Bandra" and similar requests, in production through GLM-5.3 and when a developer adds a world by hand.
+description: Turn a player's request for a new Taksh world (a place to play in) into a world made of kit parts the game already has, on top of an existing base world. Use for "make a Goa beach", "a snowy Himalayan road", "a cyberpunk Bandra" and similar requests, in production through the game's model (GLM-5.3) and when a developer adds a world by hand.
 ---
 
 # A new world

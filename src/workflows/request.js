@@ -1,7 +1,7 @@
 // A player's request for a new world, style, character, boss or game, as a durable workflow.
 //
-// GLM-5.3 always thinks first, and at high effort one answer can take minutes. So the request never
-// waits on an HTTP response: POST /api/requests starts this workflow and returns its id at once, and
+// A request makes two or three model calls, and a busy private provider or a rate limit can stretch
+// that to minutes. So the request never waits on an HTTP response: POST /api/requests starts this workflow and returns its id at once, and
 // the player's browser polls GET /api/requests/:id. Each model call is its own step, so it gets its
 // own function invocation and time limit, is retried on a timeout, a rate limit or a server error,
 // and is never repeated once it has succeeded. Progress is written to the run's attributes.

@@ -4,14 +4,13 @@ import { describe, it } from "node:test";
 
 process.env.TAKSH_PROVIDER = "fixture";
 
-const { KINDS, KIND_IDS, DESIGN_GESTURES } = await import("../src/lib/requests/kinds.js");
+const { KINDS, KIND_IDS, DESIGN_GESTURES, TRIAGE_SCHEMA } = await import("../src/lib/requests/kinds.js");
 const { checkMade, checkMadeStyle, checkMadeWorld, worldLook, ROLE_PARTS } = await import("../src/lib/requests/made.js");
 const { fixtureDraft, fixtureTriage } = await import("../src/lib/requests/fixtures.js");
 const { draftPrompt, triagePrompt } = await import("../src/lib/requests/prompt.js");
-const { createGlmProvider, parseJsonReply, schemaInstruction } = await import("../src/lib/pipeline/provider-glm.js");
 const { starterSpec } = await import("../src/lib/spec/starter.js");
 const { validateSpec } = await import("../src/lib/spec/validate.js");
-const { checkStep, draftStep, resultStep, triageStep } = await import("../src/workflows/request-steps.js");
+const { checkStep, classify, draftStep, resultStep, triageStep } = await import("../src/workflows/request-steps.js");
 
 const made = (kind, text) => KINDS[kind].finish(fixtureDraft({ kind, text }));
 const goodWorld = () => made("world", "a Goa beach at sunset").item;
@@ -126,56 +125,6 @@ describe("prompts", () => {
   });
 });
 
-// A stand-in for Z.ai's streamed chat completion.
-function streamed(content, { finish = "stop", reasoning = "thinking..." } = {}) {
-  const events = [
-    { choices: [{ delta: { reasoning_content: reasoning } }] },
-    ...content.match(/.{1,7}/gs).map((piece) => ({ choices: [{ delta: { content: piece } }] })),
-    { choices: [{ delta: {}, finish_reason: finish }], usage: { prompt_tokens: 10, completion_tokens: 20 } },
-  ];
-  const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";
-  return new Response(new Blob([body]).stream(), { status: 200, headers: { "content-type": "text/event-stream" } });
-}
-
-describe("GLM provider", () => {
-  const request = { stage: "draft", system: "rules", user: "<request>x</request>", schema: { type: "object" } };
-
-  it("sends JSON mode, thinking and the schema, and reads the streamed answer", async () => {
-    let sent = null;
-    const provider = createGlmProvider({ apiKey: "test", fetchImpl: async (url, init) => {
-      sent = { url, body: JSON.parse(init.body), auth: init.headers.Authorization };
-      return streamed('```json\n{"ok":true}\n```');
-    } });
-    const reply = await provider.complete(request);
-    assert.deepEqual(reply.data, { ok: true });
-    assert.equal(sent.url, "https://api.z.ai/api/paas/v4/chat/completions");
-    assert.equal(sent.auth, "Bearer test");
-    assert.equal(sent.body.model, "glm-5.3");
-    assert.deepEqual(sent.body.response_format, { type: "json_object" });
-    assert.deepEqual(sent.body.thinking, { type: "enabled" });
-    assert.equal(sent.body.reasoning_effort, "high");
-    assert.equal(sent.body.stream, true);
-    assert.ok(sent.body.messages[0].content.includes(schemaInstruction(request.schema)));
-  });
-
-  it("says which failures are worth retrying", async () => {
-    const fail = (status, headers = {}) => createGlmProvider({ apiKey: "test", fetchImpl: async () => new Response(JSON.stringify({ error: { message: "nope" } }), { status, headers }) });
-    await assert.rejects(fail(429, { "retry-after": "12" }).complete(request), (error) => error.retryable && error.retryAfterMs === 12000);
-    await assert.rejects(fail(503).complete(request), (error) => error.retryable);
-    await assert.rejects(fail(401).complete(request), (error) => error.retryable === false);
-    const timeout = createGlmProvider({ apiKey: "test", fetchImpl: async () => { throw new DOMException("timed out", "TimeoutError"); } });
-    await assert.rejects(timeout.complete(request), (error) => error.retryable && /did not answer/.test(error.message));
-    const cut = createGlmProvider({ apiKey: "test", fetchImpl: async () => streamed('{"a":', { finish: "length" }) });
-    await assert.rejects(cut.complete(request), (error) => error.retryable && /ran out of room/.test(error.message));
-    await assert.rejects(createGlmProvider({ apiKey: "" }).complete(request), (error) => error.retryable === false);
-  });
-
-  it("digs JSON out of a chatty answer", () => {
-    assert.deepEqual(parseJsonReply('Here you go: {"a":1} hope that helps'), { a: 1 });
-    assert.throws(() => parseJsonReply("no json here"), (error) => error.retryable);
-  });
-});
-
 describe("request steps", () => {
   it("triage, draft, check and finish a request on the fixture provider", async () => {
     assert.equal(fixtureTriage({ text: "a dragon boss" }).kind, "boss");
@@ -199,10 +148,36 @@ describe("request steps", () => {
 });
 
 describe("why a request gave up", () => {
-  it("tells a key problem apart from a bad request", async () => {
-    const fail = (status) => createGlmProvider({ apiKey: "test", fetchImpl: async () => new Response("{}", { status }) }).complete({ stage: "draft", system: "", user: "", schema: {} });
-    await assert.rejects(fail(401), (error) => error.reason === "setup");
-    await assert.rejects(fail(400), (error) => error.reason === "request");
-    await assert.rejects(createGlmProvider({ apiKey: "" }).complete({ stage: "draft", system: "", user: "", schema: {} }), (error) => error.reason === "setup");
+  const fail = (status, message = "x") => Object.assign(new Error(message), status ? { status } : {});
+
+  it("does not retry a key, balance or bad-request problem", () => {
+    assert.deepEqual(classify(fail(401)), { retry: false, reason: "setup" });
+    assert.deepEqual(classify(fail(402)), { retry: false, reason: "setup" }); // an empty 0G balance
+    assert.deepEqual(classify(fail(400)), { retry: false, reason: "request" });
+    assert.deepEqual(classify(fail(null, "The model declined this idea. Try rewording it.")), { retry: false, reason: "declined" });
+  });
+
+  it("retries what may clear: rate limits, busy providers, timeouts and broken replies", () => {
+    for (const error of [fail(429), fail(502), fail(503), fail(null, "The operation was aborted due to timeout"), fail(null, "The model returned malformed JSON.")]) {
+      assert.equal(classify(error).retry, true, error.message);
+    }
+  });
+});
+
+describe("schemas", () => {
+  // Claude and the 0G router both take a strict JSON Schema, but not every keyword. Ranges, formats and
+  // counts are checked in code instead, so the same schema works on either.
+  it("use only keywords every provider accepts, with every field required", () => {
+    const walk = (node, where) => {
+      for (const key of Object.keys(node)) assert.ok(["type", "properties", "required", "additionalProperties", "items", "enum"].includes(key), `${where} uses ${key}`);
+      if (node.type === "object") {
+        assert.equal(node.additionalProperties, false, where);
+        assert.deepEqual([...node.required].sort(), Object.keys(node.properties).sort(), where);
+        for (const [name, child] of Object.entries(node.properties)) walk(child, `${where}.${name}`);
+      }
+      if (node.items) walk(node.items, `${where}[]`);
+    };
+    for (const kind of KIND_IDS) walk(KINDS[kind].schema, kind);
+    walk(TRIAGE_SCHEMA, "triage");
   });
 });

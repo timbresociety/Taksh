@@ -13,8 +13,8 @@ export const KIND_IDS = ["world", "style", "character", "boss", "game"];
 
 const text = { type: "string" };
 const number = { type: "number" };
-const colour = { type: "string", pattern: "^#[0-9a-fA-F]{6}$" };
-const list = (items, extra = {}) => ({ type: "array", items, ...extra });
+const colour = { type: "string" }; // #rrggbb; checked in code, like every range, so the schema stays portable
+const list = (items) => ({ type: "array", items });
 const choice = (values) => ({ type: "string", enum: values });
 const object = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 
@@ -100,7 +100,7 @@ export const KINDS = {
     playable: true,
     schema: envelope(object({
       label: text, blurb: text, base: choice(WORLDS.map((world) => world.id)),
-      sky: list(colour, { minItems: 2, maxItems: 2 }), haze: colour, ground: colour, path: colour, line: colour, accent: colour,
+      sky: list(colour), haze: colour, ground: colour, path: colour, line: colour, accent: colour,
       sun: object({ colour, power: number }), fill: object({ sky: colour, ground: colour, power: number }),
       far: list(choice(ROLE_PARTS.far)), near: list(choice(ROLE_PARTS.near)), low: list(choice(ROLE_PARTS.low)), wall: list(choice(ROLE_PARTS.wall)),
       high: list(choice(ROLE_PARTS.high)), pickup: choice(ROLE_PARTS.pickup), hazard: choice(ROLE_PARTS.hazard),
@@ -146,11 +146,11 @@ export const KINDS = {
       name: text, pitch: text, look: text,
       parts: list(object({ name: text, where: text })),
       toughness: number, opening: choice(["enter", "sleep"]), exposed: list(choice(MOODS)),
-      phases: list(list(choice(ATTACKS)), { minItems: 3, maxItems: 3 }),
-      restMs: list(number, { minItems: 3, maxItems: 3 }),
+      phases: list(list(choice(ATTACKS))),
+      restMs: list(number),
       tells: list(object({ attack: choice(ATTACKS), tell: text })),
       games: list(choice(["blades", "sights"])),
-      standIn: { type: "integer", minimum: 1, maximum: BOSSES.length },
+      standIn: { type: "integer" },
     })),
     catalogue: bossCatalogue,
     finish(draft) {

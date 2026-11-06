@@ -1,6 +1,6 @@
 ---
 name: taksh-new-character
-description: Turn a player's request for a new Taksh character ("a cricket player in India blue", "a superhero in red and gold", "my grandma") into an outfit made from the bodies, hairstyles and colours the game has. Use in production through GLM-5.3 and when a developer adds a character preset.
+description: Turn a player's request for a new Taksh character ("a cricket player in India blue", "a superhero in red and gold", "my grandma") into an outfit made from the bodies, hairstyles and colours the game has. Use in production through the game's model (GLM-5.3) and when a developer adds a character preset.
 ---
 
 # A new character
