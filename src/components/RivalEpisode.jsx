@@ -36,7 +36,7 @@ export default function RivalEpisode({ episode }) {
       )}
       {stored?.rival && (
         <p>
-          The rival&apos;s ENS name is <code>{stored.rival}</code>. Its <code>taksh.rival.last-episode</code> record now points at this round.
+          The rival&apos;s ENS name is <code>{stored.rival}</code>. The server is setting its <code>taksh.rival.last-episode</code> record to this round.
         </p>
       )}
       {stored?.error && <p className="rival-episode__error">{stored.error}{stored.rootHash && <> Root <code>{stored.rootHash.slice(0, 12)}…</code></>}</p>}

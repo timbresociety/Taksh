@@ -138,6 +138,7 @@ export async function publishGame(config, { spec, label, owner, origin }) {
 
   const name = `${slugLabel(label)}.${config.parent}`;
   const sub = name.split(".")[0];
+  if (sub === RIVAL_LABEL) throw Object.assign(new Error(`${name} is reserved for the 0G rival. Pick another name.`), { status: 409 });
   const taken = await client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getState", args: [BigInt(labelhash(sub))] });
   if (STATUS[taken.status] !== "available") throw Object.assign(new Error(`${name} is taken. Pick another name.`), { status: 409 });
 
@@ -181,11 +182,15 @@ export const RIVAL_LABEL = "rival";
 export const LAST_EPISODE = "taksh.rival.last-episode";
 export const rivalName = (config) => `${RIVAL_LABEL}.${config.parent}`;
 
-// After a round is on 0G Storage: point the rival's name at it. One setText, about 60k gas.
+// After a round is on 0G Storage: point the rival's name at it. One setText, about 60k gas. Only
+// while the parent's owner owns the name, so the server never signs for a resolver someone else set.
 export async function writeRivalEpisode(config, rootHash) {
   if (config.reason || !config.registrarKey) return null;
   const client = publicClient(config);
   const name = rivalName(config);
+  const parent = await readParent(config, client);
+  const state = await client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getState", args: [BigInt(labelhash(RIVAL_LABEL))] });
+  if (STATUS[state.status] !== "registered" || state.latestOwner.toLowerCase() !== parent.owner.toLowerCase()) throw new Error(`${name} is not set up. Run npm run ens:rival.`);
   const resolver = await client.getEnsResolver({ name });
   const hash = await walletClient(config, config.registrarKey).writeContract({
     address: resolver, abi: ABI.resolver, functionName: "setText", args: [dnsEncode(name), LAST_EPISODE, rootHash],
