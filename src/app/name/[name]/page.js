@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LAST_EPISODE, ensConfig, inspectName } from "@/lib/ens/chain";
+import { LAST_EPISODE, ROUND_KEYS, ensConfig, inspectName, roundLabel } from "@/lib/ens/chain";
 import { KEYS } from "@/lib/ens/records";
 
 export const dynamic = "force-dynamic";
@@ -77,7 +77,7 @@ export default async function NamePage({ params }) {
               <div><dt>Owner</dt><dd><Address explorer={explorer} value={entry.owner} /></dd></div>
               <div><dt>Owner can</dt><dd data-testid="ens-token-roles">{view.tokenRoles.join(", ") || "nothing"}</dd></div>
               <div><dt>Transferable</dt><dd>{view.tokenRoles.includes("transfer") ? "yes" : "no"}</dd></div>
-              <div><dt>Expires</dt><dd>{date(entry.expiry)}{parent ? `, with ${parent.name}` : ""}</dd></div>
+              <div><dt>Expires</dt><dd>{date(entry.expiry)}{parent?.expiry === entry.expiry ? `, with ${parent.name}` : ""}</dd></div>
               <div>
                 <dt>Can it be taken back?</dt>
                 <dd data-testid="ens-emancipated">
@@ -129,10 +129,22 @@ export default async function NamePage({ params }) {
             <pre className="ens-name__context" data-testid="ens-agent-context">{records["agent-context"]}</pre>
             {records[LAST_EPISODE] && (
               <p data-testid="ens-last-episode">
-                Its latest round on 0G Storage is <code>{short(records[LAST_EPISODE])}</code>. Replay it with{" "}
+                Its latest round on 0G Storage is <code>{short(records[LAST_EPISODE])}</code>, named{" "}
+                <Link href={`/name/${roundLabel(records[LAST_EPISODE])}.${view.name}`}>{roundLabel(records[LAST_EPISODE])}.{view.name}</Link>. Replay it with{" "}
                 <code>npm run replay-episode -- {records[LAST_EPISODE]}</code>.
               </p>
             )}
+          </>
+        )}
+
+        {records[ROUND_KEYS.episode] && (
+          <>
+            <h2>A round the rival fought</h2>
+            <p data-testid="ens-round">
+              {records[ROUND_KEYS.score] && <>The server replayed it to a score of {records[ROUND_KEYS.score]}. </>}
+              The whole round is on 0G Storage at <code>{short(records[ROUND_KEYS.episode])}</code>, with the 0G request ID of every
+              decision the rival made. Replay it with <code>npm run replay-episode -- {records[ROUND_KEYS.episode]}</code>.
+            </p>
           </>
         )}
       </section>

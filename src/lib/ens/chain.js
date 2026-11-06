@@ -55,6 +55,7 @@ export const ABI = {
     "function hasRootRoles(uint256 roleBitmap, address account) view returns (bool)",
     "function isEmancipated() view returns (bool)",
     "function roles(uint256 resource, address account) view returns (uint256)",
+    "function setSubregistry(uint256 anyId, address subregistry)",
   ]),
   registrar: parseAbi([
     "function isAvailable(string label) view returns (bool)",
@@ -75,6 +76,7 @@ export const ABI = {
     "function hasRoles(uint256 resource, uint256 roleBitmap, address account) view returns (bool)",
     "function grantSetterRoles(bytes setter, address account) returns (bool)",
     "function roles(uint256 resource, address account) view returns (uint256)",
+    "function multicall(bytes[] calls) returns (bytes[])",
   ]),
   userRegistry: parseAbi(["function initialize((address account, uint256 roleBitmap)[] grants)"]),
   mockUsdc: parseAbi(["function mint(address to, uint256 amount)", "function approve(address spender, uint256 amount) returns (bool)"]),
@@ -194,27 +196,69 @@ export async function readGame(config, rawName) {
 }
 
 // The 0G rival's own name, rival.<parent>. Its owner holds every resolver role. The server's
-// registrar wallet holds ROLE_SET_TEXT on one key, LAST_EPISODE, and nothing else on it.
+// registrar wallet holds ROLE_SET_TEXT on three keys, LAST_EPISODE and the two ROUND_KEYS, and
+// nothing else on it.
 export const RIVAL_LABEL = "rival";
 export const LAST_EPISODE = "taksh.rival.last-episode";
 export const rivalName = (config) => `${RIVAL_LABEL}.${config.parent}`;
 
-// After a round is on 0G Storage: point the rival's name at it. One setText, about 60k gas. Only
-// while the parent's owner owns the name, so the server never signs for a resolver someone else set.
-export async function writeRivalEpisode(config, rootHash) {
+// The rival is a namespace too: rival.<parent> has its own UserRegistry, and every stored round
+// becomes round-<root hash prefix>.rival.<parent>. The server holds ROLE_REGISTRAR there and nothing
+// else. A round name belongs to the rival's owner, expires after ROUND_DAYS, and carries no token
+// roles, so it can't be transferred, renewed or pointed at another resolver. It uses the rival's
+// resolver, where the server may set the two ROUND_KEYS.
+export const ROUND_KEYS = { episode: "taksh.round.episode", score: "taksh.round.score" };
+export const ROUND_DAYS = 30;
+export const roundLabel = (rootHash) => `round-${rootHash.slice(2, 12).toLowerCase()}`;
+export const roundName = (config, rootHash) => `${roundLabel(rootHash)}.${rivalName(config)}`;
+// The keys the server wallet is granted on the rival's resolver, one grantSetterRoles each.
+export const RIVAL_SERVER_KEYS = [LAST_EPISODE, ROUND_KEYS.episode, ROUND_KEYS.score];
+
+// After a round is on 0G Storage. Only while the parent's owner owns the rival's name, so the server
+// never signs for a resolver someone else set. Two transactions:
+// 1. Register the round's name in the rival's registry, unless it is there already.
+// 2. One multicall on the rival's resolver: point the rival at the round, and write the round's
+//    root hash and server-replayed score on the round's own name.
+// Without a rival registry (ens:rival not re-run yet), only the pointer is written.
+export async function writeRivalEpisode(config, rootHash, score) {
   if (config.reason || !config.registrarKey) return null;
   const client = publicClient(config);
+  const wallet = walletClient(config, config.registrarKey);
   const name = rivalName(config);
   const parent = await readParent(config, client);
-  const state = await client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getState", args: [BigInt(labelhash(RIVAL_LABEL))] });
+  const rivalId = BigInt(labelhash(RIVAL_LABEL));
+  const [state, rivalRegistry, resolver] = await Promise.all([
+    client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getState", args: [rivalId] }),
+    client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getSubregistry", args: [RIVAL_LABEL] }),
+    client.getEnsResolver({ name }),
+  ]);
   if (STATUS[state.status] !== "registered" || state.latestOwner.toLowerCase() !== parent.owner.toLowerCase()) throw new Error(`${name} is not set up. Run npm run ens:rival.`);
-  const resolver = await client.getEnsResolver({ name });
-  const hash = await walletClient(config, config.registrarKey).writeContract({
-    address: resolver, abi: ABI.resolver, functionName: "setText", args: [dnsEncode(name), LAST_EPISODE, rootHash],
-  });
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error(`Setting ${LAST_EPISODE} on ${name} failed in ${hash}.`);
-  return hash;
+  const send = async (what, request) => {
+    const hash = await wallet.writeContract(request);
+    const receipt = await client.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") throw new Error(`${what} failed in ${hash}.`);
+    return hash;
+  };
+
+  const calls = [[name, LAST_EPISODE, rootHash]];
+  let round = null;
+  let registerTx = null;
+  if (rivalRegistry !== zeroAddress) {
+    round = roundName(config, rootHash);
+    const label = roundLabel(rootHash);
+    const taken = await client.readContract({ address: rivalRegistry, abi: ABI.registry, functionName: "getState", args: [BigInt(labelhash(label))] });
+    if (STATUS[taken.status] === "available") {
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + ROUND_DAYS * 86_400);
+      registerTx = await send(`Registering ${round}`, {
+        address: rivalRegistry, abi: ABI.registry, functionName: "register", args: [label, state.latestOwner, zeroAddress, resolver, 0n, expiry],
+      });
+    }
+    calls.push([round, ROUND_KEYS.episode, rootHash]);
+    if (Number.isFinite(score)) calls.push([round, ROUND_KEYS.score, String(score)]);
+  }
+  const data = calls.map(([target, key, value]) => encodeFunctionData({ abi: ABI.resolver, functionName: "setText", args: [dnsEncode(target), key, value] }));
+  const recordsTx = await send(`Writing ${name}'s records`, { address: resolver, abi: ABI.resolver, functionName: "multicall", args: [data] });
+  return { round, registerTx, recordsTx };
 }
 
 // Role bit names from the Permissioned Registry and Permissioned Resolver role tables.
@@ -243,6 +287,7 @@ export function roleNames(bitmap, names) {
 // The text keys the name view reads: the game's own, plus ENSIP-26 agent records and the rival's.
 export const NAME_KEYS = [
   ...Object.values(KEYS), "agent-context", "agent-endpoint[web]", "taksh.rival.model", "taksh.rival.trust", "taksh.rival.provider", LAST_EPISODE,
+  ROUND_KEYS.episode, ROUND_KEYS.score,
 ];
 
 // Everything ENSv2 says about one name under .eth, read live. Walks the registry hierarchy down
@@ -283,7 +328,7 @@ export async function inspectName(config, rawName) {
   let ownerResolverRoles = 0n;
   let serverKeys = [];
   if (resolver && resolver !== zeroAddress) {
-    const keys = [...new Set([...Object.keys(records), LAST_EPISODE, KEYS.spec])];
+    const keys = [...new Set([...Object.keys(records), ...RIVAL_SERVER_KEYS, KEYS.spec])];
     const [ownerRoles, ...grants] = await Promise.all([
       entry ? read(resolver, ABI.resolver, "roles", [0n, entry.owner]).catch(() => 0n) : 0n,
       ...(server ? keys.map((key) => read(resolver, ABI.resolver, "hasRoles", [textResource(key), ROLES.setText, server]).catch(() => false)) : []),

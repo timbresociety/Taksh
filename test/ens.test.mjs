@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { normalize } from "viem/ens";
-import { CREATOR_TOKEN_ROLES, PUBLIC_RPCS, REGISTRY_ROLE_NAMES, RESOLVER_ROLE_NAMES, ROLES, admin, ensConfig, roleNames, rpcUrls } from "../src/lib/ens/chain.js";
+import { CREATOR_TOKEN_ROLES, PUBLIC_RPCS, REGISTRY_ROLE_NAMES, RESOLVER_ROLE_NAMES, ROLES, admin, ensConfig, roleNames, roundName, rpcUrls } from "../src/lib/ens/chain.js";
 import { KEYS, MAX_LABEL, MAX_SPEC_BYTES, recordsToSpec, slugLabel, specToRecords } from "../src/lib/ens/records.js";
 import { starterSpec } from "../src/lib/spec/starter.js";
 import { validateSpec } from "../src/lib/spec/validate.js";
@@ -130,5 +130,12 @@ describe("config and roles", () => {
     assert.equal(roleNames(ROLES.allResolver, RESOLVER_ROLE_NAMES).length, 20);
     assert.deepEqual(roleNames(ROLES.setText, RESOLVER_ROLE_NAMES), ["set text"]);
     assert.deepEqual(roleNames(0n, REGISTRY_ROLE_NAMES), []);
+  });
+
+  it("names a stored round under the rival's name from its root hash, as a valid ENS name", () => {
+    const config = ensConfig({ ENS_PARENT_NAME: "taksh-games.eth" });
+    const name = roundName(config, "0x24A627FC945E3E03404A7AC966D944874D76EC5F67B82A326BF8703DFD4279CE");
+    assert.equal(name, "round-24a627fc94.rival.taksh-games.eth");
+    assert.equal(normalize(name), name);
   });
 });
