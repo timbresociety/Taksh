@@ -22,7 +22,7 @@ We chose Arkiv knowing this list, and the docs say where each one shows.
 - **No compare-and-set.** Two instances that race on the day's first request can both store a challenge, so every reader picks the earliest (`pickEarliest`). Publishing checks `specHash` and then writes, so two publishes of one spec in the same seconds can both land. A unique index in Postgres closes both.
 - **One sort key.** Tied scores come back in the node's order, and `$createdAt` can't be sorted on, so games carry their own `publishedAt`.
 - **A query budget.** The public endpoint gives an address without an access key about 1,000 queries (10,000 cost units at 10 a query) before it answers `429 ANON_COST_LIMITED` for about ten minutes. See `friction.md`.
-- **Gas on every write.** A score costs 230,660 gas and a publish 529,291, at 1 gwei: 0.00023 and 0.00053 tGLM. The writer's 9.99 tGLM covers about 43,000 score posts. It's free on testnet, but it's why writes are throttled to one per client every 4 s and 20 a minute in total.
+- **Gas on every write.** A score costs 230,660 gas and a publish of a 569-byte spec 513,942, at 1 gwei: 0.00023 and 0.00051 tGLM. The writer's 9.99 tGLM covers about 43,000 score posts. It's free on testnet, but it's why writes are throttled to one per client every 4 s and 20 a minute in total.
 
 ## What we kept off Arkiv, and why
 

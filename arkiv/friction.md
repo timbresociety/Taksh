@@ -15,7 +15,7 @@ retry-after: 565
 {"error":"ANON_COST_LIMITED","message":"unauthenticated query budget exhausted; get an API key at https://hub.arkiv.network for a monthly quota"}
 ```
 
-That one was at 22:20 UTC on 2026-11-06. Each query costs 10 (the `Arkiv-Cost` header), so the budget is about 1,000 queries, and the wait was 565 s here and 761 s the day before. It's separate from a request rate limit (`ratelimit: limit=2000, remaining=…, reset=10`) that we never hit. `eth_*` calls aren't in the budget: block numbers, balances and receipts kept working through every 429.
+That one was at 22:20 UTC on 2026-11-06. Each query costs 10 (the `Arkiv-Cost` header), so the budget is about 1,000 queries, and the wait was 565 s here and 761 s in an earlier window that day. It's separate from a request rate limit (`ratelimit: limit=2000, remaining=…, reset=10`) that we never hit. `eth_*` calls aren't in the budget: block numbers, balances and receipts kept working through every 429.
 
 The budget seems to be per client address, not per app. Several agents and dev servers on one machine shared it, and it ran out within the first hour of testing, counting about 310 queries of our own probing. A deploy on shared hosting would share it with strangers, and so would judges on one conference network running the README query.
 
@@ -57,7 +57,7 @@ This one stopped the work. The integration was built by an agent with no browser
 
 Access keys go through the same Hub login. So the two things a hackathon agent needs to move past the public endpoint, funds and a key, both need a person. I understand why a faucet has a CAPTCHA, but a small grant per access key, claimable over HTTP, would remove a blocking step.
 
-How far the funds go: a score post used 230,660 gas and a publish with a 569-byte spec 529,291 gas, at 1 gwei. That's 0.00023 and 0.00053 tGLM, so the writer's 9.99 tGLM covers about 43,000 score posts.
+How far the funds go: a score post used 230,660 gas and a publish with a 569-byte spec 513,942 gas, at 1 gwei. That's 0.00023 and 0.00051 tGLM, so the writer's 9.99 tGLM covers about 43,000 score posts.
 
 ## An unfunded write says nothing useful
 
