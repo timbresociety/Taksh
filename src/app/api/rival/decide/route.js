@@ -29,6 +29,8 @@ export async function POST(request) {
     const askedAt = Date.now();
     const reply = await provider.complete({ stage: "rival", system: brain.system, user: rivalMessage(observation), schema: rivalSchema(brain) });
     const plan = reply.data.plan.filter((move) => brain.moves.includes(move)).slice(0, 4);
+    // 1 reply in 26 on 2026-11-07 had no usable move. That is no decision: the browser logs a safe stop and asks again.
+    if (!plan.length) return Response.json({ error: "0G sent no usable plan.", requestId: reply.trace?.requestId }, { status: 502 });
     // glm-5.3 sometimes sends "..." for a text field. Drop it rather than show it.
     const words = (value) => (/\p{L}/u.test(value ?? "") ? value : "");
     const read = words(reply.data.read);

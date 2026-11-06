@@ -9,7 +9,7 @@ This is the "build without hardware" lane with a simulator we wrote: the game en
 Motion stays on the device. The game loop, the rival's animation, hit detection and the dodge timing all run in the browser at frame rate. 0G makes the decisions at checkpoints:
 
 1. Every few seconds the browser sends the fight so far to `POST /api/rival/decide`: both health bars, time left, and which recent shots the player dodged and which way.
-2. The server asks `glm-5.3` on the `private` trust tier for the next three shots, a read on the player and a taunt. Strict JSON schema, 6 s timeout.
+2. The server asks `glm-5.3` on the `private` trust tier for the next three shots, a read on the player and a taunt. Strict JSON schema. The browser waits up to 9 s for it.
 3. The rival throws exactly those shots, in that order. It asks again while one shot is still queued, so the next plan lands before the queue runs dry.
 
 The rival adapts to the person. In the round below, its second read was "Can't read the right hand at all, keep hammering it", and it threw right twice.
@@ -38,7 +38,7 @@ Both games share one route, one ledger and one set of checks. `src/lib/agent/riv
 | A 0G call inside the decision loop | `src/app/api/rival/decide/route.js` calls the 0G Router. The rival can't throw a shot 0G didn't plan: `src/lib/agent/rival-brain.js` feeds the plans into the game, and nothing else queues shots. |
 | An episode log on 0G Storage with a request ID per decision | `src/app/api/rival/episode/route.js` uploads each round to 0G Storage on Galileo testnet. Every decision in it carries its 0G request ID, the provider address and the cost from `x_0g_trace`. |
 | A replayable simulation | `npm run replay-episode -- <rootHash>` downloads the round with Merkle proof checking, replays every step from the seed and exits 1 if the score differs. |
-| A safe stop if 0G is unreachable | If 0G errors or takes over 6 s, no plan arrives. The rival holds its guard and throws nothing, the HUD says "0G signal lost", and the episode logs the stop with its reason. It never makes up a shot. Punches don't land on a guarding rival, so a player gains nothing by cutting 0G off. |
+| A safe stop if 0G is unreachable | If 0G errors, takes over 9 s or sends no usable move, no plan arrives. The rival holds its guard and throws nothing, the HUD says "0G signal lost", and the episode logs the stop with its reason. It never makes up a shot. Punches don't land on a guarding rival, so a player gains nothing by cutting 0G off. |
 
 ## A stored round
 

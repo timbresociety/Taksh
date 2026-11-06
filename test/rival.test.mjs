@@ -206,8 +206,8 @@ describe("0G rival episodes", async () => {
     await assert.rejects(cut.check(cut.endsAt), /leaves out a 0G decision/);
 
     const late = playRound();
-    recordDecision("req-late", { roundId: late.roundId, template: "bout", askedAt: 1_003_000, issuedAt: 1_010_000, plan: ["high"], read: "r", observation: {}, trace: {} });
-    await assert.doesNotReject(late.check(late.endsAt), "served after the 6 s browser timeout");
+    recordDecision("req-late", { roundId: late.roundId, template: "bout", askedAt: 1_003_000, issuedAt: 1_012_500, plan: ["high"], read: "r", observation: {}, trace: {} });
+    await assert.doesNotReject(late.check(late.endsAt), "served after the 9 s browser timeout");
   });
 
   it("refuses a round cut short, and a dropped plan even when pauses put the game clock behind", async () => {

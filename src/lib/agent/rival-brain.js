@@ -3,7 +3,10 @@
 // the timeout is logged as a safe stop: no plan arrives, so the rival holds its guard.
 import { ogHeaders } from "../og/session.js";
 
-const TIMEOUT_MS = 6000;
+// A decision took 2.3 to 6.4 s over 20 calls on 2026-11-07 (median 3.5 s), and 8 to 9 s in a slow
+// spell. At 6 s the browser threw away answers it had already paid for and asked again, which waits
+// longer than this does. episode.js IN_TIME_MS stays 1 s under it.
+const TIMEOUT_MS = 9000;
 const RETRY_MS = 1500;
 
 export function startRivalBrain(session, { onChange = () => {}, fetch = globalThis.fetch } = {}) {
