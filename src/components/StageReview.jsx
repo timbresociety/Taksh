@@ -11,7 +11,7 @@ import { roadBlockers } from "@/lib/stage/world-check";
 const ROAD_HALF_WIDTH = 3.7;
 
 // Plays any template with its own bot, so a world and style can be checked without a player.
-// Query: template, world, style, body, preview.
+// Query: template, world, style, body, rival (the rival's body), preview.
 export default function StageReview() {
   const host = useRef(null);
 
@@ -20,7 +20,7 @@ export default function StageReview() {
     const template = query.get("template") ?? "lane_runner";
     const { spec } = validateSpec({
       specVersion: SPEC_VERSION, template, title: "Review", objective: "Review", seed: Number(query.get("seed") ?? 7),
-      skin: { world: query.get("world") ?? "downtown", style: query.get("style") ?? "bright", hero: { ...DEFAULT_HERO, body: query.get("body") ?? DEFAULT_HERO.body }, rival: DEFAULT_RIVAL },
+      skin: { world: query.get("world") ?? "downtown", style: query.get("style") ?? "bright", hero: { ...DEFAULT_HERO, body: query.get("body") ?? DEFAULT_HERO.body }, rival: { ...DEFAULT_RIVAL, body: query.get("rival") ?? DEFAULT_RIVAL.body } },
       // tune=waves:1,boss:2 sets tuning, so a late moment such as a boss can be looked at straight away.
       tuning: (query.get("tune") ?? "").split(",").filter(Boolean).map((pair) => {
         const [key, value] = pair.split(":");
