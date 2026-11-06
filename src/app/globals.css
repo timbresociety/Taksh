@@ -1621,8 +1621,10 @@ kbd {
   font-size: 0.8rem;
 }
 
+/* Narrow enough to wrap clear of the idea screen's headline. */
 .studio:has(.og-account) .source-note {
   top: 104px;
+  max-width: 26ch;
 }
 
 .og-mark {
