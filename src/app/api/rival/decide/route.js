@@ -29,13 +29,17 @@ export async function POST(request) {
     const askedAt = Date.now();
     const reply = await provider.complete({ stage: "rival", system: brain.system, user: rivalMessage(observation), schema: rivalSchema(brain) });
     const plan = reply.data.plan.filter((move) => brain.moves.includes(move)).slice(0, 4);
+    // glm-5.3 sometimes sends "..." for a text field. Drop it rather than show it.
+    const words = (value) => (/\p{L}/u.test(value ?? "") ? value : "");
+    const read = words(reply.data.read);
+    const taunt = words(reply.data.taunt);
     // issuedAt is when the plan left this server. The game can't have used it any earlier than that.
     if (reply.trace?.requestId) {
       // The Arkiv write takes about 8 s, longer than the browser waits, so it runs after the reply.
-      const write = recordDecision(reply.trace.requestId, { roundId, template: raw.template, askedAt, issuedAt: Date.now(), plan, read: reply.data.read, observation, trace: reply.trace });
+      const write = recordDecision(reply.trace.requestId, { roundId, template: raw.template, askedAt, issuedAt: Date.now(), plan, read, observation, trace: reply.trace });
       if (write) after(() => write.catch((error) => console.error("rival ledger write failed:", error.shortMessage ?? error.message)));
     }
-    return Response.json({ ...reply.data, plan, roundId, ms: reply.ms, trace: reply.trace });
+    return Response.json({ ...reply.data, plan, read, taunt, roundId, ms: reply.ms, trace: reply.trace });
   } catch (error) {
     return Response.json({ error: error.expose ? error.message : "The 0G rival did not answer." }, { status: error.status ?? 502 });
   }

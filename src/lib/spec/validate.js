@@ -49,7 +49,8 @@ export function validateSpec(input) {
   if (input.specVersion !== SPEC_VERSION) errors.push(`specVersion must be ${SPEC_VERSION}.`);
   if (!template) errors.push(`template "${input.template}" does not exist.`);
   for (const key of ["title", "objective"]) {
-    if (typeof input[key] !== "string" || !input[key].trim()) errors.push(`${key} must be text.`);
+    // glm-5.3 sometimes fills a text field with "..." under a strict schema, so text needs a letter.
+    if (typeof input[key] !== "string" || !/\p{L}/u.test(input[key])) errors.push(`${key} must be words, not "${input[key] ?? ""}".`);
   }
   if (!Number.isInteger(input.seed)) errors.push("seed must be a whole number.");
   if (!WORLDS.some((world) => world.id === input.skin?.world)) errors.push(`skin.world "${input.skin?.world}" is not a known world.`);

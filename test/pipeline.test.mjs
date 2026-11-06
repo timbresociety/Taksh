@@ -86,6 +86,16 @@ describe("generate", () => {
     assert.equal(result.spec.tuning.warningMs, templateInfo("guard").tuning.warningMs.default);
   });
 
+  it("an objective of \"...\" takes the brief's goal instead of a repair call", async () => {
+    const lazy = await modelSpec();
+    lazy.objective = "...";
+    const stub = scripted(lazy);
+    const result = await generateGame({ idea: "x", brief }, stub);
+    assert.equal(result.ok, true);
+    assert.equal(stub.calls.length, 1);
+    assert.equal(result.spec.objective, brief.goal);
+  });
+
   it("repairs once, passing the errors back", async () => {
     const bad = await modelSpec();
     bad.tuning = [{ key: "warningMs", value: 10 }];

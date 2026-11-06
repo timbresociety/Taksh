@@ -64,6 +64,10 @@ export async function generateGame({ idea, clarification, brief }, provider) {
   const input = { idea, clarification, brief };
 
   const first = await provider.complete({ stage: "generate", system, user: request, schema: GAME_SPEC_SCHEMA, input });
+  // glm-5.3 sometimes writes "..." for the objective, even twice running. The brief's goal is the
+  // same model's sentence about the same game, so it stands in rather than fail the whole game.
+  const hasWords = (value) => typeof value === "string" && /\p{L}/u.test(value);
+  if (first.data && !hasWords(first.data.objective) && hasWords(brief?.goal)) first.data.objective = brief.goal;
   let attempts = 1;
   let check = validateSpec(first.data);
   const firstErrors = check.errors;
