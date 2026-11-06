@@ -7,6 +7,8 @@ const COUNTER_MS = 1600;
 const PUNCH_GAP_MS = 320; // one punch per arm movement, however quickly the keys are pressed
 const DOWN_MS = 2600;
 const KNOCKDOWNS_TO_WIN = 3;
+const GUARD_RECHECK_MS = 250; // a rival waiting on its brain looks again this often
+const HISTORY = 8;
 
 export default {
   id: "bout",
@@ -39,9 +41,12 @@ export default {
     rivalHealth: { label: "Rival health", unit: "", min: 40, max: 200, default: 150, higherIsHarder: true, whole: true },
   },
 
-  create(spec) {
+  // rival: "random" picks each shot from the seed. "0g" throws only what its 0G brain planned, and with
+  // no plan it holds its guard. That is the safe stop: it never makes up a decision of its own.
+  create(spec, { rival = "random" } = {}) {
     const { durationS, warningMs, restMs, rivalHealth } = spec.tuning;
     return {
+      rival, plan: [], guarding: false, history: [],
       status: "playing", t: 0, durationMs: durationS * 1000, warningMs, restMs, rivalHealth, rivalMax: rivalHealth, health: 100, rng: createRandom(spec.seed),
       attack: null, restLeft: 1400, openMs: 0, punchWaitMs: 0, defence: null, defenceMs: 0, landed: 0, dodged: 0, hurt: 0, knockdowns: 0, score: 0, downMs: 0,
     };
@@ -52,6 +57,9 @@ export default {
     if (action === "jab" || action === "cross") {
       if (state.punchWaitMs > 0) return [];
       state.punchWaitMs = PUNCH_GAP_MS;
+      // A 0G rival with no plan holds its guard, and punches don't get through. Otherwise a browser
+      // that stops asking 0G would get a rival that never hits back.
+      if (state.guarding) return [{ type: "throw", punch: action }];
       const events = [{ type: "throw", punch: action }];
       const damage = (action === "cross" ? 5 : 4) * (state.openMs > 0 ? 2 : 1);
       state.rivalHealth -= damage;
@@ -96,6 +104,7 @@ export default {
       state.attack.ms += dtMs;
       if (state.attack.ms >= state.attack.windupMs) {
         const wanted = ATTACKS[state.attack.side];
+        state.history = [...state.history, { side: state.attack.side, dodged: state.defence === wanted }].slice(-HISTORY);
         if (state.defence === wanted) {
           state.dodged += 1;
           state.score += 50;
@@ -112,8 +121,16 @@ export default {
     } else if (state.openMs <= 0) {
       state.restLeft -= dtMs;
       if (state.restLeft <= 0) {
-        state.attack = { side: state.rng.pick(Object.keys(ATTACKS)), ms: 0, windupMs: state.warningMs };
-        events.push({ type: "windup", side: state.attack.side });
+        const side = state.rival === "0g" ? state.plan.shift() : state.rng.pick(Object.keys(ATTACKS));
+        if (side) {
+          state.guarding = false;
+          state.attack = { side, ms: 0, windupMs: state.warningMs };
+          events.push({ type: "windup", side: state.attack.side });
+        } else {
+          if (!state.guarding) events.push({ type: "guard" });
+          state.guarding = true;
+          state.restLeft = GUARD_RECHECK_MS;
+        }
       }
     }
     if (state.health <= 0 || state.t >= state.durationMs) {
@@ -126,7 +143,7 @@ export default {
   hud: (state) => ({
     score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`,
     bars: [{ label: "You", value: Math.max(0, state.health) / 100 }, { label: "Rival", value: Math.max(0, state.rivalHealth) / state.rivalMax }],
-    extra: state.attack ? { left: "Lean right", right: "Lean left", high: "Duck" }[state.attack.side] : state.openMs > 0 ? "Double damage" : null,
+    extra: state.attack ? { left: "Lean right", right: "Lean left", high: "Duck" }[state.attack.side] : state.openMs > 0 ? "Double damage" : state.guarding ? "Guard up" : null,
   }),
 
   result: (state) => ({
@@ -138,6 +155,24 @@ export default {
       { label: "Dodged", value: state.dodged },
       { label: "Hits taken", value: state.hurt },
     ],
+  }),
+
+  // How long after a shot showed that this move answered it, or null when it doesn't answer one.
+  reactionMs: (state, action) => (state.attack && ATTACKS[state.attack.side] === action ? state.attack.ms : null),
+
+  // The 0G brain's plan. Only known sides get in, whatever the model sent.
+  plan(state, sides) {
+    state.plan = sides.filter((side) => side in ATTACKS).slice(0, 4);
+  },
+
+  // What the 0G brain sees: the fight so far, and which of its shots the player read.
+  observe: (state) => ({
+    secondsLeft: Math.max(0, Math.ceil((state.durationMs - state.t) / 1000)),
+    playerHealth: Math.max(0, state.health),
+    rivalHealth: Math.max(0, Math.round((state.rivalHealth / state.rivalMax) * 100)),
+    knockdowns: state.knockdowns,
+    lastShots: state.history,
+    queued: state.plan.length,
   }),
 
   bot(state, skill) {

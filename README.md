@@ -1,13 +1,13 @@
 # Taksh
 
-Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. 0G, Arkiv and ENS come in a later pass.
+Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. Games are generated on 0G Private Computer, inside a TEE. Arkiv and ENS come in a later pass.
 
 ## Run it
 
 ```bash
 npm install
 npm run setup          # copies the MediaPipe runtime and fetches the pose models into public/
-cp .env.example .env.local   # add ANTHROPIC_API_KEY for real generation
+cp .env.example .env.local   # add OG_API_KEY (or ANTHROPIC_API_KEY) for real generation
 npm run build && npm start   # or: npm run dev
 ```
 
@@ -83,14 +83,47 @@ The camera only works on `http://localhost` or an HTTPS address. The `Network` a
 
 ## Model and prompts
 
-**Not chosen yet.** No credentials were configured, so no prompt has been sent to a real model.
+Games are generated on **0G Private Computer** with `glm-5.3`, on the `private` trust tier. Only TeeML providers can serve those requests, so the model runs inside a TEE and the prompt never leaves the enclave. The provider is `src/lib/pipeline/provider-0g.js`. It calls the 0G Router (`https://router-api.0g.ai/v1`, OpenAI-compatible) with plain `fetch` and needs no SDK.
 
-- Provisional default: `claude-opus-5-5`, set in `src/lib/pipeline/provider-claude.js`. Override it with `TAKSH_MODEL`.
-- Effort: `low` for intent, `medium` for generate and revise.
+The idea can also be spoken. "Say it" records up to 15 s in the browser, and `/api/transcribe` sends it to `whisper-large-v3` on the same private tier. The words land in the idea box to read and fix before "Make my game". A 4 s idea costs $0.00052. The button shows only when 0G is the provider. The route refuses non-audio and anything over 1 MB, and allows 20 a minute.
+
+- **Order.** The app picks 0G when `OG_API_KEY` is set, then Claude, then labelled fixtures. `TAKSH_PROVIDER=0g|claude|fixture` forces one. `OG_MODEL` changes the model, which must have a TeeML provider.
+- **Receipts.** Every reply carries `x_0g_trace` with a request ID, the provider's on-chain address and the cost. The pipeline returns these as `traces`, and the brief and result screens show the call count, total cost and last request ID.
+- **Request shape.** Strict JSON schema output, thinking off, and a price ceiling on every call (`X-0G-Provider-Max-Price-Usd-*`). A `402` (empty balance), `429` or `503` becomes a message the player can act on. `429` and `5xx` are retried once.
+- **What breaks without 0G.** Taksh can't turn an idea into a game. You're left with 13 starter games and keyword fixtures.
+
+Eval on 2026-11-06 (`npm run eval -- --provider 0g`, 20 cases, saved in `evals/results/`):
+
+| Setting | Passed | Generate time | Cost per game |
+| --- | --- | --- | --- |
+| Thinking on, no colour pattern | 7/20 | 21 to 113 s | about $0.014 |
+| Thinking off, `#rrggbb` pattern in the schema | 17/20 | 5 to 12 s | about $0.003 |
+
+With thinking on, 8 of 20 games failed validation on the first try, all because of colours that weren't `#rrggbb`. Each one needed a repair call. The three cases still failing are judgment calls. One idea got a question when it should have become a game, one became a game when it needed a question, and one became a game when it should have been marked unsupported.
+
 - Prompts: `prompts/intent.v2.md`, `prompts/generate.v2.md`, `prompts/revise.v2.md`. Versions are set in `src/lib/pipeline/prompts.js`. The list of templates, worlds, styles and tuning ranges is injected from `src/lib/spec/contract.js`.
-- Requests use server-side refusal fallback (`fallbacks: "default"`). Remove it from `provider-claude.js` if you don't want it.
+- The Claude path (`provider-claude.js`, default `claude-opus-5-5`) still works with `ANTHROPIC_API_KEY`. It hasn't been run since the colour pattern was added to the shared schema.
 
-To settle this, add a key and run `npm run eval`. It checks each case for idea preservation, validity, playability and speed, against a budget of 8s for intent and 30s for generate or revise. If Opus misses the time budget, that is the reason to compare a second model with `npm run eval -- --model claude-haiku-5-5`.
+## 0G rival in Counter Bout
+
+With 0G connected, the Counter Bout rival only throws shots its 0G brain planned. This is our Physical AI entry, written up against the track's requirements in `docs/physical-ai.md`. Every few seconds the browser sends the fight so far to `/api/rival/decide`: health, time left, and which recent shots the player dodged. `glm-5.3` on the private tier returns the next three shots, a taunt and a read on the player. Each decision costs about $0.0004 and takes 3 to 5 s. The rival asks again while one shot is still queued.
+
+- **Safe stop.** If 0G errors or takes over 6 s, no plan arrives, so the rival holds its guard and throws nothing. It never makes up a shot, and the HUD says "0G signal lost".
+- **Episode log.** `GameSession` records every step's dt, every move and every plan. At the end of a round, `/api/rival/episode` checks each plan against what 0G really returned (by request ID, single use), replays the round, and uploads it to 0G Storage on Galileo testnet. The result screen shows the root hash.
+- **Player moves.** The player's keys come from the browser, so the server doesn't take the score on trust. It stores the score from its own replay. It also refuses a round if its decisions come from more than one round ID, if it stops before the round ended, if it leaves out a plan 0G served in time to be played (judged on the server clock), if the game clock runs ahead of the server clock (a fast-forwarded round), if it arrives more than 5 minutes after ending, or if more than 2 dodges land under 120 ms after the windup shows. While the rival guards for lack of a plan, punches don't land, so a browser that stops asking 0G gains nothing. A bot playing at human speed still gets through. Stopping that needs inputs signed on the server as they happen.
+- **Ledger.** What 0G returned for each round is kept on Arkiv (`taksh.rival.decisions.v1`), so whichever server instance gets the upload can check it. A stored round gets a `taksh.rival.spent.v1` entity and can't be stored twice. Without `ARKIV_PRIVATE_KEY` the ledger stays in memory, which works on one server.
+- **Replay.** `npm run replay-episode -- <rootHash>` downloads the episode with Merkle proof checking, plays it again from the seed, and exits 1 if the score differs.
+
+First stored round (2026-11-06), writer `0x07996A4De073dD64219fb84e05FA048145802aa2`:
+
+| | |
+| --- | --- |
+| Root hash | `0xd17bfb19d7ae5c2090b8a98aa81abf5e40466d1771372435e973d958aa9dcc7b` |
+| Upload tx | [`0x4f56b07a…58bc76`](https://chainscan-galileo.0g.ai/tx/0x4f56b07ab69d300da7783ce7f6de9d398601d4ca33cf7cd7c0899cae0858bc76) |
+| 0G decisions | `f3c65784-25cc-4088-a959-d6eda4a6eb5f`, `23aeeff2-d81b-4a5d-aa6d-6e6339d63471` |
+| Replay | 873 steps, win, score 3000, matches the stored result |
+
+The rival's second read was "Never dodges left; leads with same head-side tell." The test player never leaned right, and the rival kept throwing left.
 
 ## What was tested
 
@@ -122,6 +155,81 @@ Also confirmed on the production build:
 4. Tune `THRESHOLDS` in `src/lib/motion/gestures.js` if needed.
 5. Open `/debug/cursor` and touch the 24 dots. It reports dots reached, dots missed and average time for each hand, on its own side and across the body, plus how much a still hand wobbles. Results save as `taksh-drill-cursor-*.json`, which git ignores.
 
+## Games as ENS names
+
+Every published game is an ENSv2 subname on Sepolia, such as `moon-hop.taksh-games.eth`, and the game itself is stored in that name's text records. `/play/<name>` resolves the name through the ENS Universal Resolver on every visit, rebuilds the spec from the records, runs it through `src/lib/spec/validate.js` and loads it. There is no copy of a published game anywhere else, so a name that stops resolving is a game that stops loading.
+
+Records on each game name:
+
+| Key | Holds |
+| --- | --- |
+| `taksh.spec` | The whole spec as JSON, up to 4096 bytes |
+| `taksh.template`, `taksh.world`, `taksh.style`, `taksh.title` | Single fields. When one differs from the spec, it wins, so an owner who changes `taksh.world` to `moon` in the ENS app moves the game to the moon |
+| `description`, `url` | The objective and the `/play` link, for ordinary ENS clients |
+
+What happens on publish, from the result screen:
+
+1. The registrar wallet deploys a Permissioned Resolver for this one game through the Verifiable Factory. `initialize()` grants every resolver role to the creator and writes the text records in the same transaction. The registrar holds no role on it afterwards.
+2. The registrar registers the label in the parent's UserRegistry, with the creator as owner, that resolver, and the same token roles the .eth registrar gives a registrant: set resolver, set subregistry, and transfer.
+
+The creator enters an owner address when publishing. Left blank, the game goes to the parent name's owner. The private key stays in the API route (`src/app/api/ens/route.js`) and never reaches the browser.
+
+Roles, all from ENSv2 Enhanced Access Control:
+
+- The registrar wallet holds `ROLE_REGISTRAR` on the game registry and one text key on the rival's name, below. It can issue a new name. It can't change, remove or take back a published game.
+- The parent owner holds only registrar and renew roles and their admins on the game registry, so the registry reports `isEmancipated() == true`. Nobody can unregister a game or swap its resolver except its owner.
+- The parent name's own resolver has an ENSIP-26 `agent-context` record that describes the game generator and the record layout above.
+
+Set it up:
+
+```bash
+# put ENS_PARENT_NAME, ENS_OWNER_PRIVATE_KEY and ENS_REGISTRAR_PRIVATE_KEY in .env.local
+npm run ens:setup
+```
+
+The setup registers the parent through the ENSv2 ETH Registrar (commit, a 60 second wait, register), paid in Sepolia MockUSDC, which anyone can mint. It deploys the parent's resolver and the game registry, grants the registrar its one role and sends it 0.01 ETH for gas. Run it again and it skips whatever the chain shows as done. The owner key needs about 0.02 Sepolia ETH. A publish is two transactions, about 5.1M gas in all: 4.5M to deploy the game's resolver and 0.6M to register the name. At 20 gwei that is about 0.1 ETH, so top up the registrar before a busy demo.
+
+Contract addresses come from the Sepolia (ENSv2) table at https://docs.ens.domains/learn/deployments and live in `src/lib/ens/chain.js`. The Universal Resolver address comes from viem, as the ENS docs ask. The parent name and keys come from env. Without them, or with the RPC down, games still play, the result screen says publishing is unavailable, and `/play/<name>` says ENS could not be reached.
+
+The publish route allows 10 publishes a minute across all callers and refuses a spec over 4 KB. A starter spec is about 600 bytes.
+
+Tested on an anvil fork of Sepolia first: setup, two publishes, `/play/<name>` loading both, a taken name refused, and the role checks above read back from the contracts. Then on live Sepolia (2026-11-06):
+
+| | |
+| --- | --- |
+| Parent | `taksh-games.eth`, registered in [`0x12128e2d…bb26ca`](https://sepolia.etherscan.io/tx/0x12128e2da3dc7986f88381e84a419883d86d3ec93aac658da49f38c813bb26ca), expires 2027-11-06 |
+| Game registry | `0xcA36D4cAbC9A10d3fbeFDBc2D4CA7Fa5ce4ecD43`, `isEmancipated() == true` |
+| First game | `mumbai-monsoon-bout.taksh-games.eth`, registered in [`0x1b70d81a…2b8e`](https://sepolia.etherscan.io/tx/0x1b70d81acfa561a7ffb04de9843e09f25277238e0b8874df7f4260f3fa9e2b8e), resolver `0x8c560120F72ceD142cdf19f67C3Fde5C28Bf0100` |
+| Play | `/play/mumbai-monsoon-bout.taksh-games.eth` loads the game from its text records |
+
+### The rival's own name
+
+The 0G rival in Counter Bout has its own name, `rival.taksh-games.eth`, so the agent has an identity anyone can look up. Its Permissioned Resolver holds:
+
+| Key | Holds |
+| --- | --- |
+| `agent-context` | ENSIP-26. What the rival is, how it decides on 0G, and where its rounds go |
+| `agent-endpoint[web]`, `url` | Where to play it |
+| `taksh.rival.model`, `taksh.rival.trust`, `taksh.rival.provider` | `glm-5.3`, `private`, and the 0G TEE provider's address |
+| `taksh.rival.last-episode` | The 0G Storage root hash of the latest stored round |
+
+The owner key holds every role on that resolver. The server's registrar wallet holds `ROLE_SET_TEXT` on one resource, `keccak256("taksh.rival.last-episode")`, granted with `grantSetterRoles`. After each stored round, the episode route writes the new root hash there. A `setText` from the same wallet on `agent-context` or any other key reverts with `EACUnauthorizedAccountRoles`. The resolver serves only this name, so the grant reaches no other name.
+
+Set it up after `ens:setup`, and run it again with `TAKSH_URL=<live url>` to point `agent-endpoint[web]` at the deploy:
+
+```bash
+npm run ens:rival
+```
+
+Live on Sepolia (2026-11-06), tested on an anvil fork first:
+
+| | |
+| --- | --- |
+| Name | `rival.taksh-games.eth`, registered in [`0x50f56a05…175946`](https://sepolia.etherscan.io/tx/0x50f56a05616630fe272d2af00ae0a4787f9e2cc89b862d7c46289f8a36175946) |
+| Resolver | `0xCaea9600A51CE2796816A04262A8ACBc8ECA059B` |
+| One-key grant | [`0x7f1ff9e9…1edaa6`](https://sepolia.etherscan.io/tx/0x7f1ff9e928e3825f205e76dd73b2db8288696b438f7d804f8f314d6c7d1edaa6). `hasRoles` reads true for `last-episode`, false for `agent-context` |
+| First pointer | [`0xf9413c69…f370a0`](https://sepolia.etherscan.io/tx/0xf9413c69e8527c64bd1283ca9b6c2c0d5afc0a77e9ca2117a99e65e91ef370a0), set to round `0x9ef7bb08…60b32c`, which `npm run replay-episode` plays back to the same score |
+
 ## How it fits together
 
 - `src/lib/spec`: the versioned `GameSpec` contract, its validator, revision comparison and starter specs.
@@ -130,6 +238,36 @@ Also confirmed on the production build:
 - `src/lib/pipeline`: clarify, generate and revise, with validation and one repair attempt. Credentials stay on the server.
 - `src/lib/requests`, `src/workflows`, `skills/`: player requests for new worlds, styles, characters, bosses and games, run as durable workflows so a slow model call never holds a request open.
 - `src/lib/stage`: the three.js renderer. `worlds.js` and `styles.js` are data plus one post-processing pass, `views/` draws each template, and `character.js` builds a rigged human whose 65-bone skeleton plays every clip in the animation library.
+
+## Arkiv
+
+Scores and shared games are stored on Arkiv's Rabdi testnet (chain ID 7794095). When a round ends, the result screen reads the leaderboard live from Arkiv. You can narrow it to the same world and style, to this exact game (by spec hash), or to camera play only. Post your score and it becomes an entity, and the board reads again with your row in bold and your rank. "Publish this game" stores the whole spec as an entity. `/games` lists published games straight from Arkiv, and `/games/<entity key>` opens one to play.
+
+Writes go through `/api/arkiv/scores` and `/api/arkiv/games`, signed on the server with `ARKIV_PRIVATE_KEY`. The key never reaches the browser. Reads keep only entities that wallet owns, because anyone can write entities with our schema tag. With no key the board still reads, and with the RPC down the game still plays and the board says it is unavailable. Details are in `arkiv/`, starting with `arkiv/schema.md`.
+
+Writer wallet: `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30` (testnet dev wallet, fund it at https://hub.arkiv.network/faucet).
+
+A query to run against testnet, the top ten scores across every game:
+
+```bash
+curl -s https://rpc.rabdi.db-chain.testnet.arkiv.network -H "content-type: application/json" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"arkiv_query\",\"params\":[\"arkiv.schema = str('taksh.scores.v1') AND \$owner = addr(0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30) ORDER BY score:i32 DESC\",{\"select\":{\"key\":true,\"attributes\":true,\"count\":true},\"limit\":\"0xa\"}]}"
+```
+
+The same board through the app: `curl 'http://localhost:3000/api/arkiv/scores?template=poses'`. The response includes the exact query text sent to the node.
+
+Live on Rabdi testnet (2026-11-06), written by `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30`:
+
+| What | Entity key | Tx |
+| --- | --- | --- |
+| Score, Sky Hop, 4210 | `0xa101e1a7b4a827df18d1fff911bc75d240c836080b490decd7ab78a9b87282a8` | [`0xccc8fc34…1b507`](https://rabdi.explorer.arkiv.network/tx/0xccc8fc34c2d2b937d1fdaf5e10f61c8ffe59f2922b12db4eba0bd4fd5251b507) |
+| Published game, Chop Shop | `0xf596b5687d9e58f37928e08ed49096cec6f1594559720ec591b842b31c66485a` | [`0x2d4baa27…de8c4`](https://rabdi.explorer.arkiv.network/tx/0x2d4baa2784ec63feb0e374cc9f5fef560dc294a8d53d22e40348c9f6aa1de8c4) |
+
+Both were read back through `GET /api/arkiv/scores?template=hop` and `GET /api/arkiv/games`.
+
+## Licence and AI use
+
+MIT, see `LICENSE`. The code and docs were written with Claude Code, with a person choosing the design and reviewing the result. The Arkiv integration was written by a Claude agent working from Arkiv's docs, and `arkiv/friction.md` is its log. In the app, `glm-5.3` on 0G Private Computer turns a typed or spoken idea into a game spec and plans the Counter Bout rival's shots. Claude is the fallback model when no 0G key is set.
 
 ## Known limits
 
@@ -140,4 +278,5 @@ Also confirmed on the production build:
 - GPT and Google Flow image generation are not wired in. Art comes from the CC0 kits, and only 11 of the 82 CC0 Quaternius packs are in. See `assets/README.md`.
 - The game rendering moved from Canvas 2D to three.js, because a human rig needs WebGL. The first load of a game fetches 12 to 15 MB of models.
 - Pose inference runs on the main thread.
-- The API routes have no rate limit, so add one before any public deployment.
+- The API routes have no rate limit, so add one before any public deployment. The Arkiv write routes allow one post every 4 seconds per client, held in memory on one server.
+- Scores are what the browser reports. The server checks the spec is a real game, but it can't replay the round.
