@@ -126,7 +126,7 @@ Set it up:
 npm run ens:setup
 ```
 
-The setup registers the parent through the ENSv2 ETH Registrar (commit, a 60 second wait, register), paid in Sepolia MockUSDC, which anyone can mint. It deploys the parent's resolver and the game registry, grants the registrar its one role and sends it 0.01 ETH for gas. Run it again and it skips whatever the chain shows as done. The owner key needs about 0.02 Sepolia ETH. A publish costs about 1.1M gas.
+The setup registers the parent through the ENSv2 ETH Registrar (commit, a 60 second wait, register), paid in Sepolia MockUSDC, which anyone can mint. It deploys the parent's resolver and the game registry, grants the registrar its one role and sends it 0.01 ETH for gas. Run it again and it skips whatever the chain shows as done. The owner key needs about 0.02 Sepolia ETH. A publish is two transactions, about 5.1M gas in all: 4.5M to deploy the game's resolver and 0.6M to register the name. At 20 gwei that is about 0.1 ETH, so top up the registrar before a busy demo.
 
 Contract addresses come from the Sepolia (ENSv2) table at https://docs.ens.domains/learn/deployments and live in `src/lib/ens/chain.js`. The Universal Resolver address comes from viem, as the ENS docs ask. The parent name and keys come from env. Without them, or with the RPC down, games still play, the result screen says publishing is unavailable, and `/play/<name>` says ENS could not be reached.
 
