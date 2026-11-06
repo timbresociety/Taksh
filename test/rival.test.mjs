@@ -152,6 +152,28 @@ describe("0G rival episodes", async () => {
     assert.doesNotThrow(() => checkEpisode(late.raw, late.raw.spec, late.endsAt), "served after the 6 s browser timeout");
   });
 
+  it("refuses a round cut short, and a dropped plan even when pauses put the game clock behind", () => {
+    const short = playRound();
+    short.raw.dts = short.raw.dts.slice(0, -40);
+    short.raw.log = short.raw.log.filter(([step]) => step < short.raw.dts.length);
+    assert.throws(() => checkEpisode(short.raw, short.raw.spec, short.endsAt), /stops before it ended/);
+
+    const lagged = playRound({ jabEvery: 40, issueGapMs: 30000 });
+    const dropped = lagged.raw.decisions.at(-1).requestId;
+    let seen = 0;
+    const last = lagged.raw.log.filter(([, kind]) => kind === "plan").length - 1;
+    lagged.raw.log = lagged.raw.log.filter(([, kind]) => kind !== "plan" || seen++ !== last);
+    lagged.raw.decisions = lagged.raw.decisions.filter((decision) => decision.requestId !== dropped);
+    assert.throws(() => checkEpisode(lagged.raw, lagged.raw.spec, lagged.endsAt + 30000), /leaves out a 0G decision/);
+  });
+
+  it("a plan still in the air at the bell may be missing", () => {
+    const round = playRound();
+    const now = round.endsAt;
+    recordDecision("req-bell", { roundId: round.roundId, askedAt: now - 4000, issuedAt: now - 1000, plan: ["left"], read: "r", observation: {}, trace: {} });
+    assert.doesNotThrow(() => checkEpisode(round.raw, round.raw.spec, now));
+  });
+
   it("a dodge pressed before the shot shows runs out before the shot lands", () => {
     const session = new GameSession(starterSpec("bout"), { rival: "0g" });
     session.spec.tuning.warningMs = 500; // the shortest warning, where it would matter most

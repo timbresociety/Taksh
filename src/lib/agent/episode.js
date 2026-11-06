@@ -19,6 +19,7 @@ const SIDES = ["left", "right", "high"];
 const CLOCK_SLACK_MS = 1500; // network and frame jitter between the server clock and the game clock
 const UPLOAD_WINDOW_MS = 5 * 60 * 1000; // a failed upload can be retried, for a while
 const IN_TIME_MS = 5000; // the browser gives up on a decision after 6 s; one served faster was played
+const LAST_PLAN_MS = 3000; // a plan served this close to the upload may have landed after the bell
 const HUMAN_REACTION_MS = 120; // simple visual reaction is about 200 ms; under 120 is not a person
 const FAST_DODGES_ALLOWED = 2; // a lucky early lean happens, a run of them doesn't
 
@@ -67,30 +68,40 @@ export function checkEpisode(raw, spec, now = Date.now()) {
   if (endMs > now - round.startedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
   if (now - round.startedAt > endMs + UPLOAD_WINDOW_MS) throw refuse("This round is too old to store.");
 
-  // Every plan 0G served in time to be played has to be in the round. Late ones (the browser gave up)
-  // and ones that arrived as the round ended are the only ones allowed missing.
+  // Every plan 0G served in time to be played has to be in the round. Only two kinds may be missing:
+  // late ones (the browser gave up) and ones served just before the first upload, still in the air at
+  // the bell. Both are judged on the server clock. Game time can't be used here: pauses put it behind.
+  const endedAt = round.endedAt ?? now;
   const sent = new Set(claimed.map((decision) => decision.requestId));
-  const missing = round.requestIds.filter((id) => {
+  for (const id of round.requestIds) {
+    if (sent.has(id)) continue;
     const record = issuedDecision(id);
-    return record && !sent.has(id) && record.issuedAt - record.askedAt <= IN_TIME_MS && record.issuedAt - round.startedAt < endMs - CLOCK_SLACK_MS;
-  });
-  if (missing.length) throw refuse("This round leaves out a 0G decision that was played.");
+    if (!record) throw refuse("A 0G decision in this round has expired.");
+    if (record.issuedAt - record.askedAt <= IN_TIME_MS && record.issuedAt <= endedAt - LAST_PLAN_MS) throw refuse("This round leaves out a 0G decision that was played.");
+  }
 
   // Human dodges, and the server's own score.
   const template = templateInfo(spec.template);
   let fast = 0;
+  let ended = false;
   const replayed = replayEpisode({ spec, options: { rival: "0g" }, dts, log }, {
+    onEnd: (state) => {
+      ended = state.status === "ended";
+    },
     onAct: (state, action) => {
       const reaction = template.reactionMs?.(state, action);
       if (reaction !== null && reaction !== undefined && reaction < HUMAN_REACTION_MS) fast += 1;
     },
   });
+  // A round cut short would score a lost fight as unfinished, and hide the plans near its end.
+  if (!ended) throw refuse("This round stops before it ended.");
   if (fast > FAST_DODGES_ALLOWED) throw refuse(`${fast} dodges came faster than a person can react.`);
 
   const verified = issued.map((record, index) => ({ t: gameMsAt(plans[index][0]), plan: record.plan, read: record.read, observation: record.observation, ...record.trace }));
   const safeStops = decisions.filter((decision) => decision?.safeStop).length;
 
   // No await between the checks above and this line, so nothing else can claim this round first.
+  round.endedAt ??= now; // a retry after a failed upload is judged against the first upload
   reserveRound(roundId, verified.map((decision) => decision.requestId));
   return { version: 1, roundId, spec, options: { rival: "0g" }, dts, log, decisions: verified, safeStops, replayed };
 }
