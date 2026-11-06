@@ -3,6 +3,7 @@ import { MAX_EPISODE_BYTES, checkEpisode } from "@/lib/agent/episode";
 import { validateSpec } from "@/lib/spec/validate";
 import { createBudget } from "@/lib/agent/budget";
 import { releaseRound, spendRound } from "@/lib/agent/ledger";
+import { readText } from "../../_shared";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,7 @@ const spend = createBudget(10);
 // Stores a finished 0G-rival round on 0G Storage, after checkEpisode has checked and replayed it.
 export async function POST(request) {
   try {
-    const text = await request.text();
-    if (text.length > MAX_EPISODE_BYTES) return Response.json({ error: "That episode is too large to store." }, { status: 413 });
+    const text = await readText(request, MAX_EPISODE_BYTES);
     let raw = null;
     try {
       raw = JSON.parse(text);

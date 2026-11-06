@@ -1,10 +1,18 @@
 import { getProvider } from "@/lib/pipeline/provider";
+import { readBytes, readText } from "@/lib/read-body";
+
+export { readBytes, readText };
 
 // Errors reach the creator, so they say what happened without leaking provider internals.
 export function route(handler) {
   return async (request) => {
     try {
-      const body = await request.json();
+      let body;
+      try {
+        body = JSON.parse(await readText(request, MAX_JSON_BYTES));
+      } catch (error) {
+        throw error.status ? error : badRequest("The request body is not JSON.");
+      }
       const { provider } = await getProvider();
       return Response.json(await handler(body, provider));
     } catch (error) {
@@ -23,3 +31,6 @@ export function requireText(value, name, max) {
   if (value.length > max) throw badRequest(`Keep ${name} under ${max} characters.`);
   return value.trim();
 }
+
+// A brief, a spec and a few traces come to a few KB. Revise sends the game too.
+const MAX_JSON_BYTES = 256 * 1024;

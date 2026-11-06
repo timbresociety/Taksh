@@ -2,7 +2,7 @@ import { getProvider } from "@/lib/pipeline/provider";
 import { RIVAL_SCHEMA, RIVAL_SYSTEM, cleanObservation, rivalMessage } from "@/lib/agent/rival";
 import { createBudget } from "@/lib/agent/budget";
 import { openRound, recordDecision } from "@/lib/agent/ledger";
-import { badRequest } from "../../_shared";
+import { badRequest, readText } from "../../_shared";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +14,7 @@ export async function POST(request) {
   try {
     const { provider } = await getProvider();
     if (provider.source !== "0g") return Response.json({ error: "The 0G rival needs OG_API_KEY." }, { status: 503 });
-    const text = await request.text();
-    if (text.length > 4000) throw badRequest("That fight is too large.");
+    const text = await readText(request, 4000);
     let raw = null;
     try {
       raw = JSON.parse(text);
