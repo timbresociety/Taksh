@@ -1,0 +1,12 @@
+# Local-only files: debug traces, camera captures, raw asset sources and agent notes.
+.asset-src
+.claude
+.env*.local
+/traces
+e2e-shots
+camera-shots
+taksh-trace-*.json
+taksh-drill-*.json
+AGENTS.md
+# Rebuilt on Vercel by `npm run setup`.
+public/mediapipe

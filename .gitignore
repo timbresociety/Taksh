@@ -9,3 +9,4 @@ camera-shots/
 .asset-src/
 taksh-trace-*.json
 taksh-drill-*.json
+.vercel
