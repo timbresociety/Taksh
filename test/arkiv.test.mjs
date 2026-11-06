@@ -122,13 +122,14 @@ describe("arkiv write throttle", async () => {
 });
 
 describe("arkiv lifetimes", () => {
-  it("counts whole days left from 2 s blocks, never below zero", () => {
+  it("counts days left from 2 s blocks, to the nearest day, never below zero", () => {
     const day = 86400 / 2;
     assert.equal(daysLeft(1000 + SCORE_DAYS * day, 1000), 30);
-    assert.equal(daysLeft(1000 + day - 1, 1000), 0);
+    assert.equal(daysLeft(1000 + SCORE_DAYS * day - 30, 1030), 30); // read a minute after posting
+    assert.equal(daysLeft(1000 + day / 2 - 1, 1000), 0);
     assert.equal(daysLeft(10n, 500), 0); // read after it expired, before the node dropped it
     // ExpirationTime.max() on a game, as read on 2026-11-06: about six months.
-    assert.equal(daysLeft(8167433, 308735), 181);
+    assert.equal(daysLeft(8167433, 308735), 182);
   });
 });
 

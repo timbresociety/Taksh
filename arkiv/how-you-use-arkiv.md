@@ -16,7 +16,7 @@ Live on Rabdi at 22:24 UTC on 2026-11-06, from `npm run arkiv:probe`: 4 scores, 
 | `bytes` column | `spec` on games and daily | `/games/<key>` plays the exact spec that was published, 569 bytes for the newest. |
 | `getEntity(key)` | `readGame` | A shared link opens one game by its entity key, from any node. |
 | `ownedBy` | every read | Only our writer's rows show. Anyone can tag an entity `taksh.scores.v1`, and it won't reach the board. |
-| `$expiresAt` and lifetimes | `daysLeft` in `src/lib/arkiv/schema.js` | Each score row says "Expires in 29 d", and the board says it holds the last 30 days. Each gallery card says "182 days left". |
+| `$expiresAt` and lifetimes | `daysLeft` in `src/lib/arkiv/schema.js` | Each score row says "Expires in 30 d" on the day it was posted, and the board says it holds the last 30 days. Each gallery card says "182 days left". |
 | `blockNumber` on a query | board | "read at block 308755". |
 | `toString()` on a query | board, daily board | "Query sent to Arkiv" shows the exact query text. |
 | The transaction hash | `create` | "See the transaction" links to the Rabdi explorer after a post. |
