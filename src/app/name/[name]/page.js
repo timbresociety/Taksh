@@ -48,11 +48,11 @@ export default async function NamePage({ params }) {
   const parent = view.path.at(-2);
   const writable = view.serverKeys.filter((grant) => grant.canWrite);
   const allResolverRoles = view.ownerResolverRoles.length === 20;
-  const lastEpisode = ROOT_HASH.test(records[LAST_EPISODE] ?? "") ? records[LAST_EPISODE] : null;
-  // A round block claims the Taksh server wrote it, so it needs the server's grant on this resolver.
-  const serverWrote = (key) => view.serverKeys.some((grant) => grant.key === key && grant.canWrite);
-  const round = ROOT_HASH.test(records[ROUND_KEYS.episode] ?? "") && serverWrote(ROUND_KEYS.episode) ? records[ROUND_KEYS.episode] : null;
-  const score = round && /^\d{1,9}$/.test(records[ROUND_KEYS.score] ?? "") && serverWrote(ROUND_KEYS.score) ? records[ROUND_KEYS.score] : null;
+  // The round blocks claim the Taksh server wrote them, so they show only on the rival's own names
+  // (view.isRival), never on a name that copied its keys onto a resolver of its own.
+  const lastEpisode = view.isRival && ROOT_HASH.test(records[LAST_EPISODE] ?? "") ? records[LAST_EPISODE] : null;
+  const round = view.isRival && ROOT_HASH.test(records[ROUND_KEYS.episode] ?? "") ? records[ROUND_KEYS.episode] : null;
+  const score = round && /^\d{1,9}$/.test(records[ROUND_KEYS.score] ?? "") ? records[ROUND_KEYS.score] : null;
 
   return (
     <main className="shelf-page">

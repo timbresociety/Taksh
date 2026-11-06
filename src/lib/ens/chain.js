@@ -319,7 +319,8 @@ export async function inspectName(config, rawName) {
   const entry = last.name === name && last.status !== "available" ? last : null;
 
   const server = config.registrarKey ? privateKeyToAccount(config.registrarKey).address : null;
-  const [resolver, emancipated, tokenRoles, ...texts] = await Promise.all([
+  const [rivalResolver, resolver, emancipated, tokenRoles, ...texts] = await Promise.all([
+    config.parent ? client.getEnsResolver({ name: rivalName(config) }).catch(() => null) : null,
     client.getEnsResolver({ name }),
     entry ? read(entry.registry, ABI.registry, "isEmancipated") : null,
     entry && entry.status === "registered" ? read(entry.registry, ABI.registry, "roles", [entry.resource, entry.owner]) : 0n,
@@ -342,6 +343,9 @@ export async function inspectName(config, rawName) {
   return {
     name, chain: config.chainName, explorer: config.deployment.chain.blockExplorers?.default.url,
     path, entry, emancipated, resolver: resolver && resolver !== zeroAddress ? resolver : null, records,
+    // The rival or one of its rounds: under rival.<parent>, where only the owner and the server can
+    // register, and served by the rival's own resolver. Records anywhere else make no claim.
+    isRival: Boolean(config.parent && rivalResolver && resolver === rivalResolver && (name === rivalName(config) || name.endsWith(`.${rivalName(config)}`))),
     tokenRoles: roleNames(tokenRoles, REGISTRY_ROLE_NAMES), ownerResolverRoles: roleNames(ownerResolverRoles, RESOLVER_ROLE_NAMES),
     server, serverKeys, block: await client.getBlockNumber(),
   };
