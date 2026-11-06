@@ -116,14 +116,17 @@ export class GameSession {
 
 // Plays a recorded round again from its spec, step times, moves and plans. Aim is not recorded, so
 // this is exact for every template without a hand on screen.
-export function replayEpisode({ spec, options = {}, dts, log }) {
+export function replayEpisode({ spec, options = {}, dts, log }, { onAct } = {}) {
   const template = templateInfo(spec.template);
   const state = template.create(spec, options);
   let next = 0;
   const apply = (until) => {
     for (; next < log.length && log[next][0] <= until; next += 1) {
       const [, kind, value] = log[next];
-      if (kind === "act") template.act(state, value);
+      if (kind === "act") {
+        onAct?.(state, value);
+        template.act(state, value);
+      }
       else template.plan(state, value);
     }
   };

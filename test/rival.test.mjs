@@ -82,64 +82,85 @@ describe("0G rival inputs", async () => {
 
 describe("0G rival episodes", async () => {
   const { checkEpisode } = await import("../src/lib/agent/episode.js");
-  const { recordDecision } = await import("../src/lib/agent/ledger.js");
+  const { openRound, recordDecision, releaseRound, spendRound } = await import("../src/lib/agent/ledger.js");
+  let next = 0;
 
-  function episode() {
+  // A round as /api/rival/decide would issue it: one round ID, decisions stamped with server time.
+  // The player dodges each shot `reactMs` after it shows, using the template's own answer.
+  function playRound({ reactMs = 300, startedAt = 1_000_000, issueGapMs = 0 } = {}) {
+    const roundId = openRound(null, startedAt);
     const session = new GameSession(starterSpec("bout"), { rival: "0g" });
-    session.plan(["left", "high"]);
-    for (let i = 0; i < 400; i += 1) session.tick(16);
-    return { spec: session.spec, ...session.recording, decisions: [{ t: 0, requestId: "req-real", plan: ["left", "high"] }] };
+    const decisions = [];
+    const answer = { left: "slip_right", right: "slip_left", high: "duck" };
+    let dodgedThis = null;
+    for (let frame = 0; session.phase !== "ended" && frame < 20000; frame += 1) {
+      const gameMs = session.recording.dts.reduce((sum, dt) => sum + dt, 0);
+      if (session.state.plan.length === 0 && !session.state.attack && decisions.length < 6) {
+        const requestId = `req-${next++}`;
+        const plan = ["left", "high", "right"];
+        recordDecision(requestId, { roundId, issuedAt: startedAt + gameMs + issueGapMs, plan, read: "r", observation: {}, trace: { requestId } });
+        session.plan(plan);
+        decisions.push({ requestId, t: gameMs });
+      }
+      const attack = session.state.attack;
+      if (attack && attack.ms >= reactMs && dodgedThis !== attack) {
+        session.handleKey(answer[attack.side]);
+        dodgedThis = attack;
+      } else if (session.phase === "playing" && frame % 6 === 0) session.handleKey("jab");
+      session.tick(16);
+    }
+    const gameMs = session.recording.dts.reduce((sum, dt) => sum + dt, 0);
+    return { raw: { spec: session.spec, ...session.recording, decisions }, roundId, session, endsAt: startedAt + gameMs + 3000 };
   }
 
-  it("stores only decisions this server got from 0G, rebuilt from its own record", () => {
-    recordDecision("req-real", { plan: ["left", "high"], read: "slow on the left", observation: {}, trace: { requestId: "req-real", provider: "0xabc" } });
-    const raw = { ...episode(), extra: "dropped" };
+  it("stores a real round, with the server's own replayed score and records", () => {
+    const { raw, session, endsAt } = playRound();
     raw.decisions[0].read = "forged read";
-    const stored = checkEpisode(raw, raw.spec);
-    assert.equal(stored.decisions[0].read, "slow on the left");
+    raw.extra = "dropped";
+    const stored = checkEpisode(raw, raw.spec, endsAt);
+    assert.deepEqual(stored.replayed, session.template.result(session.state));
+    assert.equal(stored.decisions[0].read, "r");
     assert.equal(stored.extra, undefined);
-    assert.deepEqual(replayEpisode(stored), replayEpisode(raw));
   });
 
-  it("refuses a made-up request ID, a plan that doesn't match, and junk step times", () => {
-    const forged = episode();
-    forged.decisions[0].requestId = "req-fake";
-    assert.throws(() => checkEpisode(forged, forged.spec), /not issued by this server/);
-
-    recordDecision("req-other", { plan: ["right"], trace: { requestId: "req-other" } });
-    const swapped = episode();
-    swapped.decisions[0].requestId = "req-other";
-    assert.throws(() => checkEpisode(swapped, swapped.spec), /not issued by this server/);
-
-    const junk = episode();
-    junk.dts[3] = 9999;
-    assert.throws(() => checkEpisode(junk, junk.spec), /step times/);
+  it("refuses a round built faster than real time", () => {
+    const { raw } = playRound({ issueGapMs: -20000 });
+    assert.throws(() => checkEpisode(raw, raw.spec, Date.now()), /faster than real time/);
+    const live = playRound();
+    assert.throws(() => checkEpisode(live.raw, live.raw.spec, live.endsAt - 30000), /faster than real time/, "uploaded before the round could have finished");
   });
-});
 
-describe("0G rival decisions are single-use", async () => {
-  const { checkEpisode } = await import("../src/lib/agent/episode.js");
-  const { recordDecision, releaseDecisions, spendDecisions } = await import("../src/lib/agent/ledger.js");
+  it("refuses scripted dodges faster than a person can react", () => {
+    const { raw, endsAt } = playRound({ reactMs: 20 });
+    assert.throws(() => checkEpisode(raw, raw.spec, endsAt), /faster than a person can react/);
+  });
 
-  function round(ids) {
-    const session = new GameSession(starterSpec("bout"), { rival: "0g" });
-    for (const id of ids) session.plan(["left"]);
-    for (let i = 0; i < 50; i += 1) session.tick(16);
-    return { spec: session.spec, ...session.recording, decisions: ids.map((requestId) => ({ t: 0, requestId })) };
-  }
+  it("refuses made-up, swapped or mixed-round decisions", () => {
+    const forged = playRound();
+    forged.raw.decisions[0].requestId = "req-fake";
+    assert.throws(() => checkEpisode(forged.raw, forged.raw.spec, forged.endsAt), /not issued by this server/);
 
-  it("refuses one decision used twice in a round, and a decision already stored", () => {
-    recordDecision("req-once", { plan: ["left"], trace: { requestId: "req-once" } });
-    const twice = round(["req-once", "req-once"]);
-    assert.throws(() => checkEpisode(twice, twice.spec), /appears twice/);
+    const a = playRound();
+    const b = playRound();
+    a.raw.decisions[1] = b.raw.decisions[1];
+    assert.throws(() => checkEpisode(a.raw, a.raw.spec, a.endsAt), /not issued|not from one round/);
 
-    const once = round(["req-once"]);
-    assert.doesNotThrow(() => checkEpisode(once, once.spec));
-    assert.throws(() => checkEpisode(once, once.spec), /not issued by this server/, "a second upload racing the first is refused");
-    releaseDecisions(["req-once"]);
-    assert.doesNotThrow(() => checkEpisode(once, once.spec), "a failed upload frees the round to be sent again");
-    spendDecisions(["req-once"]);
-    releaseDecisions([]);
-    assert.throws(() => checkEpisode(once, once.spec), /not issued by this server/);
+    const junk = playRound();
+    junk.raw.dts[3] = 9999;
+    assert.throws(() => checkEpisode(junk.raw, junk.raw.spec, junk.endsAt), /step times/);
+  });
+
+  it("a round is stored once; a racing second upload is refused; a failed one can retry", () => {
+    const { raw, roundId, endsAt } = playRound();
+    const twice = { ...raw, decisions: [raw.decisions[0], raw.decisions[0]] };
+    assert.throws(() => checkEpisode(twice, raw.spec, endsAt), /appears twice|line up/);
+
+    const first = checkEpisode(raw, raw.spec, endsAt);
+    assert.throws(() => checkEpisode(raw, raw.spec, endsAt), /not issued by this server|not from one round/, "racing upload");
+    const ids = first.decisions.map((decision) => decision.requestId);
+    releaseRound(roundId, ids);
+    assert.doesNotThrow(() => checkEpisode(raw, raw.spec, endsAt), "a failed upload frees the round");
+    spendRound(roundId, ids);
+    assert.throws(() => checkEpisode(raw, raw.spec, endsAt), /not issued by this server|not from one round/);
   });
 });

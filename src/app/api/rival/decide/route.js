@@ -1,7 +1,7 @@
 import { getProvider } from "@/lib/pipeline/provider";
 import { RIVAL_SCHEMA, RIVAL_SYSTEM, cleanObservation, rivalMessage } from "@/lib/agent/rival";
 import { createBudget } from "@/lib/agent/budget";
-import { recordDecision } from "@/lib/agent/ledger";
+import { openRound, recordDecision } from "@/lib/agent/ledger";
 import { badRequest } from "../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +23,12 @@ export async function POST(request) {
     const observation = cleanObservation(raw);
     if (!observation) throw badRequest("Send the fight as JSON.");
     spend();
+    const roundId = openRound(typeof raw.roundId === "string" ? raw.roundId : null);
     const reply = await provider.complete({ stage: "rival", system: RIVAL_SYSTEM, user: rivalMessage(observation), schema: RIVAL_SCHEMA });
     const plan = reply.data.plan.filter((side) => ["left", "right", "high"].includes(side)).slice(0, 4);
-    if (reply.trace?.requestId) recordDecision(reply.trace.requestId, { plan, read: reply.data.read, observation, trace: reply.trace });
-    return Response.json({ ...reply.data, plan, ms: reply.ms, trace: reply.trace });
+    // issuedAt is when the plan left this server. The game can't have used it any earlier than that.
+    if (reply.trace?.requestId) recordDecision(reply.trace.requestId, { roundId, issuedAt: Date.now(), plan, read: reply.data.read, observation, trace: reply.trace });
+    return Response.json({ ...reply.data, plan, roundId, ms: reply.ms, trace: reply.trace });
   } catch (error) {
     return Response.json({ error: error.expose ? error.message : "The 0G rival did not answer." }, { status: error.status ?? 502 });
   }

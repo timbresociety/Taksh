@@ -1,16 +1,15 @@
-import { replayEpisode } from "@/lib/game/session";
 import { uploadEpisode } from "@/lib/agent/storage";
 import { MAX_EPISODE_BYTES, checkEpisode } from "@/lib/agent/episode";
 import { validateSpec } from "@/lib/spec/validate";
 import { createBudget } from "@/lib/agent/budget";
-import { releaseDecisions, spendDecisions } from "@/lib/agent/ledger";
+import { releaseRound, spendRound } from "@/lib/agent/ledger";
 
 export const dynamic = "force-dynamic";
 
 // Each upload is a testnet transaction from the storage wallet.
 const spend = createBudget(10);
 
-// Stores a finished 0G-rival round on 0G Storage, after checking it and replaying it.
+// Stores a finished 0G-rival round on 0G Storage, after checkEpisode has checked and replayed it.
 export async function POST(request) {
   try {
     const text = await request.text();
@@ -25,12 +24,12 @@ export async function POST(request) {
     const ids = episode.decisions.map((decision) => decision.requestId);
     try {
       spend();
-      const replayed = replayEpisode(episode);
-      const stored = await uploadEpisode({ ...episode, replayed, storedAt: new Date().toISOString() });
-      spendDecisions(ids);
-      return Response.json({ ...stored, replayed });
+      const stored = await uploadEpisode({ ...episode, storedAt: new Date().toISOString() });
+      spendRound(episode.roundId, ids);
+      // The score here is the server's replay. Show this one, not the browser's.
+      return Response.json({ ...stored, replayed: episode.replayed });
     } catch (error) {
-      releaseDecisions(ids);
+      releaseRound(episode.roundId, ids);
       throw error;
     }
   } catch (error) {

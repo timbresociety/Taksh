@@ -154,6 +154,9 @@ export default {
     ],
   }),
 
+  // How long after a shot showed that this move answered it, or null when it doesn't answer one.
+  reactionMs: (state, action) => (state.attack && ATTACKS[state.attack.side] === action ? state.attack.ms : null),
+
   // The 0G brain's plan. Only known sides get in, whatever the model sent.
   plan(state, sides) {
     state.plan = sides.filter((side) => side in ATTACKS).slice(0, 4);

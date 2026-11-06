@@ -11,10 +11,11 @@ export function startRivalBrain(session, { onChange = () => {}, fetch = globalTh
   let status = "thinking";
   let taunt = null;
   let stopped = false;
+  let roundId = null; // the server opens a round on the first decision; every later one must use it
 
   async function decide() {
     busy = true;
-    const observation = session.template.observe(session.state);
+    const observation = { ...session.template.observe(session.state), roundId };
     const askedAt = session.state.t;
     try {
       const response = await fetch("/api/rival/decide", {
@@ -26,6 +27,7 @@ export function startRivalBrain(session, { onChange = () => {}, fetch = globalTh
       const reply = await response.json();
       if (!response.ok) throw new Error(reply.error ?? `HTTP ${response.status}`);
       if (stopped) return;
+      roundId = reply.roundId;
       session.plan(reply.plan);
       decisions.push({ t: askedAt, appliedAt: session.state.t, observation, plan: reply.plan, read: reply.read, taunt: reply.taunt, ms: reply.ms, ...reply.trace });
       status = "planned";
