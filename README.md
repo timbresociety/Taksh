@@ -79,6 +79,23 @@ A spec is `template + skin + tuning`. The skin picks one of nine worlds (downtow
 
 The camera only works on `http://localhost` or an HTTPS address. The `Network` address Next.js prints is plain HTTP, so browsers block the camera there. Another device needs an HTTPS address.
 
+### Using an iPhone as the camera
+
+A laptop camera often sees only your head and shoulders. An iPhone across the room can see all of you. On a Mac, macOS Continuity Camera makes the phone an ordinary camera:
+
+1. Sign in to the same Apple ID on both, with Wi-Fi and Bluetooth on.
+2. Stand the phone up in landscape about two metres away, rear camera facing you, and lock it. macOS only shows the phone to browsers while it is in this pose, so a phone in your hand or flat on the desk won't appear.
+3. On the calibrate screen, choose the iPhone under **Camera**. The list updates by itself when the phone appears. The choice is saved in this browser, and if that camera is gone next time, Taksh opens the default one.
+
+| Browser | iPhone camera |
+|---|---|
+| Chrome on macOS 13+ | Yes, through Continuity Camera |
+| Safari on macOS 13+ | Yes, through Continuity Camera |
+| Any browser on Windows or Linux | No. Continuity Camera is Mac only |
+| Safari on the iPhone itself | Not supported yet. The screen is too small to read from two metres back |
+
+Players who never open the menu get the same front camera at 1280x720 and 30 fps as before.
+
 ## Model and prompts
 
 Games are generated on **0G Private Computer** with `glm-5.3`, on the `private` trust tier. Only TeeML providers can serve those requests, so the model runs inside a TEE and the prompt never leaves the enclave. The provider is `src/lib/pipeline/provider-0g.js`. It calls the 0G Router (`https://router-api.0g.ai/v1`, OpenAI-compatible) with plain `fetch` and needs no SDK.
