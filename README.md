@@ -130,7 +130,16 @@ The setup registers the parent through the ENSv2 ETH Registrar (commit, a 60 sec
 
 Contract addresses come from the Sepolia (ENSv2) table at https://docs.ens.domains/learn/deployments and live in `src/lib/ens/chain.js`. The Universal Resolver address comes from viem, as the ENS docs ask. The parent name and keys come from env. Without them, or with the RPC down, games still play, the result screen says publishing is unavailable, and `/play/<name>` says ENS could not be reached.
 
-Tested: the whole flow on an anvil fork of Sepolia, with setup, two publishes, `/play/<name>` loading both, a taken name refused, and the role checks above read back from the contracts. Not yet run on live Sepolia, because the dev wallet has no Sepolia ETH.
+The publish route allows 10 publishes a minute across all callers and refuses a spec over 4 KB. A starter spec is about 600 bytes.
+
+Tested on an anvil fork of Sepolia first: setup, two publishes, `/play/<name>` loading both, a taken name refused, and the role checks above read back from the contracts. Then on live Sepolia (2026-11-06):
+
+| | |
+| --- | --- |
+| Parent | `taksh-games.eth`, registered in [`0x12128e2d…bb26ca`](https://sepolia.etherscan.io/tx/0x12128e2da3dc7986f88381e84a419883d86d3ec93aac658da49f38c813bb26ca), expires 2027-11-06 |
+| Game registry | `0xcA36D4cAbC9A10d3fbeFDBc2D4CA7Fa5ce4ecD43`, `isEmancipated() == true` |
+| First game | `mumbai-monsoon-bout.taksh-games.eth`, registered in [`0x1b70d81a…2b8e`](https://sepolia.etherscan.io/tx/0x1b70d81acfa561a7ffb04de9843e09f25277238e0b8874df7f4260f3fa9e2b8e), resolver `0x8c560120F72ceD142cdf19f67C3Fde5C28Bf0100` |
+| Play | `/play/mumbai-monsoon-bout.taksh-games.eth` loads the game from its text records |
 
 ## How it fits together
 
