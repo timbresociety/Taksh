@@ -79,3 +79,40 @@ describe("0G rival inputs", async () => {
     assert.doesNotThrow(() => spend(62000));
   });
 });
+
+describe("0G rival episodes", async () => {
+  const { checkEpisode } = await import("../src/lib/agent/episode.js");
+  const { recordDecision } = await import("../src/lib/agent/ledger.js");
+
+  function episode() {
+    const session = new GameSession(starterSpec("bout"), { rival: "0g" });
+    session.plan(["left", "high"]);
+    for (let i = 0; i < 400; i += 1) session.tick(16);
+    return { spec: session.spec, ...session.recording, decisions: [{ t: 0, requestId: "req-real", plan: ["left", "high"] }] };
+  }
+
+  it("stores only decisions this server got from 0G, rebuilt from its own record", () => {
+    recordDecision("req-real", { plan: ["left", "high"], read: "slow on the left", observation: {}, trace: { requestId: "req-real", provider: "0xabc" } });
+    const raw = { ...episode(), extra: "dropped" };
+    raw.decisions[0].read = "forged read";
+    const stored = checkEpisode(raw, raw.spec);
+    assert.equal(stored.decisions[0].read, "slow on the left");
+    assert.equal(stored.extra, undefined);
+    assert.deepEqual(replayEpisode(stored), replayEpisode(raw));
+  });
+
+  it("refuses a made-up request ID, a plan that doesn't match, and junk step times", () => {
+    const forged = episode();
+    forged.decisions[0].requestId = "req-fake";
+    assert.throws(() => checkEpisode(forged, forged.spec), /not issued by this server/);
+
+    recordDecision("req-other", { plan: ["right"], trace: { requestId: "req-other" } });
+    const swapped = episode();
+    swapped.decisions[0].requestId = "req-other";
+    assert.throws(() => checkEpisode(swapped, swapped.spec), /not issued by this server/);
+
+    const junk = episode();
+    junk.dts[3] = 9999;
+    assert.throws(() => checkEpisode(junk, junk.spec), /step times/);
+  });
+});

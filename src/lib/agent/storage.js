@@ -2,11 +2,11 @@
 // An episode is small JSON, so it goes up as one MemData blob and comes back by its root hash.
 import { Indexer, MemData } from "@0gfoundation/0g-storage-ts-sdk";
 import { JsonRpcProvider, Wallet } from "ethers";
+import { MAX_EPISODE_BYTES } from "./episode.js";
 
 export const OG_STORAGE_RPC = process.env.OG_STORAGE_RPC || "https://evmrpc-testnet.0g.ai";
 export const OG_STORAGE_INDEXER = process.env.OG_STORAGE_INDEXER || "https://indexer-storage-testnet-turbo.0g.ai";
 export const OG_STORAGE_EXPLORER = "https://storagescan-galileo.0g.ai";
-const MAX_EPISODE_BYTES = 512 * 1024; // a 120 s round at 60 fps is about 60 KB
 
 export function encodeEpisode(episode) {
   const bytes = new TextEncoder().encode(JSON.stringify(episode));

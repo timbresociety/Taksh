@@ -15,7 +15,7 @@ if (!source) {
 const episode = existsSync(source) ? JSON.parse(await readFile(source, "utf8")) : await downloadEpisode(source);
 const result = replayEpisode(episode);
 const decided = episode.decisions.filter((decision) => decision.requestId);
-const stops = episode.decisions.filter((decision) => decision.safeStop);
+const stops = { length: episode.safeStops ?? episode.decisions.filter((decision) => decision.safeStop).length };
 
 console.log(`${episode.spec.title}: ${episode.dts.length} steps, ${episode.log.length} moves and plans`);
 console.log(`0G decisions: ${decided.length}, safe stops: ${stops.length}`);

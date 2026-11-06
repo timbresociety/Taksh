@@ -1,6 +1,7 @@
 import { getProvider } from "@/lib/pipeline/provider";
 import { RIVAL_SCHEMA, RIVAL_SYSTEM, cleanObservation, rivalMessage } from "@/lib/agent/rival";
 import { createBudget } from "@/lib/agent/budget";
+import { recordDecision } from "@/lib/agent/ledger";
 import { badRequest } from "../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,9 @@ export async function POST(request) {
     if (!observation) throw badRequest("Send the fight as JSON.");
     spend();
     const reply = await provider.complete({ stage: "rival", system: RIVAL_SYSTEM, user: rivalMessage(observation), schema: RIVAL_SCHEMA });
-    return Response.json({ ...reply.data, ms: reply.ms, trace: reply.trace });
+    const plan = reply.data.plan.filter((side) => ["left", "right", "high"].includes(side)).slice(0, 4);
+    if (reply.trace?.requestId) recordDecision(reply.trace.requestId, { plan, read: reply.data.read, observation, trace: reply.trace });
+    return Response.json({ ...reply.data, plan, ms: reply.ms, trace: reply.trace });
   } catch (error) {
     return Response.json({ error: error.expose ? error.message : "The 0G rival did not answer." }, { status: error.status ?? 502 });
   }
