@@ -1607,3 +1607,79 @@ kbd {
 .rival-episode__error {
   color: var(--volt);
 }
+
+/* ENS name view */
+
+.ens-name {
+  max-width: 980px;
+  margin: 56px auto 0;
+}
+
+.ens-name h1 {
+  overflow-wrap: anywhere;
+}
+
+.ens-name h2 {
+  margin-top: 28px;
+}
+
+.ens-name code {
+  overflow-wrap: anywhere;
+}
+
+.ens-name__path li {
+  margin: 4px 0;
+}
+
+.ens-name__facts {
+  display: grid;
+  gap: 6px;
+}
+
+.ens-name__facts div {
+  display: grid;
+  grid-template-columns: minmax(0, 14ch) minmax(0, 1fr);
+  gap: 12px;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--line) 35%, transparent);
+}
+
+.ens-name__facts dd {
+  margin: 0;
+}
+
+.ens-name__records {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.ens-name__records th,
+.ens-name__records td {
+  padding: 6px 8px;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--line) 35%, transparent);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.ens-name__records th:first-child {
+  width: 26%;
+}
+
+.ens-name__records th:last-child {
+  width: 16%;
+}
+
+.ens-name pre {
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px;
+  background: var(--rubber);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+}
+
+.ens-name a:not(.button),
+.source-note a {
+  color: var(--volt);
+}

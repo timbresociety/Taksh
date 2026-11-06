@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { normalize } from "viem/ens";
-import { CREATOR_TOKEN_ROLES, PUBLIC_RPCS, ROLES, admin, ensConfig, rpcUrls } from "../src/lib/ens/chain.js";
+import { CREATOR_TOKEN_ROLES, PUBLIC_RPCS, REGISTRY_ROLE_NAMES, RESOLVER_ROLE_NAMES, ROLES, admin, ensConfig, roleNames, rpcUrls } from "../src/lib/ens/chain.js";
 import { KEYS, MAX_LABEL, MAX_SPEC_BYTES, recordsToSpec, slugLabel, specToRecords } from "../src/lib/ens/records.js";
 import { starterSpec } from "../src/lib/spec/starter.js";
 import { validateSpec } from "../src/lib/spec/validate.js";
@@ -112,5 +112,12 @@ describe("config and roles", () => {
     const urls = rpcUrls(ensConfig({ ENS_PARENT_NAME: "games.eth", ENS_RPC_URL: "https://mine.example" }));
     assert.deepEqual(urls, ["https://mine.example", ...PUBLIC_RPCS.sepolia, undefined]);
     assert.deepEqual(rpcUrls(ensConfig({ ENS_PARENT_NAME: "games.eth", ENS_RPC_URL: PUBLIC_RPCS.sepolia[0] })), [...PUBLIC_RPCS.sepolia, undefined]);
+  });
+
+  it("names the roles a creator's token carries, and every resolver role in the full grant", () => {
+    assert.deepEqual(roleNames(CREATOR_TOKEN_ROLES, REGISTRY_ROLE_NAMES), ["set subregistry", "set subregistry (admin)", "set resolver", "set resolver (admin)", "transfer"]);
+    assert.equal(roleNames(ROLES.allResolver, RESOLVER_ROLE_NAMES).length, 20);
+    assert.deepEqual(roleNames(ROLES.setText, RESOLVER_ROLE_NAMES), ["set text"]);
+    assert.deepEqual(roleNames(0n, REGISTRY_ROLE_NAMES), []);
   });
 });

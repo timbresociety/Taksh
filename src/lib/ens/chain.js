@@ -54,6 +54,7 @@ export const ABI = {
     "function grantRootRoles(uint256 roleBitmap, address account) returns (bool)",
     "function hasRootRoles(uint256 roleBitmap, address account) view returns (bool)",
     "function isEmancipated() view returns (bool)",
+    "function roles(uint256 resource, address account) view returns (uint256)",
   ]),
   registrar: parseAbi([
     "function isAvailable(string label) view returns (bool)",
@@ -73,6 +74,7 @@ export const ABI = {
     "function hasRootRoles(uint256 roleBitmap, address account) view returns (bool)",
     "function hasRoles(uint256 resource, uint256 roleBitmap, address account) view returns (bool)",
     "function grantSetterRoles(bytes setter, address account) returns (bool)",
+    "function roles(uint256 resource, address account) view returns (uint256)",
   ]),
   userRegistry: parseAbi(["function initialize((address account, uint256 roleBitmap)[] grants)"]),
   mockUsdc: parseAbi(["function mint(address to, uint256 amount)", "function approve(address spender, uint256 amount) returns (bool)"]),
@@ -213,6 +215,89 @@ export async function writeRivalEpisode(config, rootHash) {
   const receipt = await client.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error(`Setting ${LAST_EPISODE} on ${name} failed in ${hash}.`);
   return hash;
+}
+
+// Role bit names from the Permissioned Registry and Permissioned Resolver role tables.
+export const REGISTRY_ROLE_NAMES = {
+  0n: "register", 4n: "register reserved", 8n: "set parent", 12n: "unregister", 16n: "renew", 20n: "set subregistry",
+  24n: "set resolver", 36n: "set URI", 124n: "upgrade",
+};
+export const RESOLVER_ROLE_NAMES = {
+  0n: "set address", 4n: "set text", 8n: "set contenthash", 12n: "set ABI", 16n: "set interface", 20n: "set name",
+  24n: "set data", 28n: "link records", 120n: "name this contract", 124n: "upgrade",
+};
+
+// A role bitmap as readable names. Bit b + 128 is the admin of bit b, which lets its holder grant
+// and revoke it. The registry's transfer permission exists only as an admin bit (28 + 128).
+export function roleNames(bitmap, names) {
+  const out = [];
+  for (const [bit, name] of Object.entries(names)) {
+    const b = BigInt(bit);
+    if (bitmap & (1n << b)) out.push(name);
+    if (bitmap & (1n << (b + 128n))) out.push(`${name} (admin)`);
+  }
+  if (names === REGISTRY_ROLE_NAMES && bitmap & ROLES.canTransferAdmin) out.push("transfer");
+  return out;
+}
+
+// The text keys the name view reads: the game's own, plus ENSIP-26 agent records and the rival's.
+export const NAME_KEYS = [
+  ...Object.values(KEYS), "agent-context", "agent-endpoint[web]", "taksh.rival.model", "taksh.rival.trust", "taksh.rival.provider", LAST_EPISODE,
+];
+
+// Everything ENSv2 says about one name under .eth, read live. Walks the registry hierarchy down
+// from the .eth registry, label by label, then reads the token's state and its owner's roles in
+// the registry that holds it, the resolver the Universal Resolver finds, and which text keys the
+// server wallet may write on that resolver.
+export async function inspectName(config, rawName) {
+  const name = normalize(rawName);
+  const labels = name.split(".");
+  if (labels.length < 2 || labels.at(-1) !== "eth") throw Object.assign(new Error("Only names under .eth can be read here."), { status: 400 });
+  const client = publicClient(config);
+  const read = (address, abi, functionName, args) => client.readContract({ address, abi, functionName, args });
+
+  const path = [];
+  let registry = config.deployment.ethRegistry;
+  for (let i = labels.length - 2; i >= 0; i -= 1) {
+    const label = labels[i];
+    const [state, subregistry] = await Promise.all([
+      read(registry, ABI.registry, "getState", [BigInt(labelhash(label))]),
+      read(registry, ABI.registry, "getSubregistry", [label]),
+    ]);
+    path.push({ name: labels.slice(i).join("."), registry, status: STATUS[state.status], owner: state.latestOwner, expiry: state.expiry, resource: state.resource });
+    if (i === 0 || subregistry === zeroAddress) break;
+    registry = subregistry;
+  }
+  const last = path.at(-1);
+  const entry = last.name === name && last.status !== "available" ? last : null;
+
+  const server = config.registrarKey ? privateKeyToAccount(config.registrarKey).address : null;
+  const [resolver, emancipated, tokenRoles, ...texts] = await Promise.all([
+    client.getEnsResolver({ name }),
+    entry ? read(entry.registry, ABI.registry, "isEmancipated") : null,
+    entry && entry.status === "registered" ? read(entry.registry, ABI.registry, "roles", [entry.resource, entry.owner]) : 0n,
+    ...NAME_KEYS.map((key) => client.getEnsText({ name, key }).catch(() => null)),
+  ]);
+  const records = Object.fromEntries(NAME_KEYS.map((key, i) => [key, texts[i]]).filter(([, value]) => value));
+
+  let ownerResolverRoles = 0n;
+  let serverKeys = [];
+  if (resolver && resolver !== zeroAddress) {
+    const keys = [...new Set([...Object.keys(records), LAST_EPISODE, KEYS.spec])];
+    const [ownerRoles, ...grants] = await Promise.all([
+      entry ? read(resolver, ABI.resolver, "roles", [0n, entry.owner]).catch(() => 0n) : 0n,
+      ...(server ? keys.map((key) => read(resolver, ABI.resolver, "hasRoles", [textResource(key), ROLES.setText, server]).catch(() => false)) : []),
+    ]);
+    ownerResolverRoles = ownerRoles;
+    serverKeys = server ? keys.map((key, i) => ({ key, canWrite: grants[i] })) : [];
+  }
+
+  return {
+    name, chain: config.chainName, explorer: config.deployment.chain.blockExplorers?.default.url,
+    path, entry, emancipated, resolver: resolver && resolver !== zeroAddress ? resolver : null, records,
+    tokenRoles: roleNames(tokenRoles, REGISTRY_ROLE_NAMES), ownerResolverRoles: roleNames(ownerResolverRoles, RESOLVER_ROLE_NAMES),
+    server, serverKeys, block: await client.getBlockNumber(),
+  };
 }
 
 function unavailable(message) {
