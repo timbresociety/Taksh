@@ -7,7 +7,7 @@ import { clarifyIdea, generateGame, reviseGame } from "../src/lib/pipeline/pipel
 import { INTENT_SCHEMA, PROMPT_VERSIONS, REVISION_SCHEMA, loadPrompt } from "../src/lib/pipeline/prompts.js";
 import { createClaudeProvider } from "../src/lib/pipeline/provider-claude.js";
 import { createFixtureProvider } from "../src/lib/pipeline/provider-fixture.js";
-import { getProvider } from "../src/lib/pipeline/provider.js";
+import { getProvider, resolveProvider } from "../src/lib/pipeline/provider.js";
 import { GAME_SPEC_SCHEMA, SPEC_VERSION } from "../src/lib/spec/contract.js";
 import { validateSpec } from "../src/lib/spec/validate.js";
 import { TEMPLATES, templateInfo } from "../src/lib/templates/index.js";
@@ -420,6 +420,27 @@ describe("provider choice", () => {
     const { provider, reason } = await getProvider();
     assert.equal(provider.source, "fixture");
     assert.match(reason, /fixture/);
+  });
+
+  it("Claude standing in for a configured 0G says why, so it is not kept and 0G is tried again", async () => {
+    const saved = { forced: process.env.TAKSH_PROVIDER, key: process.env.OG_API_KEY };
+    delete process.env.TAKSH_PROVIDER;
+    process.env.OG_API_KEY = "sk-test";
+    const og = async () => ({ ok: false, reason: "0G router unreachable: timeout" });
+    const claude = async () => ({ ok: true, model: "claude-opus-5-5" });
+    try {
+      const fallback = await resolveProvider({ og, claude });
+      assert.equal(fallback.provider.source, "claude");
+      assert.match(fallback.reason, /0G router unreachable/);
+      delete process.env.OG_API_KEY;
+      const chosen = await resolveProvider({ og: async () => ({ ok: false, reason: "OG_API_KEY is not set." }), claude });
+      assert.equal(chosen.reason, null, "with no 0G key, Claude is the provider we meant to use");
+    } finally {
+      for (const [name, value] of [["TAKSH_PROVIDER", saved.forced], ["OG_API_KEY", saved.key]]) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 });
 
