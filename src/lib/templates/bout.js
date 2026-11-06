@@ -1,15 +1,17 @@
-// Counter Bout: slip or duck the rival's telegraphed shots, then punch while they are open.
+// Counter Bout: punch whenever you like. When a warning shows, do what it says, and your next
+// punches hit twice as hard. Punches always land, so the player never wonders why nothing happened.
 import { REACTION_MS, createRandom } from "./shared.js";
 
 const ATTACKS = { left: "slip_right", right: "slip_left", high: "duck" };
-const OPEN_MS = 1100;
+const COUNTER_MS = 1600;
+const PUNCH_GAP_MS = 320; // one punch per arm movement, however quickly the keys are pressed
 const DOWN_MS = 2600;
 const KNOCKDOWNS_TO_WIN = 3;
 
 export default {
   id: "bout",
   name: "Counter Bout",
-  pitch: "Lean and duck under the rival's shots, then land your own.",
+  pitch: "Keep punching, and when a warning shows, lean or duck the way it says to hit back twice as hard.",
   kind: "Arms",
   space: "Stand up",
   length: "60 s",
@@ -19,20 +21,16 @@ export default {
   actions: [
     { id: "jab", label: "Jab", key: "j", keyLabel: "J" },
     { id: "cross", label: "Cross", key: "k", keyLabel: "K" },
-    { id: "slip_left", label: "Slip left", key: "a", keyLabel: "A" },
-    { id: "slip_right", label: "Slip right", key: "d", keyLabel: "D" },
+    { id: "slip_left", label: "Lean left", key: "a", keyLabel: "A" },
+    { id: "slip_right", label: "Lean right", key: "d", keyLabel: "D" },
     { id: "duck", label: "Duck", key: "s", keyLabel: "S" },
-    { id: "block", label: "Block", key: " ", keyLabel: "Space" },
   ],
   bindings: [
     { gesture: "punch_left", action: "jab", exercise: "Jab" },
     { gesture: "punch_right", action: "cross", exercise: "Cross" },
-    { gesture: "hook_left", action: "jab", exercise: "Hook" },
-    { gesture: "hook_right", action: "cross", exercise: "Hook" },
     { gesture: "lean_left", action: "slip_left", exercise: "Side lean" },
     { gesture: "lean_right", action: "slip_right", exercise: "Side lean" },
     { gesture: "squat_down", action: "duck", exercise: "Squat" },
-    { gesture: "guard", action: "block", exercise: "Guard up" },
   ],
   tuning: {
     durationS: { label: "Round length", unit: "s", min: 20, max: 120, default: 60, higherIsHarder: false, whole: true },
@@ -45,16 +43,17 @@ export default {
     const { durationS, warningMs, restMs, rivalHealth } = spec.tuning;
     return {
       status: "playing", t: 0, durationMs: durationS * 1000, warningMs, restMs, rivalHealth, rivalMax: rivalHealth, health: 100, rng: createRandom(spec.seed),
-      attack: null, restLeft: 1400, openMs: 0, defence: null, defenceMs: 0, landed: 0, dodged: 0, hurt: 0, knockdowns: 0, score: 0, downMs: 0,
+      attack: null, restLeft: 1400, openMs: 0, punchWaitMs: 0, defence: null, defenceMs: 0, landed: 0, dodged: 0, hurt: 0, knockdowns: 0, score: 0, downMs: 0,
     };
   },
 
   act(state, action) {
     if (state.downMs > 0) return [];
     if (action === "jab" || action === "cross") {
+      if (state.punchWaitMs > 0) return [];
+      state.punchWaitMs = PUNCH_GAP_MS;
       const events = [{ type: "throw", punch: action }];
-      if (state.openMs <= 0) return events;
-      const damage = action === "cross" ? 10 : 7;
+      const damage = (action === "cross" ? 5 : 4) * (state.openMs > 0 ? 2 : 1);
       state.rivalHealth -= damage;
       state.landed += 1;
       state.score += damage * 10;
@@ -84,6 +83,7 @@ export default {
     const events = [];
     state.t += dtMs;
     state.openMs = Math.max(0, state.openMs - dtMs);
+    state.punchWaitMs = Math.max(0, state.punchWaitMs - dtMs);
     state.defenceMs = Math.max(0, state.defenceMs - dtMs);
     if (state.defenceMs === 0) state.defence = null;
     if (state.downMs > 0) {
@@ -99,11 +99,8 @@ export default {
         if (state.defence === wanted) {
           state.dodged += 1;
           state.score += 50;
-          state.openMs = OPEN_MS;
+          state.openMs = COUNTER_MS;
           events.push({ type: "dodge" });
-        } else if (state.defence === "block") {
-          state.health -= 4;
-          events.push({ type: "blocked" });
         } else {
           state.health -= 15;
           state.hurt += 1;
@@ -129,7 +126,7 @@ export default {
   hud: (state) => ({
     score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`,
     bars: [{ label: "You", value: Math.max(0, state.health) / 100 }, { label: "Rival", value: Math.max(0, state.rivalHealth) / state.rivalMax }],
-    extra: state.attack ? { left: "Slip right", right: "Slip left", high: "Duck" }[state.attack.side] : state.openMs > 0 ? "Punch now" : null,
+    extra: state.attack ? { left: "Lean right", right: "Lean left", high: "Duck" }[state.attack.side] : state.openMs > 0 ? "Double damage" : null,
   }),
 
   result: (state) => ({
@@ -148,6 +145,6 @@ export default {
       const left = state.attack.windupMs - state.attack.ms;
       return left < REACTION_MS[skill] + 200 ? ATTACKS[state.attack.side] : null;
     }
-    return state.openMs > 250 ? "cross" : null;
+    return state.punchWaitMs <= 0 ? "cross" : null;
   },
 };

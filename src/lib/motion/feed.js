@@ -87,8 +87,9 @@ export class PoseFeed {
 
       const raw = result.landmarks[0];
       const aspect = video.videoWidth / video.videoHeight;
-      const points = raw ? this.smoother.push(normalizeLandmarks(raw, aspect), t) : null;
-      const frame = { t, points, raw: raw ?? null, aspect };
+      const world = result.worldLandmarks?.[0];
+      const points = raw ? this.smoother.push(normalizeLandmarks(raw, aspect, world), t) : null;
+      const frame = { t, points, raw: raw ?? null, world: world ?? null, aspect };
       for (const listener of this.listeners) listener(frame);
     }
     this.schedule();

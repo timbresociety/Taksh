@@ -21,12 +21,15 @@ export default function CalibrateStage({ feed, framing, onDone, onKeyboard }) {
     async function start() {
       if (feed.current?.running) await feed.current.attach(video.current);
       else {
-        feed.current = new PoseFeed();
-        await feed.current.start(video.current);
+        // React can mount this screen twice at once. A second start would abort the first, and leave
+        // two camera streams open, so both wait on the same one.
+        feed.current ??= new PoseFeed();
+        feed.current.starting ??= feed.current.start(video.current);
+        await feed.current.starting;
       }
       if (cancelled) return;
       unsubscribe = feed.current.subscribe(({ points, t, aspect }) => {
-        drawSkeleton(overlay.current, points, aspect);
+        if (overlay.current) drawSkeleton(overlay.current, points, aspect); // a last frame can land after this screen has gone
         const result = calibrator.push(points, t);
         setStatus(result);
         if (result.done) onDone(result.calibration);
@@ -35,7 +38,8 @@ export default function CalibrateStage({ feed, framing, onDone, onKeyboard }) {
 
     start().catch((error) => {
       feed.current?.stop();
-      setFailure(cameraProblem(error, window.location.port));
+      feed.current = null;
+      if (!cancelled) setFailure(cameraProblem(error, window.location.port));
     });
     return () => {
       cancelled = true;

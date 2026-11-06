@@ -46,6 +46,11 @@ export class GameSession {
     this.act(action);
   }
 
+  // Games with a hand on screen read positions rather than moves. x and y run from -1 to 1, y up.
+  handleAim(aim) {
+    if (this.phase === "playing") this.template.aim?.(this.state, aim);
+  }
+
   log(id, label, confidence, used) {
     this.movements = [{ id, label, confidence, used }, ...this.movements].slice(0, LOG_LENGTH);
   }

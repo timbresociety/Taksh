@@ -34,6 +34,14 @@ async function detail(selector) {
   return Math.round(channels.slice(0, 3).reduce((sum, channel) => sum + channel.stdev, 0) / 3);
 }
 
+// A game's first round teaches its moves, and the button skips that for a keyboard run.
+async function startKeyboard() {
+  await page.click("text=Play with keyboard");
+  await page.waitForSelector('[data-testid="practice-skip"], [data-testid="play"]');
+  if (await page.locator('[data-testid="practice-skip"]').count()) await page.click('[data-testid="practice-skip"]');
+  await page.waitForSelector('[data-testid="play"][data-phase="playing"]', { timeout: 60000 });
+}
+
 const readState = () => page.evaluate(() => JSON.stringify(window.__takshSession.state)).then(JSON.parse);
 
 // Reads the game, asks the bot what a player would do, and presses that key for real.
@@ -75,8 +83,7 @@ for (const [index, template] of TEMPLATES.entries()) {
   const preview = await detail('[data-testid="preview"]');
   check(`${label}: preview draws`, preview > MIN_DETAIL, `detail ${preview}`);
 
-  await page.click("text=Play with keyboard");
-  await page.waitForSelector('[data-testid="play"][data-phase="playing"]', { timeout: 60000 });
+  await startKeyboard();
   const presses = await play(template, PLAY_MS);
   const state = await readState();
   const canvas = await detail(".play__canvas");
@@ -86,14 +93,13 @@ for (const [index, template] of TEMPLATES.entries()) {
 }
 
 // 2. A round to its end, then a revision the UI can prove.
-const reps = TEMPLATES.find((template) => template.id === "reps");
-await openGame(reps);
-await page.click("text=Play with keyboard");
-await page.waitForSelector('[data-testid="play"][data-phase="playing"]', { timeout: 60000 });
-await play(reps, 20000);
+const whole = TEMPLATES.find((template) => template.id === "bout");
+await openGame(whole);
+await startKeyboard();
+await play(whole, 62000);
 await page.waitForSelector('[data-testid="result-score"]', { timeout: 20000 });
 const headline = await page.textContent('[data-testid="result-headline"]');
-check("a full round reaches the result", headline === "You did it", `${headline}, ${await page.textContent('[data-testid="result-score"]')} reps`);
+check("a full round reaches the result", headline === "You did it", `${headline}, ${await page.textContent('[data-testid="result-score"]')} points`);
 await shot("result");
 await page.fill("#revision", "Give me more time");
 await page.click("text=Change it");
@@ -107,8 +113,7 @@ check("the revised game plays", true);
 // 3. What the player does shows up on screen as they do it.
 const guard = TEMPLATES.find((template) => template.id === "guard");
 await openGame(guard);
-await page.click("text=Play with keyboard");
-await page.waitForSelector('[data-testid="play"][data-phase="playing"]', { timeout: 60000 });
+await startKeyboard();
 await page.keyboard.press("ArrowRight");
 await page.waitForTimeout(600);
 const movements = await page.textContent('[data-testid="movements"]');

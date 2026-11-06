@@ -4,41 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { Calibrator } from "@/lib/motion/calibrate";
 import { cameraProblem } from "@/lib/motion/camera-error";
 import { PoseFeed } from "@/lib/motion/feed";
-import { GestureEngine, THRESHOLDS } from "@/lib/motion/gestures";
-import { drawSkeleton } from "@/lib/motion/overlay";
+import { GestureEngine, LOCKED_MOVES, MOVE_READINGS } from "@/lib/motion/gestures";
+import { drawGhost, drawSkeleton } from "@/lib/motion/overlay";
 import { GESTURES, gestureInfo } from "@/lib/spec/contract";
+import MoveCoach from "./MoveCoach";
 
 const PROMPT_MS = 3200;
 const REST_MS = 1400;
 const REPS = 6;
 
-// Bars show each live signal against its trigger threshold, in torso lengths.
-function readings(f) {
-  const { step, hand, kick, knee, jump, burpee, squat, lean, punch, hook, uppercut, swing, reach, guard } = THRESHOLDS;
-  return [
-    ["Step", Math.abs(f.hipOffset), step.enter],
-    ["Left hand", f.reachLeft, hand.enter],
-    ["Right hand", f.reachRight, hand.enter],
-    ["Left kick", f.kickLeft, kick.enter],
-    ["Right kick", f.kickRight, kick.enter],
-    ["Left knee", f.kneeLeft, knee.enter],
-    ["Right knee", f.kneeRight, knee.enter],
-    ["Jump", f.feetLifted ? f.hipRise : 0, jump.enter],
-    ["Burpee", f.burpee, burpee.enter],
-    ["Squat", f.squat, squat.enter],
-    ["Lean", Math.abs(f.lean), lean.enter],
-    ["Left punch", f.punchLeft, punch.enter],
-    ["Right punch", f.punchRight, punch.enter],
-    ["Left hook", f.hookLeft, hook.enter],
-    ["Right hook", f.hookRight, hook.enter],
-    ["Left uppercut", f.riseLeft, uppercut.enter],
-    ["Right uppercut", f.riseRight, uppercut.enter],
-    ["Swing", Math.abs(f.sweep), swing.enter],
-    ["Left reach", f.heightLeft, reach.enter],
-    ["Right reach", f.heightRight, reach.enter],
-    ["Guard", f.guard, guard.enter],
-  ];
-}
+// Bars show each live signal against the level that fires it, locked moves first. 1.00 fires.
+const GAUGES = [...LOCKED_MOVES.filter((id) => MOVE_READINGS[id]), ...Object.keys(MOVE_READINGS).filter((id) => !LOCKED_MOVES.includes(id))];
+const readings = (engine, f) => GAUGES.map((id) => [id, gestureInfo(id)?.label ?? id, engine.meter(id, f), 1]);
 
 const DRILLABLE = GESTURES.filter((gesture) => !gesture.hidden);
 
@@ -60,9 +37,11 @@ export default function InputLab() {
   const overlay = useRef(null);
   const feed = useRef(null);
   const engine = useRef(null);
-  const calibrator = useRef(new Calibrator());
+  const calibrator = useRef(null);
   const trace = useRef({ frames: [], calibration: null });
   const drill = useRef(null);
+  const coach = useRef(null);
+  const logged = useRef(0);
 
   const [state, setState] = useState({ phase: "off", message: "Start the camera to begin." });
   const [live, setLive] = useState(null);
@@ -70,7 +49,9 @@ export default function InputLab() {
   const [totals, setTotals] = useState(emptyTotals);
   const [prompt, setPrompt] = useState(null);
   const [falseFires, setFalseFires] = useState(0);
-  const [selected, setSelected] = useState(DRILLABLE.map((gesture) => gesture.id));
+  const [selected, setSelected] = useState(LOCKED_MOVES);
+  const [framing, setFraming] = useState("full");
+  const [shown, setShown] = useState(LOCKED_MOVES[0]);
 
   async function start() {
     setState({ phase: "starting", message: "Starting the camera" });
@@ -83,18 +64,25 @@ export default function InputLab() {
       return;
     }
     feed.current.subscribe(onFrame);
-    setState({ phase: "calibrating", message: "Stand still with your whole body in view." });
+    recalibrate();
   }
 
-  function recalibrate() {
+  function recalibrate(next = framing) {
     engine.current = null;
-    calibrator.current = new Calibrator();
-    setState({ phase: "calibrating", message: "Stand still with your whole body in view." });
+    calibrator.current = new Calibrator({ framing: next });
+    trace.current.framing = next;
+    setState({ phase: "calibrating", message: next === "full" ? "Stand still with your whole body in view." : "Stand still with your head, shoulders and hands in view." });
   }
 
-  function onFrame({ points, raw, t, aspect }) {
+  function changeFraming(next) {
+    setFraming(next);
+    if (feed.current?.running) recalibrate(next);
+  }
+
+  function onFrame({ points, raw, world, t, aspect }) {
     drawSkeleton(overlay.current, points, aspect);
-    if (raw) trace.current.frames.push({ t: Math.round(t), lm: raw.map((p) => [+p.x.toFixed(4), +p.y.toFixed(4), +(p.visibility ?? 0).toFixed(2), +(p.z ?? 0).toFixed(4)]) });
+    if (trace.current.calibration) drawGhost(overlay.current, coach.current?.ghost(), aspect, trace.current.calibration);
+    if (raw) trace.current.frames.push({ t: Math.round(t), lm: raw.map((p, i) => [+p.x.toFixed(4), +p.y.toFixed(4), +(p.visibility ?? 0).toFixed(2), +(p.z ?? 0).toFixed(4), +(world?.[i]?.z ?? 0).toFixed(4)]) });
     else trace.current.frames.push({ t: Math.round(t), lm: null });
     trace.current.aspect = aspect;
 
@@ -102,7 +90,7 @@ export default function InputLab() {
       const result = calibrator.current.push(points, t);
       setState((current) => ({ ...current, message: result.message, progress: result.progress }));
       if (result.done) {
-        engine.current = new GestureEngine(result.calibration, { moves: "all" });
+        engine.current = new GestureEngine(result.calibration, { framing: trace.current.framing, moves: "all" });
         trace.current.calibration = result.calibration;
         trace.current.calibratedAt = Math.round(t);
         setState({ phase: "ready", message: "Calibrated. Try each move, or run a drill." });
@@ -117,11 +105,12 @@ export default function InputLab() {
       recordDrill(event);
     }
     if (result.events.length) {
-      setLog((items) => [...result.events.map((event) => ({ ...event, id: `${event.t}${event.gesture}` })), ...items].slice(0, 30));
+      setLog((items) => [...result.events.map((event) => ({ ...event, id: (logged.current += 1) })), ...items].slice(0, 30));
     }
     setLive({
       tracking: result.tracking,
       features: result.features,
+      gauges: result.features && readings(engine.current, result.features),
       fps: feed.current.stats.fps,
       inferenceMs: feed.current.stats.inferenceMs,
       delegate: feed.current.delegate,
@@ -152,8 +141,9 @@ export default function InputLab() {
       setPrompt(null);
       return;
     }
-    run.current = { gesture, seen: [] };
+    run.current = { gesture, seen: [], at: Math.round(performance.now()) };
     setPrompt({ gesture, left: run.queue.length + 1 });
+    setShown(gesture);
     setTimeout(() => {
       settlePrompt();
       setTimeout(nextPrompt, REST_MS);
@@ -163,8 +153,10 @@ export default function InputLab() {
   function settlePrompt() {
     const run = drill.current;
     if (!run?.current) return;
-    const { gesture, seen } = run.current;
+    const { gesture, seen, at } = run.current;
     run.current = null;
+    // Kept with the trace, so a replay knows what the player was asked for at each moment.
+    trace.current.prompts = [...(trace.current.prompts ?? []), { gesture, at, until: Math.round(performance.now()), seen }];
     setPrompt(null);
     const matches = seen.filter((name) => name === gesture).length;
     setTotals((current) => {
@@ -199,13 +191,13 @@ export default function InputLab() {
               <button type="button" className="button button--go" onClick={runDrill} disabled={Boolean(drill.current)}>
                 Run drill
               </button>
-              <button type="button" className="button" onClick={recalibrate}>
+              <button type="button" className="button" onClick={() => recalibrate()}>
                 Recalibrate
               </button>
               <button type="button" className="button" onClick={() => download(`taksh-drill-${Date.now()}.json`, { totals, falseFires, live: live && { fps: live.fps, inferenceMs: live.inferenceMs, delegate: live.delegate }, at: new Date().toISOString() })}>
                 Save results
               </button>
-              <button type="button" className="button" onClick={() => download(`taksh-trace-${Date.now()}.json`, trace.current)}>
+              <button type="button" className="button" onClick={() => download(`taksh-trace-${Date.now()}.json`, { ...trace.current, totals, falseFires })}>
                 Save trace
               </button>
             </>
@@ -213,7 +205,22 @@ export default function InputLab() {
         </div>
       </header>
 
+      <fieldset className="drill-picks">
+        <legend>What the camera can see</legend>
+        {[["full", "Whole body, standing back"], ["upper", "Head, shoulders and hands"]].map(([id, label]) => (
+          <label key={id}>
+            <input type="radio" name="framing" checked={framing === id} onChange={() => changeFraming(id)} />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+
       <section className="lab__view">
+        <div className="lab__coach">
+          <MoveCoach gesture={shown} coachRef={coach} />
+          <p>{gestureInfo(shown).cue}</p>
+          <p className="practice__hint">Copy it like a mirror. On camera, yellow is you: match the white skeleton.</p>
+        </div>
         <div className="mirror">
           <video ref={video} playsInline muted />
           <canvas ref={overlay} />
@@ -233,9 +240,9 @@ export default function InputLab() {
 
       <section className="lab__gauges" aria-label="Live signals">
         <h2>Live signals</h2>
-        {live?.features ? (
-          readings(live.features).map(([label, value, enter]) => (
-            <div className="gauge" key={label}>
+        {live?.gauges ? (
+          live.gauges.map(([id, label, value, enter]) => (
+            <div className="gauge" key={id}>
               <span>{label}</span>
               <div className="gauge__track">
                 <i style={{ width: `${Math.max(0, Math.min(1.5, value / enter)) * 66.6}%` }} data-over={value >= enter} />
@@ -274,7 +281,7 @@ export default function InputLab() {
                 checked={selected.includes(gesture.id)}
                 onChange={(event) => setSelected((current) => (event.target.checked ? [...current, gesture.id] : current.filter((id) => id !== gesture.id)))}
               />
-              {gesture.label}
+              <button type="button" className="text-button" onClick={() => setShown(gesture.id)}>{gesture.label}</button>
             </label>
           ))}
         </fieldset>

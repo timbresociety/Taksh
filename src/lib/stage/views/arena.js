@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { POSES } from "../../motion/poses.js";
 import { aimBone } from "../character.js";
+import { MOVE_POSES, applyPose } from "../coach.js";
 import { damp, gloves, holdOnBone, wordCard } from "./shared.js";
 
 const flat = (width, depth, material, y = 0.03) => {
@@ -168,7 +169,8 @@ export const rally = {
   },
 };
 
-const PUNCH_CLIPS = { jab: "Punch_Jab", cross: "Punch_Cross", hook: "Melee_Hook", uppercut: "Melee_Hook" };
+const PUNCH_CLIPS = { jab: "Punch_Jab", cross: "Punch_Cross", hook: "Melee_Hook", uppercut: "Idle_Loop" };
+const UPPERCUT_MS = 520;
 const PUNCH_COLOURS = { jab: "#35d0ff", cross: "#ff5c8a", hook: "#ffd23f", uppercut: "#7dff8a" };
 
 // Forearms up in front of the chin, the stance between punches. Runs after the clip has posed the rig.
@@ -183,6 +185,7 @@ function fightingStance(character, facing, weight) {
 
 export const pads = {
   usesRival: true,
+  mirrorsArms: true,
   async build({ scene, camera, world, hero, rival, fx, focusShadow }) {
     scene.add(ringPlatform(world), world.ring({ inner: 10 }));
     gloves(hero, "#ff3b4e", world);
@@ -209,6 +212,7 @@ export const pads = {
     world.dress(group);
     scene.add(group);
     let swingMs = 0;
+    let uppercutMs = 0;
     let shownId = null;
 
     return {
@@ -229,6 +233,9 @@ export const pads = {
           }
         }
         if (swingMs <= 0) fightingStance(hero, -1, 0.85);
+        // The library has no uppercut, so it is posed over the idle clip.
+        uppercutMs = Math.max(0, uppercutMs - dt * 1000);
+        if (uppercutMs > 0) applyPose(hero, MOVE_POSES.uppercut_right(0.12 + 0.7 * (1 - uppercutMs / UPPERCUT_MS)), { flip: true });
         camera.position.set(1.5, 2, 4);
         camera.lookAt(-0.15, 1.2, -0.7);
         focusShadow(0, 0, 0);
@@ -236,6 +243,7 @@ export const pads = {
       event(event) {
         if (["hit", "wrong", "swing"].includes(event.type)) {
           swingMs = 480;
+          if (event.punch === "uppercut") uppercutMs = UPPERCUT_MS;
           hero.play(PUNCH_CLIPS[event.punch], { once: true, speed: 1.9, fade: 0.05, then: "Idle_Loop" });
         }
         if (event.type === "hit") {
@@ -250,6 +258,7 @@ export const pads = {
 
 export const bout = {
   usesRival: true,
+  mirrorsArms: true,
   async build({ scene, camera, world, hero, rival, fx, focusShadow, accent }) {
     scene.add(ringPlatform(world), world.ring({ inner: 10 }));
     gloves(hero, "#ff3b4e", world);
@@ -280,7 +289,7 @@ export const bout = {
         hero.root.rotation.z = -lean;
         const ducking = state.defence === "duck";
         if (swingMs <= 0 && state.status === "playing") hero.loop(ducking ? "Crouch_Idle_Loop" : "Idle_Loop", { fade: 0.08 });
-        if (swingMs <= 0 && !ducking) fightingStance(hero, -1, state.defence === "block" ? 1 : 0.85);
+        if (swingMs <= 0 && !ducking) fightingStance(hero, -1, 0.85);
         if (rivalBusyMs <= 0 && state.downMs <= 0 && !state.attack) fightingStance(rival, 1, 0.85);
 
         const attack = state.attack;
@@ -318,7 +327,6 @@ export const bout = {
           fx.flash("#ff3b4e", 0.32);
           hero.play("Hit_Head", { once: true, speed: 1.4, fade: 0.05, then: "Idle_Loop" });
         }
-        if (event.type === "blocked") fx.shake(0.14);
         if (event.type === "knockdown") {
           rivalBusyMs = 2600;
           fx.burst({ x: 0, y: 1.3, z: -0.75 }, accent, 50);
@@ -326,36 +334,6 @@ export const bout = {
           rival.play("Death01", { once: true, fade: 0.08 });
         }
         if (event.type === "rise") rival.play("LayToIdle", { once: true, speed: 1.3, then: "Idle_Loop" });
-      },
-    };
-  },
-};
-
-export const reps = {
-  async build({ scene, camera, world, hero, fx, focusShadow, accent }) {
-    scene.add(podium(world), world.ring({ inner: 9 }));
-    hero.play("Idle_Loop");
-    const upper = { left: hero.bones.get("upperarm_r"), right: hero.bones.get("upperarm_l") };
-    const lower = { left: hero.bones.get("lowerarm_r"), right: hero.bones.get("lowerarm_l") };
-    const height = { left: 0, right: 0 };
-    let side = null;
-
-    return {
-      update(state, dt, elapsed) {
-        side = state.last === "pump_left" ? "left" : state.last === "pump_right" ? "right" : null;
-        for (const key of ["left", "right"]) {
-          const dir = key === "left" ? -1 : 1;
-          height[key] = damp(height[key], side === key ? 1 : side ? -1 : 0, 20, dt);
-          aimBone(upper[key], new THREE.Vector3(dir * 0.65, -0.45 + height[key] * 0.25, 0.5), 0.9);
-          aimBone(lower[key], new THREE.Vector3(dir * 0.12, height[key], 0.45), 1);
-        }
-        camera.position.set(Math.sin(elapsed * 0.25) * 0.4, 1.5, 3.4);
-        camera.lookAt(0, 1.05, 0);
-        focusShadow(0, 0, 0);
-      },
-      event(event) {
-        if (event.type === "rep") fx.burst({ x: event.side === "left" ? -0.45 : 0.45, y: 1.7, z: 0.3 }, accent, 5);
-        if (event.type === "end") hero.play("Yes", { once: true });
       },
     };
   },

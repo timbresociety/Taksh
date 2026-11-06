@@ -212,7 +212,6 @@ describe("fixture routing", () => {
     pads: ["hit the pads", "punch as fast as I can"],
     bout: ["boxing", "a fight", "beat my rival"],
     flyer: ["I can fly", "be a bird", "flap to stay up", "tiny wings"],
-    reps: ["a speed test", "how fast are my arms", "count my reps", "pump my arms"],
     poses: ["strike a pose", "copy the character", "a dance game", "mirror me"],
     guard: ["goalkeeper", "a keeper in goal", "save every shot", "dodge the beams", "a robot attacks"],
   };

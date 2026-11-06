@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Calibrator } from "../src/lib/motion/calibrate.js";
-import { GestureEngine } from "../src/lib/motion/gestures.js";
+import { GestureEngine, THRESHOLDS, personalLevel } from "../src/lib/motion/gestures.js";
 import { LM, LandmarkSmoother } from "../src/lib/motion/landmarks.js";
 import { POSES } from "../src/lib/motion/poses.js";
 import { GESTURES } from "../src/lib/spec/contract.js";
@@ -193,8 +193,8 @@ describe("calibration", () => {
 // Games ask for the moves they bind, so these tests listen to everything the engine can report.
 const hearAll = (body, timeline, options) => run(body, timeline, { ...options, moves: "all" });
 
-function playedIn(templateId, body, timeline, options) {
-  const bound = new Set(templateInfo(templateId).bindings.map((binding) => binding.gesture));
+function playedIn(game, body, timeline, options) {
+  const bound = new Set(Array.isArray(game) ? game : templateInfo(game).bindings.map((binding) => binding.gesture));
   return hearAll(body, timeline, options).names.filter((name) => bound.has(name));
 }
 
@@ -249,7 +249,7 @@ const strike = (pose, holdMs = 1500) => [move(350, REST, armsOf(pose)), hold(hol
 
 const EXERCISES = {
   squat: ["hop", squat(), ["squat_down", "squat_up"]],
-  "squat as a duck": ["bout", squat(), ["guard", "squat_down"]],
+  "squat as a duck": ["bout", squat(), ["squat_down"]],
   lean_left: ["bout", [[260, ramp("lean", 0, -0.5)], [300, { lean: -0.5 }], [260, ramp("lean", -0.5, 0)]], ["lean_left"]],
   lean_right: ["bout", [[260, ramp("lean", 0, 0.5)], [300, { lean: 0.5 }], [260, ramp("lean", 0.5, 0)]], ["lean_right"]],
   punch_left: ["pads", oneArm("leftArm", FISTS, JAB, 120, 200), ["punch_left"]],
@@ -258,13 +258,12 @@ const EXERCISES = {
   hook_right: ["pads", oneArm("rightArm", HOOK_START, HOOK_END, 200, 300), ["hook_right"]],
   uppercut_left: ["pads", oneArm("leftArm", LOADED, CHIN, 170, 500), ["uppercut_left"]],
   uppercut_right: ["pads", oneArm("rightArm", LOADED, CHIN, 170, 500), ["uppercut_right"]],
-  guard: ["bout", [move(900, REST, FISTS), hold(500, FISTS), move(900, FISTS, REST)], ["guard"]],
+  guard: [["guard"], [move(900, REST, FISTS), hold(500, FISTS), move(900, FISTS, REST)], ["guard"]],
   swing_left: ["rally", oneArm("rightArm", WIDE, ACROSS, 250, 900), ["swing_left"]],
   swing_right: ["rally", oneArm("leftArm", WIDE, ACROSS, 250, 900), ["swing_right"]],
   reach_up_left: ["rally", [moveOne(700, REST, "leftArm", OVERHEAD.leftArm), hold(400, { ...REST, leftArm: OVERHEAD.leftArm }), move(700, { ...REST, leftArm: OVERHEAD.leftArm }, REST)], ["reach_up_left"]],
   reach_up_right: ["rally", [moveOne(700, REST, "rightArm", OVERHEAD.rightArm), hold(400, { ...REST, rightArm: OVERHEAD.rightArm }), move(700, { ...REST, rightArm: OVERHEAD.rightArm }, REST)], ["reach_up_right"]],
   flap: ["flyer", [move(400, REST, WINGS_UP), move(250, WINGS_UP, WINGS_DOWN), move(300, WINGS_DOWN, REST)], ["flap"]],
-  pump: ["reps", [move(300, REST, PUMP_DOWN), move(200, PUMP_DOWN, PUMP_LEFT), move(200, PUMP_LEFT, PUMP_RIGHT), move(200, PUMP_RIGHT, PUMP_LEFT), move(200, PUMP_LEFT, PUMP_RIGHT), move(400, PUMP_RIGHT, REST)], ["pump_left", "pump_right", "pump_left", "pump_right"]],
 };
 
 describe("each exercise reads as itself in the game that uses it, at any body scale", () => {
@@ -280,7 +279,7 @@ describe("each exercise reads as itself in the game that uses it, at any body sc
 describe("exercise gates", () => {
   const body = BODIES.midRange;
 
-  it("a jab is read from depth alone: the same arm at the shoulder's depth is not a punch", () => {
+  it("a fist at the shoulder with the elbow hanging and no depth is not a punch", () => {
     const flat = { leftArm: { wrist: [0.05, 0.1, 0], elbow: [0, 0.4] }, rightArm: JAB.rightArm };
     assert.deepEqual(playedIn("pads", body, oneArm("leftArm", FISTS, flat, 120, 200)), []);
   });
@@ -298,7 +297,7 @@ describe("exercise gates", () => {
   });
 
   it("holding a guard counts once", () => {
-    assert.deepEqual(playedIn("bout", body, [move(900, REST, FISTS), hold(3000, FISTS), move(900, FISTS, REST)]), ["guard"]);
+    assert.deepEqual(playedIn(["guard"], body, [move(900, REST, FISTS), hold(3000, FISTS), move(900, FISTS, REST)]), ["guard"]);
   });
 
   it("a held squat reports going down and coming up once each", () => {
@@ -317,11 +316,6 @@ describe("exercise gates", () => {
     assert.ok(flaps[0].t > 1800);
     const beats = [move(400, REST, WINGS_UP), move(250, WINGS_UP, WINGS_DOWN), move(300, WINGS_DOWN, WINGS_UP), move(250, WINGS_UP, WINGS_DOWN), move(300, WINGS_DOWN, REST)];
     assert.deepEqual(playedIn("flyer", body, beats), ["flap", "flap"]);
-  });
-
-  it("pumping one arm alone counts once, because a rep has to alternate", () => {
-    const names = playedIn("reps", body, [move(300, REST, PUMP_DOWN), move(200, PUMP_DOWN, PUMP_LEFT), move(200, PUMP_LEFT, PUMP_DOWN), move(200, PUMP_DOWN, PUMP_LEFT), move(300, PUMP_LEFT, REST)]);
-    assert.deepEqual(names, ["pump_left"]);
   });
 
   it("a low-confidence wrist never punches", () => {
@@ -465,5 +459,110 @@ describe("upper-body framing", () => {
   it("leg moves cannot fire from legs nobody can see", () => {
     const { names } = hearAll(BODIES.midRange, withHidden(MOVES.kick_left, legs), options);
     assert.ok(!names.includes("kick_left"));
+  });
+});
+
+describe("locked moves", () => {
+  const body = BODIES.farAway;
+  const ALL = ["punch_left", "punch_right", "guard", "reach_up_left", "reach_up_right", "hands_up", "lift_left", "lift_right", "jump", "slash_left", "slash_right", "slash_up", "slash_down", "run_step"];
+  const moved = (timeline, options) => run(body, timeline, { moves: ALL, ...options }).names;
+  const OVERHEAD = [0.1, -1.1];
+  // The right arm eases between hanging and a held position, too slowly to count as anything.
+  const slowly = (x, back = false) => [[1500, (p) => {
+    const share = back ? 1 - p : p;
+    return { rightArm: { wrist: [x * share + -0.08 * (1 - share), 1.15 + (0.3 - 1.15) * share] } };
+  }]];
+
+  it("reads a punch with no depth at all, from the arm looking short", () => {
+    const arm = { leftArm: { wrist: [0.05, 0.1, 0], elbow: [0.02, 0.1] } };
+    assert.ok(moved([[200, (p) => ({ leftArm: { wrist: [0.08, 1.1 - p], elbow: [0.05, 0.6 - 0.5 * p] } })], [300, arm]]).includes("punch_left"));
+  });
+
+  it("does not read a guard as a punch, because the upper arm still hangs", () => {
+    const names = moved([[300, (p) => ({ leftArm: { wrist: [0.25, 1.1 - 0.95 * p], elbow: [0.1, 0.6] } })], [600, { leftArm: { wrist: [0.25, 0.15], elbow: [0.1, 0.6] } }]]);
+    assert.equal(names.includes("punch_left"), false);
+  });
+
+  it("reads metric depth the same from near and far", () => {
+    const punch = [[200, (p) => ({ leftArm: { wrist: [0.1, 0.5 - 0.4 * p, -1.1 * p], elbow: [0.15, 0.6] } })], [250, { leftArm: { wrist: [0.1, 0.1, -1.1], elbow: [0.15, 0.6] } }]];
+    for (const place of [BODIES.farAway, BODIES.closeUp]) {
+      assert.ok(run(place, punch, { moves: ALL, metric: true }).names.includes("punch_left"));
+    }
+  });
+
+  it("both hands up is one move, and fires neither single lift", () => {
+    const names = moved([[250, (p) => ({ leftArm: { wrist: [OVERHEAD[0] * p, 1.1 + (OVERHEAD[1] - 1.1) * p] }, rightArm: { wrist: [-OVERHEAD[0] * p, 1.1 + (OVERHEAD[1] - 1.1) * p] } })], [400, { leftArm: { wrist: OVERHEAD }, rightArm: { wrist: [-OVERHEAD[0], OVERHEAD[1]] } }]]);
+    assert.deepEqual(names.filter((name) => name.startsWith("reach") || name === "hands_up"), ["hands_up"]);
+  });
+
+  it("one hand up is that hand", () => {
+    const names = moved([[250, (p) => ({ rightArm: { wrist: [-OVERHEAD[0] * p, 1.1 + (OVERHEAD[1] - 1.1) * p] } })], [500, { rightArm: { wrist: [-OVERHEAD[0], OVERHEAD[1]] } }]]);
+    assert.deepEqual(names.filter((name) => name.startsWith("reach") || name === "hands_up"), ["reach_up_right"]);
+  });
+
+  it("a leg lift is that leg, and a jump is neither", () => {
+    assert.ok(moved(rampOut("leftKnee", 0.85)).includes("lift_left"));
+    assert.ok(moved(rampOut("rightKnee", 0.85)).includes("lift_right"));
+    const jumped = moved(MOVES.jump);
+    assert.ok(jumped.includes("jump"));
+    assert.equal(jumped.some((name) => name.startsWith("lift")), false);
+  });
+
+  it("slashes in the direction travelled, and ignores the hand coming back", () => {
+    const across = (from, to, ms) => [ms, (p) => ({ rightArm: { wrist: [from + (to - from) * p, 0.3] } })];
+    const names = moved([...slowly(0.9), across(0.9, -0.9, 170), [100, { rightArm: { wrist: [-0.9, 0.3] } }], across(-0.9, 0.9, 170), ...slowly(0.9, true)]);
+    assert.deepEqual(names.filter((name) => name.startsWith("slash")), ["slash_left"]);
+  });
+
+  it("both hands slashing the same way at once are one slash", () => {
+    const hands = (y) => ({ leftArm: { wrist: [-0.08, y] }, rightArm: { wrist: [-0.08, y] } });
+    const names = moved([[1500, (p) => hands(1.15 - 1.35 * p)], [170, (p) => hands(-0.2 + 1.4 * p)], [900, hands(1.2)]]);
+    assert.deepEqual(names.filter((name) => name.startsWith("slash")), ["slash_down"]);
+  });
+
+  it("a slow arm movement is not a slash", () => {
+    const names = moved([...slowly(0.9), [1500, (p) => ({ rightArm: { wrist: [0.9 - 1.8 * p, 0.3] } })], ...slowly(-0.9, true)]);
+    assert.equal(names.some((name) => name.startsWith("slash")), false);
+  });
+
+  it("running on the spot counts each stride, and standing still counts none", () => {
+    const stride = (key) => [[130, ramp(key, 0, 0.5)], [130, ramp(key, 0.5, 0)]];
+    const names = moved([...stride("leftKnee"), ...stride("rightKnee"), ...stride("leftKnee"), ...stride("rightKnee")]);
+    assert.equal(names.filter((name) => name === "run_step").length, 3);
+    assert.equal(moved([[1500, {}]]).length, 0);
+  });
+
+  it("a weak move a player can do in practice fires after their level is set", () => {
+    const weak = rampOut("leftKnee", 0.38);
+    assert.equal(moved(weak).includes("lift_left"), false);
+    const engine = new GestureEngine(calibrate(body), { moves: ALL, personal: { lift_left: personalLevel("lift_left", 0.38) } });
+    const smoother = new LandmarkSmoother();
+    const seen = [];
+    playTimeline(body, [[300, {}], ...weak, [300, {}]], (points, t) => seen.push(...engine.push(smoother.push(points, t), t).events.map((event) => event.gesture)));
+    assert.ok(seen.includes("lift_left"));
+  });
+
+  it("a personal level cannot sink into the noise of standing still", () => {
+    assert.equal(personalLevel("lift_left", 0.01), THRESHOLDS.lift.enter * 0.5);
+    assert.equal(personalLevel("lift_left", 5), THRESHOLDS.lift.enter);
+  });
+
+  it("measures an arms-only player by the shoulders when the hips are hidden", () => {
+    const hips = [LM.leftHip, LM.rightHip];
+    const seen = calibrate(BODIES.midRange, { framing: "upper" });
+    const hidden = calibrate(BODIES.midRange, { framing: "upper", hide: hips });
+    assert.ok(Math.abs(hidden.torso - hidden.shoulderWidth * 1.4) < 1e-9);
+    assert.notEqual(seen.torso, hidden.torso);
+  });
+
+  it("gives each hand a position inside the unit square for aiming", () => {
+    const engine = new GestureEngine(calibrate(body), { moves: ALL });
+    let aim = null;
+    playTimeline(body, [[300, { rightArm: { wrist: [1.2, -0.2] } }]], (points, t) => {
+      aim = engine.push(points, t).features.aim;
+    });
+    assert.ok(aim.right.x > 0.5 && aim.right.x <= 1);
+    assert.ok(aim.right.y > 0);
+    assert.ok(aim.left.y < 0);
   });
 });

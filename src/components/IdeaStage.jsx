@@ -60,7 +60,7 @@ export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmi
                 </button>
               ))}
             </div>
-            {fixture && <p className="fixture-hint">Fixture mode matches keywords such as run, box, fly, pose, forest, moon, neon and pixel.</p>}
+            {fixture && <p className="fixture-hint">Fixture mode matches keywords such as run, box, fly, pose, Mumbai, Diwali, neon and pixel.</p>}
           </form>
 
           <section className="shelf" aria-labelledby="shelf-title">

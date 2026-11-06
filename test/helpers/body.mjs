@@ -93,6 +93,7 @@ export function rawPose(body, pose = {}) {
     y: hipY + point.y * torso,
     visibility: hide.includes(index) ? 0.1 : vis,
     z: ((point.z ?? 0) * torso) / aspect,
+    metres: (point.z ?? 0) * 0.5, // the tracker's metric skeleton is the same size at any distance
   }));
 }
 
@@ -104,7 +105,7 @@ export const BODIES = {
 };
 
 // Plays a timeline of [durationMs, pose or (progress) => pose] through a sink at 30fps with sensor noise.
-export function playTimeline(body, timeline, sink, { noise = 0.0025, seed = 7, startT = 0 } = {}) {
+export function playTimeline(body, timeline, sink, { noise = 0.0025, seed = 7, startT = 0, metric = false } = {}) {
   const random = seeded(seed);
   let t = startT;
   for (const [durationMs, pose] of timeline) {
@@ -119,7 +120,7 @@ export function playTimeline(body, timeline, sink, { noise = 0.0025, seed = 7, s
           x: point.x + random() * noise,
           y: point.y + random() * noise,
         }));
-        sink(normalizeLandmarks(raw, body.aspect), t);
+        sink(normalizeLandmarks(raw, body.aspect, metric ? raw.map((point) => ({ z: point.metres })) : undefined), t);
       }
       t += 33;
     }

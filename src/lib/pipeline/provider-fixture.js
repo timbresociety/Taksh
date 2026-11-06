@@ -14,12 +14,19 @@ const TEMPLATE_WORDS = [
   ["pads", /\b(pads?|punch\w*)\b/i],
   ["bout", /\b(box\w*|fight\w*|rivals?)\b/i],
   ["flyer", /\b(fly|flying|flies|birds?|flap\w*|wings?)\b/i],
-  ["reps", /\b(speed\w*|fast\w*|reps?|pump\w*)\b/i],
   ["poses", /\b(pose|poses|posing|copy\w*|danc\w+|mirror\w*)\b/i],
   ["guard", /\b(goal.?keep\w*|keepers?|save|saves|saving|dodg\w+|robots?)\b/i],
+  ["matka", /\b(matka|pots?|rhythm|dhol|drums?)\b/i],
+  ["harmonium", /\b(harmonium|piano|keyboard|melody|tune)\b/i],
+  ["chop", /\b(chop\w*|slic\w+|fruit\w*|mangoes|mango)\b/i],
+  ["blades", /\b(swords?|blades?|slash\w*|melee|ravana)\b/i],
+  ["corners", /\b(shoot\w*|gun\w*|quadrants?|corners?|grenades?)\b/i],
 ];
 
 const WORLD_WORDS = [
+  ["diwali", /\b(diwali|diyas?|firecrackers?|rangoli|ravana|ramayana)\b/i],
+  ["marine_drive", /\b(marine drive|juhu|chowpatty|beach|sea.?front|queen'?s necklace)\b/i],
+  ["mumbai", /\b(mumbai|bombay|vada pav|pav bhaji|rickshaws?|kaali peeli|dabbawala)\b/i],
   ["downtown", /\bcity\b/i],
   ["forest", /\b(forest|jungle)\b/i],
   ["station", /\b(space|station)\b/i],

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { GameSession } from "../src/lib/game/session.js";
 import { createFixtureProvider } from "../src/lib/pipeline/provider-fixture.js";
+import { starterSpec } from "../src/lib/spec/starter.js";
 import { validateSpec } from "../src/lib/spec/validate.js";
 import { TEMPLATES } from "../src/lib/templates/index.js";
 
@@ -80,9 +81,9 @@ describe("session", () => {
   });
 
   it("two gestures on one action within a moment count once", () => {
-    const session = playing(runner);
-    session.handleGesture({ gesture: "high_knee", confidence: 0.9, t: 1 });
-    session.handleGesture({ gesture: "jump", confidence: 0.9, t: 2 });
+    const session = playing(starterSpec("pads"));
+    session.handleGesture({ gesture: "hook_left", confidence: 0.9, t: 1 });
+    session.handleGesture({ gesture: "hook_right", confidence: 0.9, t: 2 });
     assert.equal(session.result().actions, 1);
   });
 

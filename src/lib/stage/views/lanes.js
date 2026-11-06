@@ -1,8 +1,8 @@
 // Games seen from behind the player, down three lanes.
 import * as THREE from "three";
-import { LANE_WIDTH, Pool, blink, damp, laneX } from "./shared.js";
+import { COACH } from "../../templates/runner.js";
+import { LANE_WIDTH, Pool, blink, clearRoad, damp, laneX } from "./shared.js";
 
-const JUMP_MS = 620;
 const ROAD_WIDTH = LANE_WIDTH * 3 + 0.8;
 
 // An overhead bar that reads at a glance as "go under this".
@@ -30,39 +30,57 @@ export const lane_runner = {
     scene.add(items);
     const obstacles = new Pool(items, (item) => (item.kind === "high" ? barrier(world) : item.kind === "low" ? world.role("low", 1.9) : world.role("wall", LANE_WIDTH - 0.1)));
     const coins = new Pool(items, () => world.role("pickup", 0.7));
+    // A train is one object per length, so a three coach rake is three coaches nose to tail.
+    const rakes = new Pool(items, (part) => {
+      if (part.kind === "ramp") return world.role("ramp");
+      const rake = new THREE.Group();
+      for (let i = 0; i < part.coaches; i += 1) {
+        const coach = world.role("train");
+        coach.position.z = -(i + 0.5) * COACH;
+        rake.add(coach);
+      }
+      return rake;
+    });
 
     hero.root.rotation.y = Math.PI;
     hero.play("Sprint_Loop");
     let x = 0;
+    let y = 0;
     let cameraX = 0;
+    let cameraY = 0;
 
     return {
       update(state, dt, elapsed) {
         side.scroll(state.distance);
         road.scroll(state.distance);
-        obstacles.sync(state.obstacles, (object, item) => object.position.set(laneX(item.lane), 0, -item.z));
+        obstacles.sync(state.obstacles, (object, item) => object.position.set(laneX(item.lane), item.y, -item.z));
+        rakes.sync(state.platforms, (object, part) => object.position.set(laneX(part.lane), 0, -part.z));
         coins.sync(state.coins.map((coin) => ({ ...coin, kind: "coin" })), (object, item) => {
-          object.position.set(laneX(item.lane), 0.75 + Math.sin(elapsed * 4 + item.id) * 0.08, -item.z);
+          object.position.set(laneX(item.lane), item.y + Math.sin(elapsed * 4 + item.id) * 0.08, -item.z);
           object.rotation.y = elapsed * 3.4 + item.id;
         });
 
         x = damp(x, laneX(state.lane), 14, dt);
-        const lift = state.jumpMs > 0 ? Math.sin(Math.PI * (1 - state.jumpMs / JUMP_MS)) * 1.45 : 0;
-        hero.root.position.set(x, lift, 0);
+        y = state.y;
+        hero.root.position.set(x, y, 0);
         hero.root.rotation.z = (laneX(state.lane) - x) * -0.09;
-        if (state.jumpMs <= 0 && state.rollMs <= 0 && state.status === "playing") hero.loop("Sprint_Loop", { speed: Math.min(1.5, state.speed / 11) });
+        if (state.grounded && state.rollMs <= 0 && state.status === "playing") hero.loop("Sprint_Loop", { speed: Math.min(1.5, state.speed / 11) });
         blink(hero.root, state.invincibleMs, elapsed);
 
         cameraX = damp(cameraX, x * 0.6, 6, dt);
-        camera.position.set(cameraX, 3.5, 6.6);
-        camera.lookAt(cameraX, 1.3, -9);
-        focusShadow(0, 0, -6);
+        // The camera follows the player up, but less than all the way, so a roof feels high.
+        cameraY = damp(cameraY, y * 0.85, 5, dt);
+        camera.position.set(cameraX, 3.5 + cameraY, 6.6);
+        camera.lookAt(cameraX, 1.3 + cameraY, -9);
+        focusShadow(0, y, -6);
       },
       event(event) {
         const at = hero.root.position;
         if (event.type === "jump") hero.play("Jump_Start", { once: true, speed: 2.2, fade: 0.08, then: "Jump_Loop" });
         if (event.type === "roll") hero.play("Roll", { once: true, speed: 1.5, fade: 0.08 });
-        if (event.type === "coin") fx.burst({ x: at.x, y: 1, z: -0.6 }, accent, 10);
+        if (event.type === "coin") fx.burst({ x: at.x, y: at.y + 1, z: -0.6 }, accent, 10);
+        if (event.type === "stride") fx.burst({ x: at.x, y: at.y + 0.12, z: 0.1 }, "#ff7a1a", 6);
+        if (event.type === "bump") fx.shake(0.16);
         if (event.type === "hurt") {
           fx.shake(0.5);
           fx.flash("#ff3b4e", 0.32);
@@ -76,7 +94,7 @@ export const lane_runner = {
 export const guard = {
   async build({ scene, camera, world, hero, fx, focusShadow, accent }) {
     const road = world.road(ROAD_WIDTH);
-    scene.add(road.mesh, world.ring({ inner: 13 }));
+    scene.add(road.mesh, clearRoad(world.ring({ inner: 13 }), ROAD_WIDTH));
     const items = new THREE.Group();
     scene.add(items);
     const incoming = new Pool(items, (item) => (item.kind === "hazard" ? world.role("hazard", 1.2) : world.role("pickup", 0.9)));
@@ -90,7 +108,7 @@ export const guard = {
     });
 
     hero.root.rotation.y = Math.PI;
-    hero.play("Idle_Loop");
+    hero.play("Jog_Fwd_Loop");
     let x = 0;
 
     return {
@@ -110,7 +128,7 @@ export const guard = {
         const moving = Math.abs(laneX(state.lane) - x) > 0.15;
         x = damp(x, laneX(state.lane), 12, dt);
         hero.root.position.x = x;
-        if (state.status === "playing") hero.loop(moving ? "Jog_Fwd_Loop" : "Idle_Loop", { fade: 0.1 });
+        if (state.status === "playing") hero.loop(moving || state.fireMs > 0 ? "Sprint_Loop" : "Jog_Fwd_Loop", { fade: 0.1 });
         camera.position.set(x * 0.35, 3.1, 6.2);
         camera.lookAt(x * 0.35, 1.3, -10);
         focusShadow(0, 0, -6);
@@ -119,13 +137,17 @@ export const guard = {
         const at = { x: event.lane === undefined ? 0 : laneX(event.lane), y: 1.1, z: 0 };
         if (event.type === "catch") {
           fx.burst(at, accent);
-          hero.play("Interact", { once: true, speed: 1.6, then: "Idle_Loop" });
+          hero.play("Interact", { once: true, speed: 1.6, then: "Jog_Fwd_Loop" });
+        }
+        if (event.type === "stride") {
+          fx.burst({ x, y: 0.12, z: 0.1 }, "#ff7a1a", 8);
+          fx.burst({ x, y: 0.2, z: 0.1 }, "#ffd23f", 4);
         }
         if (event.type === "hurt") {
           fx.burst(at, "#ff3b4e");
           fx.shake(0.5);
           fx.flash("#ff3b4e", 0.32);
-          hero.play("Hit_Chest", { once: true, then: "Idle_Loop" });
+          hero.play("Hit_Chest", { once: true, then: "Jog_Fwd_Loop" });
         }
         if (event.type === "end") hero.play("Yes", { once: true });
       },

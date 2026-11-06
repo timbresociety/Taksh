@@ -16,9 +16,14 @@ const EVENT_CUES = {
   clear: "avoid", dodge: "avoid", blocked: "avoid", rep: "tick",
   miss: "miss", short: "miss", wrong: "miss", fall: "miss",
   hurt: "hurt", knockdown: "go",
+  good: "smash",
+  stray: "tick",
+  cut: "chop", blast: "boom",
+  slash: "chop", clang: "clang", boss_enter: "roar", boss_hit: "hit", boss_part: "boom", boss_parry: "clang", boss_blocked: "clang", boss_down: "boom",
+  shot: "shot", grenade: "boom", empty: "tick",
 };
 
-export default function PlayStage({ spec, mode, feed, calibration, onEnd, onQuit, onRecalibrate }) {
+export default function PlayStage({ spec, mode, feed, calibration, personal, onEnd, onQuit, onRecalibrate }) {
   const host = useRef(null);
   const video = useRef(null);
   const overlay = useRef(null);
@@ -39,13 +44,15 @@ export default function PlayStage({ spec, mode, feed, calibration, onEnd, onQuit
     let unsubscribe = () => {};
 
     if (usesCamera && feed.current?.running) {
-      const engine = new GestureEngine(calibration, { framing: template.framing, moves: template.bindings.map((binding) => binding.gesture) });
-      feed.current.attach(video.current);
+      const engine = new GestureEngine(calibration, { framing: template.framing, moves: template.bindings.map((binding) => binding.gesture), personal });
+      feed.current.attach(video.current).catch(() => {}); // a remount interrupts play, and the next attach restarts it
       unsubscribe = feed.current.subscribe(({ points, t, aspect }) => {
         const result = engine.push(points, t);
         tracking = result.tracking;
         session.setTracking(tracking);
         for (const event of result.events) session.handleGesture(event);
+        if (template.aim && result.features) session.handleAim(result.features.aim);
+        stage?.follow(points, calibration.torso);
         if (overlay.current) drawSkeleton(overlay.current, points, aspect, "#e9ff3a");
         if (result.features && template.framing === "full") scaleDrift = result.features.scale < 0.72 || result.features.scale > 1.32;
       });
@@ -65,6 +72,13 @@ export default function PlayStage({ spec, mode, feed, calibration, onEnd, onQuit
     window.addEventListener("keyup", onKeyUp);
     const onResize = () => stage?.resize();
     window.addEventListener("resize", onResize);
+    // Without a camera the pointer is the hand.
+    const onPointer = (event) => {
+      const x = (event.clientX / window.innerWidth) * 2 - 1;
+      const y = 1 - (event.clientY / window.innerHeight) * 2;
+      session.handleAim({ right: { x, y }, left: null });
+    };
+    if (template.aim && !usesCamera) window.addEventListener("pointermove", onPointer);
 
     let last = 0;
     let lastHud = 0;
@@ -122,9 +136,10 @@ export default function PlayStage({ spec, mode, feed, calibration, onEnd, onQuit
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("pointermove", onPointer);
       stage?.dispose();
     };
-  }, [spec, template, usesCamera, feed, calibration, onEnd]);
+  }, [spec, template, usesCamera, feed, calibration, personal, onEnd]);
 
   return (
     <main className="play" data-testid="play" data-template={spec.template} data-phase={hud?.phase ?? "loading"} data-score={hud?.score}>

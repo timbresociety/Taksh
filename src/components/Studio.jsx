@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { unlockSound } from "@/lib/game/sound";
 import { starterSpec } from "@/lib/spec/starter";
 import { templateInfo } from "@/lib/templates";
@@ -8,6 +8,7 @@ import IdeaStage from "./IdeaStage";
 import BriefStage from "./BriefStage";
 import CalibrateStage from "./CalibrateStage";
 import PlayStage from "./PlayStage";
+import PracticeStage from "./PracticeStage";
 import ResultStage from "./ResultStage";
 
 async function post(path, body) {
@@ -27,6 +28,7 @@ export default function Studio() {
   const [game, setGame] = useState(null);
   const [mode, setMode] = useState("keyboard");
   const [calibration, setCalibration] = useState(null);
+  const [practised, setPractised] = useState({});
   const [result, setResult] = useState(null);
   const [revision, setRevision] = useState(null);
   const [playCount, setPlayCount] = useState(0);
@@ -92,8 +94,16 @@ export default function Studio() {
     setPlayCount((count) => count + 1);
     const framing = templateInfo(game.spec.template).framing;
     if (nextMode === "camera" && calibration?.framing !== framing) setStage("calibrate");
-    else setStage("play");
+    else setStage(afterSetup());
   }
+
+  // The moves are taught once per game; a replay goes straight in.
+  const afterSetup = () => (practised[game.spec.template] ? "play" : "practice");
+
+  const finishPractice = useCallback((levels) => {
+    setPractised((current) => ({ ...current, [game.spec.template]: levels }));
+    setStage("play");
+  }, [game]);
 
   const reviseGame = (request) =>
     attempt("Changing your game", async () => {
@@ -116,7 +126,7 @@ export default function Studio() {
 
   return (
     <div className="studio" data-stage={stage}>
-      {stage !== "play" && stage !== "calibrate" && <SourceNote status={status} />}
+      {stage !== "play" && stage !== "calibrate" && stage !== "practice" && <SourceNote status={status} />}
 
       {stage === "idea" && (
         <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
@@ -128,12 +138,21 @@ export default function Studio() {
           framing={templateInfo(game.spec.template).framing}
           onDone={(values) => {
             setCalibration({ ...values, framing: templateInfo(game.spec.template).framing });
-            setStage("play");
+            setStage(afterSetup());
           }}
           onKeyboard={() => {
             setMode("keyboard");
-            setStage("play");
+            setStage(afterSetup());
           }}
+        />
+      )}
+      {stage === "practice" && (
+        <PracticeStage
+          spec={game.spec}
+          mode={mode}
+          feed={feed}
+          calibration={calibration}
+          onDone={finishPractice}
         />
       )}
       {stage === "play" && (
@@ -143,6 +162,7 @@ export default function Studio() {
           mode={mode}
           feed={feed}
           calibration={calibration}
+          personal={practised[game.spec.template]}
           onRecalibrate={() => {
             setCalibration(null);
             setStage("calibrate");

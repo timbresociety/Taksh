@@ -744,9 +744,8 @@ kbd {
   background: var(--volt);
   color: var(--rubber);
   font-family: var(--display);
-  font-size: clamp(1.3rem, 3vw, 2.2rem);
-  font-stretch: 75%;
-  font-weight: 800;
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  font-weight: 700;
   text-align: center;
 }
 
@@ -1264,4 +1263,153 @@ kbd {
   .pitch__box {
     grid-template-columns: 1fr;
   }
+}
+
+/* Practice: the rig on one side, the player on the other. */
+.practice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  min-height: 100dvh;
+  padding: 24px;
+  align-items: stretch;
+}
+
+.practice__teach {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 0;
+}
+
+.coach {
+  position: relative;
+  min-height: 320px;
+  height: 100%;
+}
+
+.coach canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.practice__move h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+}
+
+.practice__move p {
+  margin: 4px 0 0;
+}
+
+.practice__key kbd,
+.practice__prompt kbd {
+  padding: 2px 8px;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.practice__try {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.practice__prompt {
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+}
+
+.practice__meter span {
+  transition: none;
+}
+
+.practice__count {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.practice__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.practice__list li {
+  opacity: 0.55;
+}
+
+.practice__list li[data-state="now"] {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.practice__list li[data-state="done"] {
+  opacity: 0.9;
+  text-decoration: line-through;
+}
+
+@media (max-width: 800px) {
+  .practice {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+}
+
+.lab__coach {
+  display: grid;
+  grid-template-rows: minmax(260px, 1fr) auto;
+}
+
+.lab__coach p {
+  margin: 4px 0 0;
+}
+
+.lab__view {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.6fr) minmax(0, 1.4fr);
+  gap: 14px;
+  align-content: start;
+}
+
+.lab__view .lab__stats {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 800px) {
+  .lab__view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.lab > .drill-picks {
+  grid-column: 1 / -1;
+}
+
+.practice .answers {
+  justify-content: flex-start;
+}
+
+.coach canvas + canvas {
+  pointer-events: none;
+}
+
+.practice__hint {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+  opacity: 0.85;
+}
+
+/* The limb panels fill the corners here, so only the newest move shows, below the panel. */
+.play[data-template="corners"] .movements li:not(:first-child) {
+  display: none;
 }

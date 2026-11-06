@@ -1,4 +1,12 @@
-import { SKELETON } from "./landmarks.js";
+import { LM, SKELETON } from "./landmarks.js";
+
+// object-fit: cover, matching the video element underneath.
+function projection(canvas, aspect) {
+  const scale = Math.max(canvas.width / aspect, canvas.height);
+  const offsetX = (canvas.width - aspect * scale) / 2;
+  const offsetY = (canvas.height - scale) / 2;
+  return (point) => [offsetX + point.x * scale, offsetY + point.y * scale];
+}
 
 // Draws the tracked skeleton over a mirrored camera view. Points are in square units, aspect wide.
 export function drawSkeleton(canvas, points, aspect, color = "#e9ff3a") {
@@ -12,11 +20,7 @@ export function drawSkeleton(canvas, points, aspect, color = "#e9ff3a") {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!points) return;
 
-  // object-fit: cover, matching the video element underneath.
-  const scale = Math.max(canvas.width / aspect, canvas.height);
-  const offsetX = (canvas.width - aspect * scale) / 2;
-  const offsetY = (canvas.height - scale) / 2;
-  const at = (point) => [offsetX + point.x * scale, offsetY + point.y * scale];
+  const at = projection(canvas, aspect);
 
   ctx.lineCap = "round";
   ctx.lineWidth = Math.max(2, canvas.height * 0.009);
@@ -25,6 +29,37 @@ export function drawSkeleton(canvas, points, aspect, color = "#e9ff3a") {
     ctx.beginPath();
     ctx.moveTo(...at(points[a]));
     ctx.lineTo(...at(points[b]));
+    ctx.stroke();
+  }
+}
+
+// Draws the move to copy over the player's picture, standing where they calibrated and at their size.
+// Call after drawSkeleton, which clears the canvas. The limb doing the move is the bright one.
+export function drawGhost(canvas, ghost, aspect, calibration) {
+  if (!ghost?.points.length) return;
+  const { shoulderX, shoulderY, torso } = calibration;
+  const placed = ghost.points.map((point) => point && { x: shoulderX + point.x * torso, y: shoulderY + point.y * torso });
+  const at = projection(canvas, aspect);
+  const ctx = canvas.getContext("2d");
+  const width = Math.max(2, canvas.height * 0.009);
+  ctx.lineCap = "round";
+  // A dark edge keeps the lines readable against a pale wall.
+  for (const [color, extra] of [["rgba(0,0,0,0.6)", width * 0.9], ["#ffffff", 0]]) {
+    ctx.strokeStyle = color;
+    for (const [a, b] of SKELETON) {
+      if (!placed[a] || !placed[b]) continue;
+      const moving = ghost.lit.includes(a) && ghost.lit.includes(b);
+      ctx.lineWidth = (moving ? width * 2 : width) + extra;
+      ctx.beginPath();
+      ctx.moveTo(...at(placed[a]));
+      ctx.lineTo(...at(placed[b]));
+      ctx.stroke();
+    }
+    const head = placed[LM.nose];
+    if (!head) continue;
+    ctx.lineWidth = width + extra;
+    ctx.beginPath();
+    ctx.arc(...at(head), width * 3, 0, Math.PI * 2);
     ctx.stroke();
   }
 }

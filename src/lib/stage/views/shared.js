@@ -1,6 +1,14 @@
 // Helpers every view uses.
 import * as THREE from "three";
 
+// Scenery is scattered in a full circle, so anything that lands on the road ahead has to go.
+export function clearRoad(scenery, roadWidth) {
+  for (const item of [...scenery.children]) {
+    if (item.position.z < 4 && Math.abs(item.position.x) < roadWidth / 2 + 3) scenery.remove(item);
+  }
+  return scenery;
+}
+
 export const LANE_WIDTH = 2.2;
 export const laneX = (lane) => (lane - 1) * LANE_WIDTH;
 export const damp = (from, to, rate, dt) => from + (to - from) * (1 - Math.exp(-rate * dt));

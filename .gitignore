@@ -7,3 +7,5 @@ public/mediapipe
 e2e-shots/
 camera-shots/
 .asset-src/
+taksh-trace-*.json
+taksh-drill-*.json

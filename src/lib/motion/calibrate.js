@@ -1,5 +1,6 @@
 // Calibration: checks framing, waits for a still neutral stance, then records the player's own
 // proportions. Every gesture threshold is expressed in multiples of the torso length measured here.
+// With the hips out of frame MediaPipe only guesses them, so shoulder width stands in for the torso.
 import { CORE_POINTS, LEG_POINTS, ARM_POINTS, LM, distance, mid, visibility } from "./landmarks.js";
 
 const HOLD_MS = 1800;
@@ -8,6 +9,8 @@ const MAX_SWAY = 0.09; // torso lengths
 const MIN_TORSO = 0.11; // fractions of frame height; smaller means too far to track limbs well
 const MAX_TORSO = 0.34; // larger means the feet cannot stay in frame through a jump
 
+const TORSO_PER_SHOULDER = 1.4; // a torso is about this many shoulder widths long
+const HIPS = [LM.leftHip, LM.rightHip];
 const SHOULDERS = [LM.leftShoulder, LM.rightShoulder];
 
 const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -17,8 +20,13 @@ function measure(points) {
   const hip = mid(points[LM.leftHip], points[LM.rightHip]);
   const ankleY = (points[LM.leftAnkle].y + points[LM.rightAnkle].y) / 2;
   const kneeY = (points[LM.leftKnee].y + points[LM.rightKnee].y) / 2;
+  const shoulderWidth = distance(points[LM.leftShoulder], points[LM.rightShoulder]);
+  const hipsSeen = visibility(points, HIPS) >= MIN_VISIBILITY;
   return {
-    torso: distance(shoulder, hip),
+    torso: hipsSeen ? distance(shoulder, hip) : shoulderWidth * TORSO_PER_SHOULDER,
+    shoulderWidth,
+    upperArm: (distance(points[LM.leftShoulder], points[LM.leftElbow]) + distance(points[LM.rightShoulder], points[LM.rightElbow])) / 2,
+    armLength: (distance(points[LM.leftShoulder], points[LM.leftWrist]) + distance(points[LM.rightShoulder], points[LM.rightWrist])) / 2,
     hipX: hip.x,
     hipY: hip.y,
     shoulderX: shoulder.x,

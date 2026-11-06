@@ -5,6 +5,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { createCharacter } from "./character.js";
+import { mirrorArms } from "./coach.js";
 import { LOOKS, StylePass, applyLook } from "./styles.js";
 import { VIEWS, showcase } from "./views/index.js";
 import { loadWorld } from "./worlds.js";
@@ -142,6 +143,7 @@ export async function createStage(host, spec, { preview = false } = {}) {
   resize();
 
   let elapsed = 0;
+  let body = null;
   return {
     resize,
     // Call once per frame. dtMs is real time, so the scene keeps breathing while the game is paused.
@@ -151,6 +153,8 @@ export async function createStage(host, spec, { preview = false } = {}) {
       hero.update(dt);
       rival?.update(dt);
       drawn.update(state, dt, elapsed);
+      world.update(dt, elapsed);
+      if (body && view.mirrorsArms) mirrorArms(hero, body.points, { flip: true, torso: body.torso });
       sparks.update(dt);
       if (shake > 0.002) {
         camera.position.x += (Math.random() - 0.5) * shake;
@@ -163,6 +167,10 @@ export async function createStage(host, spec, { preview = false } = {}) {
       composer.render();
     },
     event: (event, state) => drawn.event?.(event, state),
+    // In boxing the hero's arms are the player's arms, so a punch shows the moment it is read.
+    follow(points, torso) {
+      body = points ? { points, torso } : null;
+    },
     dispose() {
       composer.dispose();
       style.dispose();

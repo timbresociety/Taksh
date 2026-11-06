@@ -5,6 +5,7 @@ import { compareSpecs } from "../src/lib/spec/compare.js";
 import { DEFAULT_HERO, DEFAULT_RIVAL, GESTURES, SPEC_VERSION, contractText, gestureInfo } from "../src/lib/spec/contract.js";
 import { validateSpec } from "../src/lib/spec/validate.js";
 import { TEMPLATES, defaultTuning, simulate, templateInfo } from "../src/lib/templates/index.js";
+import { COACH, RAMP_M, ROOF, surfaceAt } from "../src/lib/templates/runner.js";
 
 const CAP_MS = 240000; // simulate()'s own limit; a player who never loses an endless game reaches it
 
@@ -186,6 +187,160 @@ describe("reading a shot early", () => {
   });
 });
 
+describe("Local Dash has height", () => {
+  const runner = templateInfo("lane_runner");
+  const fresh = (changes = {}) => Object.assign(runner.create(specOf(runner)), { obstacles: [], coins: [], platforms: [], nextRowZ: 1e6 }, changes);
+  const run = (state, ms) => {
+    const events = [];
+    for (let t = 0; t < ms; t += 20) events.push(...runner.step(state, 20));
+    return events;
+  };
+  const train = (lane, z, length = COACH) => ({ id: 1, kind: "train1", lane, z, length, coaches: 1 });
+  const ramp = (lane, z) => ({ id: 2, kind: "ramp", lane, z, length: RAMP_M });
+
+  it("climbs a ramp onto a roof, and drops when the train ends", () => {
+    const state = fresh({ lane: 1, ramp: 0, platforms: [ramp(1, 2), train(1, 2 + RAMP_M)] });
+    run(state, 1200);
+    assert.equal(state.y, ROOF);
+    assert.equal(state.lives, state.startLives);
+    const events = run(state, 2400);
+    assert.equal(state.y, 0);
+    assert.ok(events.some((event) => event.type === "land"));
+    assert.ok(state.roofMetres > COACH - 3);
+  });
+
+  it("a train front costs a life and moves the player to a lane they can stand in", () => {
+    const state = fresh({ lane: 1, platforms: [train(1, 3)] });
+    const events = run(state, 500);
+    assert.ok(events.some((event) => event.type === "hurt"));
+    assert.equal(state.lives, state.startLives - 1);
+    assert.notEqual(state.lane, 1);
+  });
+
+  it("the side of a train stops a lane change, without costing a life", () => {
+    const state = fresh({ lane: 1, platforms: [train(2, -5, 40)] });
+    assert.equal(runner.act(state, "right")[0].type, "bump");
+    assert.equal(state.lane, 1);
+    assert.equal(state.lives, state.startLives);
+  });
+
+  it("from a roof a player can step across to the next roof or down to the street", () => {
+    const state = fresh({ lane: 1, y: ROOF, platforms: [train(1, -5, 40), train(2, -5, 40)] });
+    runner.act(state, "right");
+    assert.equal(state.lane, 2);
+    runner.act(state, "left");
+    runner.act(state, "left");
+    assert.equal(state.lane, 0);
+    run(state, 800);
+    assert.equal(state.y, 0);
+  });
+
+  it("the street cannot touch a player on the roof, and a roof obstacle still can", () => {
+    const street = fresh({ lane: 1, y: ROOF, platforms: [train(1, -5, 60)], obstacles: [{ id: 5, kind: "wall", lane: 1, z: 3, y: 0, passed: false }] });
+    run(street, 500);
+    assert.equal(street.lives, street.startLives);
+    const roof = fresh({ lane: 1, y: ROOF, platforms: [train(1, -5, 60)], obstacles: [{ id: 5, kind: "low", lane: 1, z: 3, y: ROOF, passed: false }] });
+    run(roof, 500);
+    assert.equal(roof.lives, roof.startLives - 1);
+  });
+
+  it("jumps a roof obstacle the same as a street one", () => {
+    const state = fresh({ lane: 1, y: ROOF, ramp: 0, platforms: [train(1, -5, 60)], obstacles: [{ id: 5, kind: "low", lane: 1, z: 2.6, y: ROOF, passed: false }] });
+    runner.act(state, "jump");
+    run(state, 500);
+    assert.equal(state.lives, state.startLives);
+  });
+
+  it("rolling in the air dives back down", () => {
+    const state = fresh();
+    runner.act(state, "jump");
+    run(state, 200);
+    runner.act(state, "roll");
+    assert.ok(state.vy < 0);
+  });
+
+  it("no train section ever fills all three lanes", () => {
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const state = runner.create({ ...specOf(runner, { trainShare: 0.7 }), seed });
+      for (let t = 0; t < 40000; t += 200) {
+        runner.step(state, 200);
+        state.lives = 3;
+        for (let z = 0; z < 90; z += 3) {
+          const open = [0, 1, 2].some((lane) => surfaceAt(state, lane, z) === 0 || state.platforms.some((part) => part.kind === "ramp" && part.lane === lane && z >= part.z && z <= part.z + part.length));
+          const roofs = [0, 1, 2].filter((lane) => surfaceAt(state, lane, z) === ROOF).length;
+          assert.ok(open || roofs < 3, `seed ${seed} z ${z}`);
+        }
+      }
+    }
+  });
+
+  it("a quick player reaches the roofs and lasts", () => {
+    const result = simulate(runner, { ...specOf(runner, { trainShare: 0.7 }), seed: 11 }, { maxMs: 60000 });
+    const roof = result.stats.find((stat) => stat.label === "On the roofs").value;
+    assert.ok(parseInt(roof, 10) > 30, roof);
+    assert.ok(result.ms >= 30000, `lasted ${result.ms}`);
+  });
+});
+
+describe("Counter Bout rules", () => {
+  const bout = templateInfo("bout");
+  const dodge = (state) => {
+    while (!state.attack) bout.step(state, 20);
+    bout.act(state, { left: "slip_right", right: "slip_left", high: "duck" }[state.attack.side]);
+    while (state.attack) bout.step(state, 20);
+  };
+
+  it("a punch always lands, with no dodge first", () => {
+    const state = bout.create(specOf(bout));
+    assert.ok(bout.act(state, "jab").some((event) => event.type === "land"));
+    assert.equal(state.landed, 1);
+  });
+
+  it("a dodge makes the next punch hit twice as hard", () => {
+    const plain = bout.create(specOf(bout));
+    const countered = bout.create(specOf(bout));
+    bout.act(plain, "cross");
+    dodge(countered);
+    bout.act(countered, "cross");
+    assert.equal(countered.rivalMax - countered.rivalHealth, (plain.rivalMax - plain.rivalHealth) * 2);
+  });
+
+  it("tells the player the move to make, not the side of the shot", () => {
+    const state = bout.create(specOf(bout));
+    while (!state.attack) bout.step(state, 20);
+    assert.match(bout.hud(state).extra, /^(Lean left|Lean right|Duck)$/);
+  });
+
+  it("holding down a key cannot outrun an arm", () => {
+    const state = bout.create(specOf(bout));
+    bout.act(state, "jab");
+    assert.deepEqual(bout.act(state, "jab"), []);
+  });
+});
+
+describe("Lane Guard fast feet", () => {
+  const guard = templateInfo("guard");
+  const catchOne = (state) => {
+    state.incoming.push({ id: 99, kind: "target", lane: state.lane, ms: 0, warningMs: 100, resolved: false });
+    guard.step(state, 120);
+    return state.score;
+  };
+
+  it("doubles points while the feet are burning", () => {
+    const plain = catchOne(guard.create(specOf(guard)));
+    const state = guard.create(specOf(guard));
+    guard.act(state, "feet");
+    assert.equal(catchOne(state), plain * 2);
+  });
+
+  it("the fire goes out when the feet stop", () => {
+    const state = guard.create(specOf(guard));
+    guard.act(state, "feet");
+    for (let t = 0; t < 1200; t += 20) guard.step(state, 20);
+    assert.equal(state.fireMs, 0);
+  });
+});
+
 describe("contract", () => {
   it("GESTURES has no repeats", () => {
     const ids = GESTURES.map((gesture) => gesture.id);
@@ -301,8 +456,19 @@ describe("tuning changes what a player experiences", () => {
     assert.ok(simulate(bout, specOf(bout, { rivalHealth: 200 })).ms > simulate(bout, specOf(bout, { rivalHealth: 40 })).ms);
   });
 
-  it("a longer round means more reps", () => {
-    const reps = templateInfo("reps");
-    assert.ok(simulate(reps, specOf(reps, { durationS: 60 })).score > simulate(reps, specOf(reps, { durationS: 10 })).score);
+  it("a longer round means more pads", () => {
+    const pads = templateInfo("pads");
+    assert.ok(simulate(pads, specOf(pads, { durationS: 60 })).score > simulate(pads, specOf(pads, { durationS: 20 })).score);
+  });
+});
+
+describe("clearRoad", () => {
+  it("removes scenery on the road ahead, and keeps what stands beside it or behind the camera", async () => {
+    const { clearRoad } = await import("../src/lib/stage/views/shared.js");
+    const at = (x, z) => ({ position: { x, z } });
+    const kept = [at(9, -20), at(0, 8)];
+    const scenery = { children: [at(0, -15), at(4, -30), ...kept], remove(item) { this.children = this.children.filter((other) => other !== item); } };
+    clearRoad(scenery, 7.4);
+    assert.deepEqual(scenery.children, kept);
   });
 });

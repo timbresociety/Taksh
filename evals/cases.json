@@ -54,6 +54,36 @@
     "expect": { "status": "ready", "templates": ["poses"], "style": "clay", "world": "village" }
   },
   {
+    "id": "clear-matka",
+    "kind": "clear",
+    "idea": "A rhythm game where I smash clay matka pots on a dhol beat at a Diwali night.",
+    "expect": { "status": "ready", "templates": ["matka"] }
+  },
+  {
+    "id": "clear-harmonium",
+    "kind": "clear",
+    "idea": "Play a harmonium with my feet and hands, hitting each key as it reaches the line.",
+    "expect": { "status": "ready", "templates": ["harmonium"] }
+  },
+  {
+    "id": "clear-chop",
+    "kind": "clear",
+    "idea": "Slice mangoes and watermelons flying off a Mumbai street stall with my hands.",
+    "expect": { "status": "ready", "templates": ["chop"] }
+  },
+  {
+    "id": "clear-blades",
+    "kind": "clear",
+    "idea": "A sword fight where I slash raiders from every side and then face Ravana.",
+    "expect": { "status": "ready", "templates": ["blades"] }
+  },
+  {
+    "id": "clear-corners",
+    "kind": "clear",
+    "idea": "Shoot enemies in the four corners of the screen, with a grenade when it gets too much.",
+    "expect": { "status": "ready", "templates": ["corners"] }
+  },
+  {
     "id": "ambiguous",
     "kind": "ambiguous",
     "idea": "make me a cool workout game",

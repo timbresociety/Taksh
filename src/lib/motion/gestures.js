@@ -14,19 +14,21 @@ export const THRESHOLDS = {
   burpee: { enter: 0.95, exit: 0.35 },
   squat: { enter: 0.36, exit: 0.18 },
   lean: { enter: 0.3, exit: 0.14 },
-  punch: { enter: 0.7, exit: 0.4 }, // wrist ahead of the shoulder, toward the camera
+  punch: { enter: 0.55, exit: 0.3 }, // the arm pointing at the camera; see forward() in measure
   hook: { enter: 0.3, exit: 0.08 }, // wrist past the chest centre at shoulder height
   uppercut: { enter: 3, exit: 1 }, // torso lengths per second, upward
   swing: { enter: 2.8, exit: 1 }, // torso lengths per second, sideways
   reach: { enter: 0.55, exit: 0.25 },
+  lift: { enter: 0.5, exit: 0.25, otherMax: 0.2 }, // one leg up, the other foot on the floor
+  slash: { speed: 2.6, travel: 0.7, settle: 1, coolMs: 240, reverseMs: 400 }, // torso lengths, and per second
+  run: { swing: 0.16 }, // how far one foot must pass the other to count as a stride
   wings: { enter: 0.15, exit: -0.3, rearmMs: 40 },
-  pump: 0.3,
   guard: { enter: 0.05, exit: -0.12 },
   pose: { similarity: 0.8, exit: 0.62, holdMs: 240, rearmMs: 150 },
 };
 
 // What the engine reports unless told otherwise. A game passes the moves it binds, because one arm
-// movement can honestly be a swing, a pump and a pose at once, and only the game knows which it wants.
+// movement can honestly be a swing, a slash and a pose at once, and only the game knows which it wants.
 export const CLASSIC_MOVES = ["step_left", "step_right", "jump", "high_knee", "hand_left", "hand_right", "kick_left", "kick_right", "burpee"];
 
 const DWELL_MS = 50;
@@ -38,9 +40,16 @@ const BURPEE_GRACE_MS = 3500; // a plank hides most of the body from the camera
 const STILL_SPEED = 0.35; // torso lengths per second
 const BASELINE_RATE = 0.02;
 
+const BOTH_HANDS_MS = 200; // one hand arrives first, so a single lift waits this long for the other
+const RUN_WINDOW_MS = 1500;
+const WORLD_TORSO_M = 0.5; // MediaPipe sizes its metric skeleton to a typical adult
+const PUNCH_MAX_RISE = 0.35; // torso lengths above the shoulder; higher is arms going overhead
+const PUNCH_MAX_DROP = 3; // torso lengths per second; a hand swinging past the shoulder this fast is no punch
+
 const SHOULDER_POINTS = [LM.leftShoulder, LM.rightShoulder];
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
+const clampUnit = (value) => Math.min(1, Math.max(-1, value));
 
 export class Gate {
   constructor({ enter, exit, dwellMs = DWELL_MS, rearmMs = REARM_MS }) {
@@ -81,9 +90,103 @@ export class Gate {
   }
 }
 
+// A hand stroke across the body. It fires as soon as the hand has travelled far enough, so a slash
+// lands while the arm is still moving. The way back is ignored, or every slash would count twice.
+class Stroke {
+  constructor() {
+    this.path = null;
+    this.quietUntil = 0;
+    this.last = null;
+  }
+
+  update(vx, vy, seconds, t) {
+    const { speed, travel, settle, coolMs, reverseMs } = THRESHOLDS.slash;
+    const pace = Math.hypot(vx, vy);
+    if (t < this.quietUntil) return null;
+    if (!this.path) {
+      if (pace < speed) return null;
+      this.path = { x: 0, y: 0 };
+    }
+    if (pace < settle) {
+      this.path = null;
+      return null;
+    }
+    this.path.x += vx * seconds;
+    this.path.y += vy * seconds;
+    if (Math.hypot(this.path.x, this.path.y) < travel) return null;
+
+    const horizontal = Math.abs(this.path.x) >= Math.abs(this.path.y);
+    const direction = horizontal ? (this.path.x < 0 ? "left" : "right") : this.path.y < 0 ? "up" : "down";
+    this.path = null;
+    this.quietUntil = t + coolMs;
+    const reversed = this.last && t - this.last.t < reverseMs && this.last.direction === OPPOSITE[direction];
+    this.last = reversed ? null : { direction, t };
+    return reversed ? null : direction;
+  }
+}
+
+const OPPOSITE = { left: "right", right: "left", up: "down", down: "up" };
+
+const slashPace = (f, axis, sign) => (f.handSpeed ? Math.max(sign * f.handSpeed.left[axis], sign * f.handSpeed.right[axis], 0) : 0);
+
+// The moves every new game is built from. They are big and mostly across the camera's view, so they
+// read well from a player standing far back on a laptop camera.
+export const LOCKED_MOVES = [
+  "step_left", "step_right", "jump", "squat_down",
+  "reach_up_left", "reach_up_right", "hands_up", "lift_left", "lift_right",
+  "slash_left", "slash_right", "slash_up", "slash_down",
+  "punch_left", "punch_right", "guard", "run_step",
+];
+
+// The live reading behind each gated move, for practice meters and the input lab.
+export const MOVE_READINGS = {
+  step_left: { gate: "step", read: (f) => -f.hipOffset },
+  step_right: { gate: "step", read: (f) => f.hipOffset },
+  jump: { gate: "jump", read: (f) => (f.feetLifted ? f.hipRise : 0) },
+  squat_down: { gate: "squat", read: (f) => f.squat },
+  lean_left: { gate: "lean", read: (f) => -f.lean },
+  lean_right: { gate: "lean", read: (f) => f.lean },
+  punch_left: { gate: "punch", read: (f) => f.punchLeft },
+  punch_right: { gate: "punch", read: (f) => f.punchRight },
+  hook_left: { gate: "hook", read: (f) => f.hookLeft },
+  hook_right: { gate: "hook", read: (f) => f.hookRight },
+  uppercut_left: { gate: "uppercut", read: (f) => f.riseLeft },
+  uppercut_right: { gate: "uppercut", read: (f) => f.riseRight },
+  reach_up_left: { gate: "reach", read: (f) => f.heightLeft },
+  reach_up_right: { gate: "reach", read: (f) => f.heightRight },
+  hands_up: { gate: "reach", read: (f) => Math.min(f.heightLeft, f.heightRight) },
+  lift_left: { gate: "lift", read: (f) => f.liftLeft },
+  lift_right: { gate: "lift", read: (f) => f.liftRight },
+  guard: { gate: "guard", read: (f) => f.guard },
+  slash_left: { gate: "slash", read: (f) => slashPace(f, "x", -1) },
+  slash_right: { gate: "slash", read: (f) => slashPace(f, "x", 1) },
+  slash_up: { gate: "slash", read: (f) => slashPace(f, "y", -1) },
+  slash_down: { gate: "slash", read: (f) => slashPace(f, "y", 1) },
+  run_step: { gate: "run", read: (f) => f.cadence },
+  hand_left: { gate: "hand", read: (f) => f.reachLeft },
+  hand_right: { gate: "hand", read: (f) => f.reachRight },
+  high_knee: { gate: "knee", read: (f) => Math.max(f.kneeLeft, f.kneeRight) },
+};
+
+// Practice can only make a move easier to trigger, and never down into the noise of standing still.
+const LOWEST_SHARE = 0.5;
+const PEAK_SHARE = 0.7;
+
+// The peak a player reached in practice, turned into an enter level for that move's gate.
+export function personalLevel(gesture, peak) {
+  const reading = MOVE_READINGS[gesture];
+  if (!reading) return null;
+  const { enter } = THRESHOLDS[reading.gate];
+  if (enter === undefined) return null; // slashes and strides are speeds, and speed is not personal
+  return Math.min(enter, Math.max(enter * LOWEST_SHARE, peak * PEAK_SHARE));
+}
+
+// The value a reading must reach. Steps and strides have no gate of their own to ask.
+const FIXED_LEVELS = { slash: THRESHOLDS.slash.speed, run: 2, step: THRESHOLDS.step.enter };
+
 export class GestureEngine {
-  constructor(calibration, { framing = "full", moves = CLASSIC_MOVES } = {}) {
-    this.cal = { ...calibration };
+  constructor(calibration, { framing = "full", moves = CLASSIC_MOVES, personal = {} } = {}) {
+    this.cal = { ...calibration, startTorso: calibration.torso };
     this.framing = framing;
     this.moves = moves === "all" ? null : new Set(moves);
     this.gates = {
@@ -108,16 +211,50 @@ export class GestureEngine {
       swing_right: new Gate(THRESHOLDS.swing),
       reach_up_left: new Gate(THRESHOLDS.reach),
       reach_up_right: new Gate(THRESHOLDS.reach),
+      hands_up: new Gate(THRESHOLDS.reach),
+      lift_left: new Gate(THRESHOLDS.lift),
+      lift_right: new Gate(THRESHOLDS.lift),
       wings: new Gate(THRESHOLDS.wings),
       guard: new Gate(THRESHOLDS.guard),
     };
-    this.pumpSide = null;
+    this.personalise(personal);
+    this.strokes = { left: new Stroke(), right: new Stroke() };
+    this.waitingLift = null;
+    this.runSide = null;
+    this.strides = [];
     this.held = { pose: null, since: 0, fired: false };
     this.lastWrists = null;
     this.zone = 0;
     this.lastCoreAt = null;
     this.lastHip = null;
     this.tracking = "searching";
+  }
+
+  // Scales a gate's exit with its enter, so a lowered move still has to be clearly left to rearm.
+  personalise(levels) {
+    const gatesFor = { high_knee: ["knee_left", "knee_right"], squat_down: ["squat"] };
+    for (const [gesture, level] of Object.entries(levels)) {
+      for (const name of gatesFor[gesture] ?? [gesture]) {
+        const gate = this.gates[name];
+        if (!gate) continue;
+        gate.exit *= level / gate.enter;
+        gate.enter = level;
+      }
+    }
+  }
+
+  // How close the live reading is to firing this move: 1 means it fires.
+  meter(gesture, features) {
+    const reading = MOVE_READINGS[gesture];
+    if (!reading || !features) return 0;
+    return Math.max(0, reading.read(features) / this.level(gesture));
+  }
+
+  // The value this move's reading has to reach for this player right now.
+  level(gesture) {
+    const gate = this.gates[gesture === "squat_down" ? "squat" : gesture];
+    const { gate: kind } = MOVE_READINGS[gesture];
+    return gate?.enter ?? FIXED_LEVELS[kind] ?? THRESHOLDS[kind].enter;
   }
 
   // Returns { events, tracking, features }. Pass null points when no pose was detected.
@@ -163,6 +300,11 @@ export class GestureEngine {
     check("knee_left", "high_knee", f.kneeLeft, f.legVisibility, !lowered && !airborne && f.kneeRight < THRESHOLDS.knee.otherMax && f.kickLeft < THRESHOLDS.kick.exit);
     check("knee_right", "high_knee", f.kneeRight, f.legVisibility, !lowered && !airborne && f.kneeLeft < THRESHOLDS.knee.otherMax && f.kickRight < THRESHOLDS.kick.exit);
 
+    const grounded = !lowered && !airborne;
+    check("lift_left", "lift_left", f.liftLeft, f.legVisibility, grounded);
+    check("lift_right", "lift_right", f.liftRight, f.legVisibility, grounded);
+    this.readStrides(f, t, emit);
+
     if (!lowered) this.updateZone(f, emit);
     this.readExercises(f, points, t, check, emit);
     this.adaptBaseline(f, t, events.length > 0);
@@ -184,26 +326,69 @@ export class GestureEngine {
     check("punch_right", "punch_right", f.punchRight, f.rightHandVisibility);
     check("hook_left", "hook_left", f.hookLeft, f.leftHandVisibility);
     check("hook_right", "hook_right", f.hookRight, f.rightHandVisibility);
-    check("uppercut_left", "uppercut_left", f.riseLeft, f.leftHandVisibility);
-    check("uppercut_right", "uppercut_right", f.riseRight, f.rightHandVisibility);
+    // A fist coming back from a punch or hook is rising too, and is not an uppercut.
+    const armBusy = (side) => this.gates[`punch_${side}`].held || this.gates[`hook_${side}`].held;
+    check("uppercut_left", "uppercut_left", f.riseLeft, f.leftHandVisibility, !armBusy("left"));
+    check("uppercut_right", "uppercut_right", f.riseRight, f.rightHandVisibility, !armBusy("right"));
     check("swing_left", "swing_left", -f.sweep, hands);
     check("swing_right", "swing_right", f.sweep, hands);
-    check("reach_up_left", "reach_up_left", f.heightLeft, f.leftHandVisibility);
-    check("reach_up_right", "reach_up_right", f.heightRight, f.rightHandVisibility);
+    this.readLifts(f, t, hands, emit);
+    this.readSlashes(f, t, emit);
     check("guard", "guard", f.guard, hands);
 
     const raised = this.gates.wings.held;
     this.gates.wings.update(Math.min(f.heightLeft, f.heightRight), hands >= MIN_CONFIDENCE, t);
     if (raised && !this.gates.wings.held) emit("flap", THRESHOLDS.wings.enter, THRESHOLDS.wings.enter, hands);
 
-    const difference = f.heightLeft - f.heightRight;
-    const side = difference > THRESHOLDS.pump ? "left" : difference < -THRESHOLDS.pump ? "right" : null;
-    if (side && side !== this.pumpSide && hands >= MIN_CONFIDENCE) {
-      this.pumpSide = side;
-      emit(`pump_${side}`, Math.abs(difference), THRESHOLDS.pump, hands);
-    }
-
     if (hands >= MIN_CONFIDENCE) this.readPose(points, t, hands, emit);
+  }
+
+  // Both arms going up is its own move, so a lone hand waits a moment to see if the other follows.
+  readLifts(f, t, hands, emit) {
+    const update = (name, value, seen) => this.gates[name].update(value, seen >= MIN_CONFIDENCE, t);
+    const left = update("reach_up_left", f.heightLeft, f.leftHandVisibility);
+    const right = update("reach_up_right", f.heightRight, f.rightHandVisibility);
+    const both = update("hands_up", Math.min(f.heightLeft, f.heightRight), hands);
+    const { enter } = this.gates.reach_up_left;
+
+    if (both) {
+      this.waitingLift = null;
+      emit("hands_up", Math.min(f.heightLeft, f.heightRight), enter, hands);
+      return;
+    }
+    if (left || right) this.waitingLift ??= { side: left ? "left" : "right", t };
+    if (this.waitingLift && t - this.waitingLift.t >= BOTH_HANDS_MS) {
+      const { side } = this.waitingLift;
+      this.waitingLift = null;
+      emit(`reach_up_${side}`, side === "left" ? f.heightLeft : f.heightRight, enter, side === "left" ? f.leftHandVisibility : f.rightHandVisibility);
+    }
+  }
+
+  readSlashes(f, t, emit) {
+    const fired = new Set(); // both hands going the same way at once is one slash
+    for (const side of ["left", "right"]) {
+      const seen = side === "left" ? f.leftHandVisibility : f.rightHandVisibility;
+      if (seen < MIN_CONFIDENCE || !f.handSpeed) continue;
+      const { x, y, seconds } = f.handSpeed[side];
+      const direction = this.strokes[side].update(x, y, seconds, t);
+      if (!direction || fired.has(direction)) continue;
+      fired.add(direction);
+      emit(`slash_${direction}`, Math.hypot(x, y), THRESHOLDS.slash.speed, seen, { hand: side });
+    }
+  }
+
+  // Running on the spot is feet trading places, read from how far one foot passes the other.
+  readStrides(f, t, emit) {
+    while (this.strides.length && t - this.strides[0] > RUN_WINDOW_MS) this.strides.shift();
+    f.cadence = this.strides.length / (RUN_WINDOW_MS / 1000);
+    if (f.legVisibility < MIN_CONFIDENCE) return;
+    const side = f.footGap > THRESHOLDS.run.swing ? "left" : f.footGap < -THRESHOLDS.run.swing ? "right" : null;
+    if (!side || side === this.runSide) return;
+    const first = this.runSide === null;
+    this.runSide = side;
+    if (first) return;
+    this.strides.push(t);
+    emit("run_step", Math.abs(f.footGap), THRESHOLDS.run.swing, f.legVisibility, { side });
   }
 
   // A pose counts once it has been held briefly, and again only after the player has left it.
@@ -285,7 +470,17 @@ export class GestureEngine {
     const nose = points[LM.nose];
     const elbowUp = (elbow) => elbow.y < shoulder.y + 0.4 * u;
     const nearShoulderHeight = (wrist) => Math.abs(wrist.y - shoulder.y) < 0.6 * u;
-    const forward = (from, wrist) => (nearShoulderHeight(wrist) && Math.abs(wrist.x - from.x) < 0.7 * u ? ((from.z ?? 0) - (wrist.z ?? 0)) / u : 0);
+    // Depth is the weakest thing the tracker reports, so a punch has a second witness: an arm aimed at
+    // the camera looks short in the image. The elbow tells it from a guard, where the fist is close but
+    // the upper arm still hangs at full length.
+    const upperArm = cal.upperArm ?? 0.6 * u;
+    const armLength = cal.armLength ?? 1.15 * u;
+    const depth = (from, wrist) => (from.w === undefined ? ((from.z ?? 0) - (wrist.z ?? 0)) / u : (from.w - wrist.w) / WORLD_TORSO_M);
+    const shortening = (from, elbow, wrist) => Math.min(1 - distance(from, elbow) / upperArm, 1 - distance(from, wrist) / armLength);
+    const forward = (from, elbow, wrist) => {
+      if (!nearShoulderHeight(wrist) || from.y - wrist.y > PUNCH_MAX_RISE * u || Math.abs(wrist.x - from.x) >= 0.7 * u) return 0;
+      return Math.max(depth(from, wrist), shortening(from, elbow, wrist));
+    };
     const across = (wrist, elbow, dir) => (nearShoulderHeight(wrist) && elbowUp(elbow) ? (dir * (wrist.x - shoulder.x)) / u : 0);
 
     // Hand speeds are measured against the shoulders, so moving the whole body is not a swing.
@@ -295,14 +490,25 @@ export class GestureEngine {
     const seconds = before ? Math.max(0.001, (now.t - before.t) / 1000) : null;
     const velocity = (side, axis) => (seconds ? (now[side][axis] - before[side][axis] - (now.body[axis] - before.body[axis])) / u / seconds : 0);
     const fastest = (a, b) => (Math.abs(a) > Math.abs(b) ? a : b);
+    // A punch goes forward. Arms swinging through shoulder height read as depth, and swing fast up or down.
+    const straight = (side) => Math.abs(velocity(side, "y")) < PUNCH_MAX_DROP;
+    const handSpeed = seconds && { left: { x: velocity("left", "x"), y: velocity("left", "y"), seconds }, right: { x: velocity("right", "x"), y: velocity("right", "y"), seconds } };
+    const aimAt = (wrist) => ({ x: clampUnit((wrist.x - shoulder.x) / (armLength * 1.2)), y: clampUnit((shoulder.y + 0.3 * u - wrist.y) / (armLength * 1.2)) });
+    const legLift = (knee, foot, otherFoot) => (otherFoot < THRESHOLDS.lift.otherMax ? Math.max(knee, foot) : 0);
     const rising = (side, other, wrist) => (Math.abs(wrist.x - shoulder.x) < 0.9 * u && wrist.y < shoulder.y + 0.5 * u && -velocity(other, "y") < BOTH_HANDS_RISING ? -velocity(side, "y") : 0);
     const upper = this.framing !== "full"; // the hips may be below the frame, so the shoulders stand in
+
+    // Both arms reading forward at once is arms going up together, not a punch. In a real session four
+    // in five depth readings were this.
+    const forwardLeft = straight("left") ? forward(leftShoulder, points[LM.leftElbow], leftWrist) : 0;
+    const forwardRight = straight("right") ? forward(rightShoulder, points[LM.rightElbow], rightWrist) : 0;
+    const together = Math.min(forwardLeft, forwardRight) >= THRESHOLDS.punch.exit;
 
     return {
       squat: upper ? shoulderDrop : Math.max(leftWrist.y, rightWrist.y) > cal.kneeY + 0.5 * u ? 0 : (hip.y - cal.hipY) / u,
       lean: upper ? (shoulder.x - cal.shoulderX) / u : (shoulder.x - hip.x) / u,
-      punchLeft: forward(leftShoulder, leftWrist),
-      punchRight: forward(rightShoulder, rightWrist),
+      punchLeft: together ? 0 : forwardLeft,
+      punchRight: together ? 0 : forwardRight,
       hookLeft: across(leftWrist, points[LM.leftElbow], 1),
       hookRight: across(rightWrist, points[LM.rightElbow], -1),
       riseLeft: rising("left", "right", leftWrist),
@@ -318,11 +524,17 @@ export class GestureEngine {
       kickRight: kick(rightAnkle, leftAnkle, 1),
       kneeLeft: kneeLift(points[LM.leftKnee], cal.thighLeft),
       kneeRight: kneeLift(points[LM.rightKnee], cal.thighRight),
+      liftLeft: legLift(kneeLift(points[LM.leftKnee], cal.thighLeft), leftFootRise, rightFootRise),
+      liftRight: legLift(kneeLift(points[LM.rightKnee], cal.thighRight), rightFootRise, leftFootRise),
+      footGap: leftFootRise - rightFootRise,
+      cadence: 0,
+      handSpeed,
+      aim: { left: aimAt(leftWrist), right: aimAt(rightWrist) },
       hipRise,
       feetLifted: Math.min(leftFootRise, rightFootRise) >= THRESHOLDS.jump.feet,
       shoulderDrop,
       burpee: handsLow ? shoulderDrop : 0,
-      scale: Math.hypot(shoulder.x - hip.x, shoulder.y - hip.y) / u,
+      scale: Math.hypot(shoulder.x - hip.x, shoulder.y - hip.y) / cal.startTorso,
       coreVisibility: visibility(points, CORE_POINTS),
       shoulderVisibility: visibility(points, SHOULDER_POINTS),
       legVisibility: visibility(points, LEG_POINTS),
@@ -350,5 +562,8 @@ export class GestureEngine {
     this.cal.hipY += (f.hip.y - this.cal.hipY) * BASELINE_RATE;
     this.cal.shoulderY += (f.shoulderY - this.cal.shoulderY) * BASELINE_RATE;
     this.cal.ankleY += (f.ankleY - this.cal.ankleY) * BASELINE_RATE;
+    // Standing closer or further makes the player a different size in the image, and every reading
+    // is measured in that size.
+    if (this.framing === "full") this.cal.torso += (f.scale * this.cal.startTorso - this.cal.torso) * BASELINE_RATE;
   }
 }

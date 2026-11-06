@@ -28,6 +28,24 @@ describe("real footage", () => {
   });
 });
 
+describe("real footage with metric depth", () => {
+  const moves = "all";
+  const replay = async (framing) => replayTrace({ ...JSON.parse(await readFile(new URL("./traces/real-jacks-with-depth.json", import.meta.url))), framing, moves });
+
+  for (const framing of ["full", "upper"]) {
+    it(`arms swinging through jacks and burpees are never punches, in ${framing} framing`, async () => {
+      const { events } = await replay(framing);
+      assert.deepEqual(events.filter((event) => event.gesture.startsWith("punch")), []);
+    });
+  }
+
+  it("still reads the burpees and arm swings in the same footage", async () => {
+    const { events } = await replay("full");
+    assert.ok(named(events, "burpee").length >= 6);
+    assert.ok(named(events, "hands_up").length >= 4);
+  });
+});
+
 describe("real person's image panned through MediaPipe", () => {
   it("reads steps, returns and jumps in order, and ignores a small sway", async () => {
     const { events } = await load("panned-steps-and-jumps");

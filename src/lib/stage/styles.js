@@ -84,8 +84,10 @@ const FRAGMENT = /* glsl */ `
     colour = max(mix(vec3(grey), colour, uSaturation), 0.0);
 
     if (uPosterise > 0.0) {
-      vec3 shown = pow(colour, vec3(0.4545));
-      colour = pow(floor(shown * uPosterise + 0.5) / uPosterise, vec3(2.2));
+      // Stepping brightness, not each channel, or a grey road breaks into red and green blotches.
+      float light = max(luma(colour), 0.001);
+      float stepped = pow(floor(pow(light, 0.4545) * uPosterise + 0.5) / uPosterise, 2.2);
+      colour *= stepped / light;
     }
 
     if (uHalftone > 0.0) {

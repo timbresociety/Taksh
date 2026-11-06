@@ -37,11 +37,14 @@ export const LEG_POINTS = [LM.leftKnee, LM.rightKnee, LM.leftAnkle, LM.rightAnkl
 export const ARM_POINTS = [LM.leftWrist, LM.rightWrist];
 const TRACKED_POINTS = Object.values(LM);
 
-export function normalizeLandmarks(raw, aspect) {
-  return raw.map((point) => ({
+// world is MediaPipe's metric skeleton. Its depth stays the same size however far back the player
+// stands, where image depth shrinks with them, so depth readings prefer it when it is there.
+export function normalizeLandmarks(raw, aspect, world) {
+  return raw.map((point, index) => ({
     x: (1 - point.x) * aspect,
     y: point.y,
     z: (point.z ?? 0) * aspect, // negative is toward the camera
+    w: world?.[index]?.z,
     v: point.visibility ?? 0,
   }));
 }
@@ -83,7 +86,7 @@ class OneEuro {
 export class LandmarkSmoother {
   constructor({ minCutoff = 1.6, beta = 6 } = {}) {
     this.filters = new Map(
-      TRACKED_POINTS.map((index) => [index, [new OneEuro(minCutoff, beta), new OneEuro(minCutoff, beta), new OneEuro(minCutoff, beta)]]),
+      TRACKED_POINTS.map((index) => [index, [0, 1, 2, 3].map(() => new OneEuro(minCutoff, beta))]),
     );
     this.lastT = null;
   }
@@ -92,9 +95,15 @@ export class LandmarkSmoother {
     const dt = this.lastT === null ? 1 / 30 : Math.max(0.001, (t - this.lastT) / 1000);
     this.lastT = t;
     const out = points.slice();
-    for (const [index, [fx, fy, fz]] of this.filters) {
+    for (const [index, [fx, fy, fz, fw]] of this.filters) {
       const point = points[index];
-      out[index] = { x: fx.filter(point.x, dt), y: fy.filter(point.y, dt), z: fz.filter(point.z ?? 0, dt), v: point.v };
+      out[index] = {
+        x: fx.filter(point.x, dt),
+        y: fy.filter(point.y, dt),
+        z: fz.filter(point.z ?? 0, dt),
+        w: point.w === undefined ? undefined : fw.filter(point.w, dt),
+        v: point.v,
+      };
     }
     return out;
   }
