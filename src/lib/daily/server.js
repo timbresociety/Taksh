@@ -59,11 +59,20 @@ const live = { read: readDaily, write: writeDaily, make };
 
 // One resolve per date per instance at a time. A stored 0G game is kept; a starter game is retried
 // after two minutes, so a 0G or Arkiv hiccup at midnight doesn't stick for the day.
-// ponytail: per-process cache, one entry per date. Prune old dates if a process lives for months.
+// Only the dates a challenge entity can still exist for (8 days, its lifetime) are read or cached,
+// so a request can't grow the cache or trigger reads by naming arbitrary dates.
 const RETRY_MS = 120_000;
+export const WINDOW_DAYS = 8;
 const cache = new Map();
 
+export const inWindow = (date, now = Date.now()) => date <= dayKey(now) && date >= addDays(dayKey(now), -WINDOW_DAYS);
+
 export function dailyChallenge(date, now = Date.now()) {
+  if (!inWindow(date, now)) {
+    const spec = fallbackSpec(date);
+    return specHash(spec).then((hash) => ({ date, theme: themeFor(date).idea, spec, hash, source: "starter", requestId: null, key: null, reason: "This challenge has expired from Arkiv, so this is the date's starter game." }));
+  }
+  for (const key of cache.keys()) if (!inWindow(key, now)) cache.delete(key);
   const hit = cache.get(date);
   if (hit && (hit.kept || now - hit.at < RETRY_MS)) return hit.promise;
   const entry = { at: now, kept: false };

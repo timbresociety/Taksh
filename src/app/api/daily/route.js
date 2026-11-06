@@ -1,5 +1,5 @@
 import { addDays, dayKey, isDate, msUntilNextDay } from "@/lib/daily/daily";
-import { dailyChallenge } from "@/lib/daily/server";
+import { dailyChallenge, inWindow } from "@/lib/daily/server";
 import { arkivRoute, badRequest } from "../arkiv/_route";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export const GET = arkivRoute(async (request) => {
   const now = Date.now();
   const today = dayKey(now);
   const date = request.nextUrl.searchParams.get("date") ?? today;
-  if (!isDate(date) || date > today) throw badRequest(`No challenge for "${date}".`);
+  if (!isDate(date) || !inWindow(date, now)) throw badRequest(`No challenge for "${date}".`);
   const yesterday = addDays(date, -1);
   const [challenge, before] = await Promise.all([dailyChallenge(date, now), dailyChallenge(yesterday, now)]);
   return {

@@ -185,3 +185,23 @@ describe("daily on Arkiv", () => {
     assert.throws(() => readScope(new URLSearchParams({ daily: "2026-11-07') OR 1=1" })), /Unknown daily/);
   });
 });
+
+describe("daily cache window", async () => {
+  const { dailyChallenge, inWindow } = await import("../src/lib/daily/server.js");
+  const now = Date.UTC(2026, 10, 7, 12);
+
+  it("covers today and the 8 days a challenge lives, nothing else", () => {
+    assert.equal(inWindow("2026-11-07", now), true);
+    assert.equal(inWindow("2026-10-30", now), true);
+    assert.equal(inWindow("2026-10-29", now), false);
+    assert.equal(inWindow("2026-11-08", now), false);
+  });
+
+  it("answers an expired date with its starter game, without reading Arkiv", async () => {
+    const challenge = await dailyChallenge("1999-01-01", now);
+    assert.equal(challenge.source, "starter");
+    assert.equal(challenge.requestId, null);
+    assert.deepEqual(challenge.spec, fallbackSpec("1999-01-01"));
+    assert.match(challenge.hash, /^[0-9a-f]{64}$/);
+  });
+});
