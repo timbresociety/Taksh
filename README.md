@@ -1,13 +1,13 @@
 # Taksh
 
-Type a game idea, or pick one of thirteen games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. 0G, Arkiv and ENS come in a later pass.
+Type a game idea, or pick one of thirteen games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. Games are generated on 0G Private Computer, inside a TEE. Arkiv and ENS come in a later pass.
 
 ## Run it
 
 ```bash
 npm install
 npm run setup          # copies the MediaPipe runtime and fetches the pose models into public/
-cp .env.example .env.local   # add ANTHROPIC_API_KEY for real generation
+cp .env.example .env.local   # add OG_API_KEY (or ANTHROPIC_API_KEY) for real generation
 npm run build && npm start   # or: npm run dev
 ```
 
@@ -56,14 +56,24 @@ The camera only works on `http://localhost` or an HTTPS address. The `Network` a
 
 ## Model and prompts
 
-**Not chosen yet.** No credentials were configured, so no prompt has been sent to a real model.
+Games are generated on **0G Private Computer** with `glm-5.3`, on the `private` trust tier. Only TeeML providers can serve those requests, so the model runs inside a TEE and the prompt never leaves the enclave. The provider is `src/lib/pipeline/provider-0g.js`. It calls the 0G Router (`https://router-api.0g.ai/v1`, OpenAI-compatible) with plain `fetch` and needs no SDK.
 
-- Provisional default: `claude-opus-5-5`, set in `src/lib/pipeline/provider-claude.js`. Override it with `TAKSH_MODEL`.
-- Effort: `low` for intent, `medium` for generate and revise.
+- **Order.** The app picks 0G when `OG_API_KEY` is set, then Claude, then labelled fixtures. `TAKSH_PROVIDER=0g|claude|fixture` forces one. `OG_MODEL` changes the model, which must have a TeeML provider.
+- **Receipts.** Every reply carries `x_0g_trace` with a request ID, the provider's on-chain address and the cost. The pipeline returns these as `traces`, and the brief and result screens show the call count, total cost and last request ID.
+- **Request shape.** Strict JSON schema output, thinking off, and a price ceiling on every call (`X-0G-Provider-Max-Price-Usd-*`). A `402` (empty balance), `429` or `503` becomes a message the player can act on. `429` and `5xx` are retried once.
+- **What breaks without 0G.** Taksh can't turn an idea into a game. You're left with 13 starter games and keyword fixtures.
+
+Eval on 2026-11-06 (`npm run eval -- --provider 0g`, 20 cases, saved in `evals/results/`):
+
+| Setting | Passed | Generate time | Cost per game |
+| --- | --- | --- | --- |
+| Thinking on, no colour pattern | 7/20 | 21 to 113 s | about $0.014 |
+| Thinking off, `#rrggbb` pattern in the schema | 17/20 | 5 to 12 s | about $0.003 |
+
+With thinking on, 8 of 20 games failed validation on the first try, all because of colours that weren't `#rrggbb`. Each one needed a repair call. The three cases still failing are judgment calls. One idea got a question when it should have become a game, one became a game when it needed a question, and one became a game when it should have been marked unsupported.
+
 - Prompts: `prompts/intent.v2.md`, `prompts/generate.v2.md`, `prompts/revise.v2.md`. Versions are set in `src/lib/pipeline/prompts.js`. The list of templates, worlds, styles and tuning ranges is injected from `src/lib/spec/contract.js`.
-- Requests use server-side refusal fallback (`fallbacks: "default"`). Remove it from `provider-claude.js` if you don't want it.
-
-To settle this, add a key and run `npm run eval`. It checks each case for idea preservation, validity, playability and speed, against a budget of 8s for intent and 30s for generate or revise. If Opus misses the time budget, that is the reason to compare a second model with `npm run eval -- --model claude-haiku-5-5`.
+- The Claude path (`provider-claude.js`, default `claude-opus-5-5`) still works with `ANTHROPIC_API_KEY`. It hasn't been run since the colour pattern was added to the shared schema.
 
 ## What was tested
 

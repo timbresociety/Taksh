@@ -11,13 +11,16 @@ const tag = (name, value) => `<${name}>\n${value}\n</${name}>`;
 // A saved spec keeps tuning as an object, but a model reads and writes the { key, value } list.
 const forModel = (spec) => ({ ...spec, tuning: Object.entries(spec.tuning).map(([key, value]) => ({ key, value })) });
 
-function meta(provider, startedAt, attempts) {
+// traces are the 0G receipts (request ID, provider, cost) for each model call. Other providers have none.
+function meta(provider, startedAt, attempts, replies = []) {
+  const traces = replies.map((reply) => reply?.trace).filter(Boolean);
   return {
     source: provider.source,
     model: provider.model,
     ms: Date.now() - startedAt,
     attempts,
     promptVersions: PROMPT_VERSIONS,
+    ...(traces.length && { trustMode: provider.trustMode, traces }),
   };
 }
 
@@ -27,19 +30,20 @@ export async function clarifyIdea({ idea, clarification }, provider) {
   const parts = [tag("idea", idea)];
   if (clarification) parts.push(tag("clarification_answer", clarification));
 
-  const { data } = await provider.complete({
+  const reply = await provider.complete({
     stage: "intent",
     system,
     user: parts.join("\n\n"),
     schema: INTENT_SCHEMA,
     input: { idea, clarification },
   });
+  const { data } = reply;
 
   // One question at most, whatever the model decides.
   const status = data.status === "clarify" && clarification ? "ready" : data.status;
   // The closest game has to be one we can really build, whatever the model named.
   const template = templateInfo(data.brief?.template) ?? TEMPLATES[0];
-  const result = { status, brief: { ...data.brief, template: template.id }, ...meta(provider, startedAt, 1) };
+  const result = { status, brief: { ...data.brief, template: template.id }, ...meta(provider, startedAt, 1, [reply]) };
   if (status === "clarify") {
     result.question = data.question;
     result.options = data.options.slice(0, 4);
@@ -63,6 +67,7 @@ export async function generateGame({ idea, clarification, brief }, provider) {
   let attempts = 1;
   let check = validateSpec(first.data);
   const firstErrors = check.errors;
+  const replies = [first];
 
   if (!check.ok) {
     attempts = 2;
@@ -73,10 +78,11 @@ export async function generateGame({ idea, clarification, brief }, provider) {
       schema: GAME_SPEC_SCHEMA,
       input: { ...input, repair: true },
     });
+    replies.push(repaired);
     check = validateSpec(repaired.data);
   }
 
-  return { ok: check.ok, spec: check.spec, errors: check.errors, firstErrors, ...meta(provider, startedAt, attempts) };
+  return { ok: check.ok, spec: check.spec, errors: check.errors, firstErrors, ...meta(provider, startedAt, attempts, replies) };
 }
 
 export async function reviseGame({ spec, request }, provider) {
@@ -96,6 +102,7 @@ export async function reviseGame({ spec, request }, provider) {
   let attempts = 1;
   let data = first.data;
   let outcome = review(data);
+  const replies = [first];
 
   if (outcome.errors.length) {
     attempts = 2;
@@ -106,6 +113,7 @@ export async function reviseGame({ spec, request }, provider) {
       schema: REVISION_SCHEMA,
       input: { ...input, repair: true },
     });
+    replies.push(repaired);
     data = repaired.data;
     outcome = review(data);
   }
@@ -118,7 +126,7 @@ export async function reviseGame({ spec, request }, provider) {
     changeKind: data.changeKind,
     changeSummary: data.changeSummary,
     comparison: outcome.comparison,
-    ...meta(provider, startedAt, attempts),
+    ...meta(provider, startedAt, attempts, replies),
   };
 }
 

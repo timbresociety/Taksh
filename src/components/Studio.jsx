@@ -51,10 +51,11 @@ export default function Studio() {
     }
   }
 
-  async function generate(idea, clarification, brief) {
+  // traces are 0G receipts. The intent step's receipt is kept so the game's total cost is complete.
+  async function generate(idea, clarification, brief, earlier = []) {
     const generated = await post("/api/generate", { idea, clarification, brief });
     if (!generated.ok) throw new Error(`The generated game failed validation after a repair: ${generated.errors[0]}`);
-    setGame(generated);
+    setGame({ ...generated, traces: [...earlier, ...(generated.traces ?? [])] });
     setRevision(null);
     setStage("brief");
   }
@@ -66,12 +67,12 @@ export default function Studio() {
       setIntent(reading);
       if (reading.status === "ready") {
         setBusy("Building your game");
-        await generate(idea, clarification, reading.brief);
+        await generate(idea, clarification, reading.brief, reading.traces);
       }
     });
 
   const acceptClosest = () =>
-    attempt("Building the closest game", () => generate(draft.idea, draft.clarification || undefined, intent.brief));
+    attempt("Building the closest game", () => generate(draft.idea, draft.clarification || undefined, intent.brief, intent.traces));
 
   const reviseIdea = () => {
     setIntent(null);
@@ -110,7 +111,7 @@ export default function Studio() {
       const revised = await post("/api/revise", { spec: game.spec, request });
       if (!revised.ok) throw new Error(`That change didn't take: ${revised.errors[0]}`);
       setRevision({ ...revised, request });
-      setGame((current) => ({ ...current, spec: revised.spec, source: revised.source, model: revised.model }));
+      setGame((current) => ({ ...current, spec: revised.spec, source: revised.source, model: revised.model, traces: [...(current.traces ?? []), ...(revised.traces ?? [])] }));
     });
 
   const restart = () => {
@@ -126,7 +127,7 @@ export default function Studio() {
 
   return (
     <div className="studio" data-stage={stage}>
-      {stage !== "play" && stage !== "calibrate" && stage !== "practice" && <SourceNote status={status} />}
+      {stage !== "play" && stage !== "calibrate" && stage !== "practice" && <SourceNote status={status} game={stage === "idea" ? null : game} />}
 
       {stage === "idea" && (
         <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
@@ -191,7 +192,7 @@ export default function Studio() {
   );
 }
 
-function SourceNote({ status }) {
+function SourceNote({ status, game }) {
   if (!status) return null;
   if (status.source === "fixture") {
     return (
@@ -200,9 +201,20 @@ function SourceNote({ status }) {
       </p>
     );
   }
+  const traces = game?.traces ?? [];
+  if (traces.length) {
+    const cost = traces.reduce((sum, trace) => sum + (trace.costUsd ?? 0), 0);
+    const last = traces.at(-1);
+    return (
+      <p className="source-note source-note--0g" data-testid="source-note" title={traces.map((trace) => trace.requestId).join("\n")}>
+        Built on 0G with {game.model} in a private TEE. {traces.length} {traces.length === 1 ? "call" : "calls"}, ${cost.toFixed(4)}.
+        Request <code>{last.requestId.slice(0, 8)}</code>
+      </p>
+    );
+  }
   return (
     <p className="source-note" data-testid="source-note">
-      Generating with {status.model}
+      {status.source === "0g" ? `Generating on 0G with ${status.model} in a private TEE` : `Generating with ${status.model}`}
     </p>
   );
 }

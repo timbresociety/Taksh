@@ -105,7 +105,7 @@ export function contractText() {
 }
 
 const text = { type: "string" };
-const colour = { type: "string" };
+const colour = { type: "string", pattern: "^#[0-9a-fA-F]{6}$" };
 const object = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 const character = object({
   body: { type: "string", enum: BODIES.map((body) => body.id) },
