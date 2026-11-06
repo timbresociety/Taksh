@@ -1413,3 +1413,24 @@ kbd {
 .play[data-template="corners"] .movements li:not(:first-child) {
   display: none;
 }
+
+/* The 0G rival's state, under the score in Counter Bout. */
+.hud__rival {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  margin: 0;
+  max-width: 28ch;
+  font-weight: 700;
+  text-align: center;
+}
+.hud__rival small {
+  display: block;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.hud__rival[data-status="lost"] {
+  color: var(--volt);
+}

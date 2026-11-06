@@ -5,7 +5,7 @@ export const OG_BASE_URL = "https://router-api.0g.ai/v1";
 export const OG_DEFAULT_MODEL = "glm-5.3";
 export const OG_TRUST_MODE = "private";
 
-const MAX_TOKENS = { intent: 4000, generate: 16000, revise: 16000 };
+const MAX_TOKENS = { intent: 4000, generate: 16000, revise: 16000, rival: 400 };
 // Thinking stays off: with it on, generate took 31 to 39 s and still made the same mistakes (eval, 2026-11-06).
 // ponytail: fixed USD-per-1M-token ceilings, filtered by the router before failover. Move to env when a pricier model is needed.
 const MAX_PRICE = { prompt: "3", completion: "10" };

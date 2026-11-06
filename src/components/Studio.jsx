@@ -164,6 +164,7 @@ export default function Studio() {
           feed={feed}
           calibration={calibration}
           personal={practised[game.spec.template]}
+          rival={status?.source === "0g" ? "0g" : undefined}
           onRecalibrate={() => {
             setCalibration(null);
             setStage("calibrate");

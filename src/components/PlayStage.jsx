@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { startRivalBrain } from "@/lib/agent/rival-brain";
 import { GameSession } from "@/lib/game/session";
 import { playCue } from "@/lib/game/sound";
 import { GestureEngine } from "@/lib/motion/gestures";
@@ -23,17 +24,21 @@ const EVENT_CUES = {
   shot: "shot", grenade: "boom", empty: "tick",
 };
 
-export default function PlayStage({ spec, mode, feed, calibration, personal, onEnd, onQuit, onRecalibrate }) {
+export default function PlayStage({ spec, mode, feed, calibration, personal, rival, onEnd, onQuit, onRecalibrate }) {
   const host = useRef(null);
   const video = useRef(null);
   const overlay = useRef(null);
   const [hud, setHud] = useState(null);
   const [failure, setFailure] = useState(null);
+  const [brain, setBrain] = useState(null);
   const usesCamera = mode === "camera";
   const template = templateInfo(spec.template);
 
   useEffect(() => {
-    const session = new GameSession(spec, { usesCamera });
+    const brainy = rival === "0g" && Boolean(templateInfo(spec.template).plan);
+    const session = new GameSession(spec, { usesCamera, rival: brainy ? "0g" : undefined });
+    const rivalBrain = brainy ? startRivalBrain(session, { onChange: setBrain }) : null;
+    if (brainy) setBrain({ status: "thinking", taunt: null, decisions: 0 });
     if (window.location.search.includes("e2e")) window.__takshSession = session; // lets scripts/e2e.mjs read the game it plays
     const keys = new Map(template.actions.map((action) => [action.key.toLowerCase(), action]));
     let stage = null;
@@ -89,6 +94,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, onE
       const dt = Math.min(MAX_FRAME_MS, now - last);
       last = now;
 
+      rivalBrain?.tick();
       for (const event of session.tick(dt)) {
         if (event.type === "action") continue;
         stage.event(event, session.state);
@@ -113,7 +119,10 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, onE
       if (session.phase === "ended" && !ended) {
         ended = true;
         playCue("end");
-        setTimeout(() => onEnd(session.result()), 1100);
+        rivalBrain?.stop();
+        // A 0G-rival round carries its whole episode, so the result screen can store it on 0G.
+        const episode = rivalBrain && { spec, options: session.options, ...session.recording, decisions: rivalBrain.decisions };
+        setTimeout(() => onEnd({ ...session.result(), ...(episode && { episode }) }), 1100);
       }
       raf = requestAnimationFrame(frame);
     }
@@ -131,6 +140,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, onE
 
     return () => {
       alive = false;
+      rivalBrain?.stop();
       cancelAnimationFrame(raf);
       unsubscribe();
       window.removeEventListener("keydown", onKeyDown);
@@ -139,7 +149,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, onE
       window.removeEventListener("pointermove", onPointer);
       stage?.dispose();
     };
-  }, [spec, template, usesCamera, feed, calibration, personal, onEnd]);
+  }, [spec, template, usesCamera, feed, calibration, personal, rival, onEnd]);
 
   return (
     <main className="play" data-testid="play" data-template={spec.template} data-phase={hud?.phase ?? "loading"} data-score={hud?.score}>
@@ -151,6 +161,12 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, onE
           <span data-testid="score">{hud?.score ?? 0}</span>
         </div>
         {hud?.extra && <p className="hud__call" data-testid="call">{hud.extra}</p>}
+        {brain && (
+          <p className="hud__rival" data-testid="rival-brain" data-status={brain.status}>
+            {{ thinking: "0G rival is reading you", planned: brain.taunt ? `“${brain.taunt}”` : "0G rival has a plan", lost: "0G signal lost. Rival holds its guard" }[brain.status]}
+            <small>{brain.decisions} decisions on 0G</small>
+          </p>
+        )}
         <div className="hud__side">
           <div className="hud__clock" data-testid="clock">{hud?.clock}</div>
           {hud?.maxLives !== undefined && (
