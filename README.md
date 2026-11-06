@@ -88,7 +88,8 @@ The idea can also be spoken. "Say it" records up to 15 s in the browser, and `/a
 - **Order.** The app picks 0G when `OG_API_KEY` is set, then Claude, then labelled fixtures. `TAKSH_PROVIDER=0g|claude|fixture` forces one. `OG_MODEL` changes the model, which must have a TeeML provider.
 - **Receipts.** Every reply carries `x_0g_trace` with a request ID, the provider's on-chain address and the cost. The pipeline returns these as `traces`, and the brief and result screens show the call count, total cost and last request ID.
 - **Request shape.** Strict JSON schema output, thinking off, and a price ceiling on every call (`X-0G-Provider-Max-Price-Usd-*`). A `402` (empty balance), `429` or `503` becomes a message the player can act on. `429` and `5xx` are retried once.
-- **What breaks without 0G.** Taksh can't turn an idea into a game. You're left with 13 starter games and keyword fixtures.
+- **Today's challenge.** The first request of each UTC day sends that day's theme through the same generate pipeline on the private tier, validates the spec and stores it on Arkiv with 0G's request ID. The home card shows that ID. Everyone plays that one game and posts to that day's board. Code: `src/lib/daily/`.
+- **What breaks without 0G.** Taksh can't turn an idea into a game. You're left with 13 starter games and keyword fixtures. Today's challenge becomes a starter game picked from the date, the card says so, and no request ID is shown.
 
 Eval on 2026-11-06 (`npm run eval -- --provider 0g`, 20 cases, saved in `evals/results/`):
 
@@ -238,7 +239,9 @@ Live on Sepolia (2026-11-06), tested on an anvil fork first:
 
 ## Arkiv
 
-Scores and shared games are stored on Arkiv's Rabdi testnet (chain ID 7794095). When a round ends, the result screen reads the leaderboard live from Arkiv. You can narrow it to the same world and style, to this exact game (by spec hash), or to camera play only. Post your score and it becomes an entity, and the board reads again with your row in bold and your rank. "Publish this game" stores the whole spec as an entity. `/games` lists published games straight from Arkiv, and `/games/<entity key>` opens one to play.
+Scores, shared games and the daily challenge are stored on Arkiv's Rabdi testnet (chain ID 7794095). When a round ends, the result screen reads the leaderboard live from Arkiv. You can narrow it to the same world and style, to this exact game (by spec hash), or to camera play only. Post your score and it becomes an entity, and the board reads again with your row in bold and your rank. "Publish this game" stores the whole spec as an entity. `/games` lists published games straight from Arkiv, and `/games/<entity key>` opens one to play.
+
+Each UTC day has one challenge, a `taksh.daily.v1` entity holding the spec 0G made from the day's theme. The home card reads it and links to `/daily` to play. A daily round's score carries the date in an indexed `daily` column, so its result screen shows that day's board and your rank on it. `/daily/<date>` shows any day's board. Two server instances that race on the first request both serve the earliest entity.
 
 Writes go through `/api/arkiv/scores` and `/api/arkiv/games`, signed on the server with `ARKIV_PRIVATE_KEY`. The key never reaches the browser. Reads keep only entities that wallet owns, because anyone can write entities with our schema tag. With no key the board still reads, and with the RPC down the game still plays and the board says it is unavailable. Details are in `arkiv/`, starting with `arkiv/schema.md`.
 
@@ -251,7 +254,14 @@ curl -s https://rpc.rabdi.db-chain.testnet.arkiv.network -H "content-type: appli
   -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"arkiv_query\",\"params\":[\"arkiv.schema = str('taksh.scores.v1') AND \$owner = addr(0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30) ORDER BY score:i32 DESC\",{\"select\":{\"key\":true,\"attributes\":true,\"count\":true},\"limit\":\"0xa\"}]}"
 ```
 
-The same board through the app: `curl 'http://localhost:3000/api/arkiv/scores?template=poses'`. The response includes the exact query text sent to the node.
+Today's daily board (UTC date):
+
+```bash
+curl -s https://rpc.rabdi.db-chain.testnet.arkiv.network -H "content-type: application/json" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"arkiv_query\",\"params\":[\"arkiv.schema = str('taksh.scores.v1') AND daily = str('$(date -u +%F)') AND \$owner = addr(0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30) ORDER BY score:i32 DESC\",{\"select\":{\"key\":true,\"attributes\":true,\"count\":true},\"limit\":\"0xa\"}]}"
+```
+
+The same board through the app: `curl 'http://localhost:3000/api/arkiv/scores?template=poses'`, or `?daily=2026-11-07` for a day. The response includes the exact query text sent to the node.
 
 Live on Rabdi testnet (2026-11-06), written by `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30`:
 

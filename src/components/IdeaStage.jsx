@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { TEMPLATES } from "@/lib/templates";
 import MicButton from "./MicButton";
+import DailyCard from "./DailyCard";
 
 const EXAMPLES = [
   "A pixel goalkeeper saving shots in the forest",
@@ -65,6 +66,8 @@ export default function IdeaStage({ draft, intent, busy, error, fixture, voice, 
             </div>
             {fixture && <p className="fixture-hint">Fixture mode matches keywords such as run, box, fly, pose, Mumbai, Diwali, neon and pixel.</p>}
           </form>
+
+          <DailyCard />
 
           <section className="shelf" aria-labelledby="shelf-title">
             <h2 id="shelf-title">Or start from a game</h2>

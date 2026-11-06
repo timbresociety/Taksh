@@ -14,9 +14,10 @@ async function call(path, body) {
 }
 
 // The board is read live from Arkiv every time it opens, and again after a post.
-export default function ArkivBoard({ spec, result, mode, source, cover }) {
+// daily is { date, hash, source, reason } on a daily-challenge round. Its board is that date's scores.
+export default function ArkivBoard({ spec, result, mode, source, cover, daily }) {
   const [hash, setHash] = useState(null);
-  const [scope, setScope] = useState("template");
+  const [scope, setScope] = useState(daily ? "daily" : "template");
   const [cameraOnly, setCameraOnly] = useState(false);
   const [board, setBoard] = useState(null);
   const [name, setName] = useState("");
@@ -30,8 +31,11 @@ export default function ArkivBoard({ spec, result, mode, source, cover }) {
     specHash(spec).then(setHash, () => setHash(null)); // crypto.subtle needs localhost or HTTPS
   }, [spec]);
 
+  // A changed look or a revision makes it a different game, so it stays off the day's board.
+  const onDaily = Boolean(daily && hash === daily.hash);
+
   useEffect(() => {
-    const params = new URLSearchParams({ template: spec.template });
+    const params = new URLSearchParams(scope === "daily" && daily ? { daily: daily.date } : { template: spec.template });
     if (scope === "look") {
       params.set("world", spec.skin.world);
       params.set("style", spec.skin.style);
@@ -47,7 +51,7 @@ export default function ArkivBoard({ spec, result, mode, source, cover }) {
     return () => {
       live = false;
     };
-  }, [spec, scope, hash, cameraOnly, posted]);
+  }, [spec, scope, hash, cameraOnly, posted, daily]);
 
   async function run(label, work) {
     setBusy(label);
@@ -64,7 +68,7 @@ export default function ArkivBoard({ spec, result, mode, source, cover }) {
   const postScore = () =>
     run("Writing to Arkiv", async () => {
       localStorage.setItem(NAME_KEY, name);
-      setPosted(await call("/api/arkiv/scores", { spec, result, mode, player: name }));
+      setPosted(await call("/api/arkiv/scores", { spec, result, mode, player: name, ...(onDaily && { daily: daily.date }) }));
     });
 
   const publish = () => run("Publishing", async () => setPublished(await call("/api/arkiv/games", { spec, author: name, source, cover })));
@@ -74,7 +78,14 @@ export default function ArkivBoard({ spec, result, mode, source, cover }) {
   return (
     <section className="result__revise" data-testid="arkiv-board" aria-labelledby="board-title">
       <h2 id="board-title">Leaderboard</h2>
+      {daily && (
+        <p data-testid="daily-note">
+          {onDaily ? `Today's challenge, ${daily.date}. Your score goes on the day's board.` : hash ? "You changed today's game, so this round is off the daily board." : null}
+          {daily.source !== "0g" && <> {daily.reason}</>}
+        </p>
+      )}
       <div className="examples" role="group" aria-label="Which scores">
+        {daily && <button type="button" className="chip" aria-pressed={scope === "daily"} onClick={() => setScope("daily")}>Today&apos;s challenge</button>}
         <button type="button" className="chip" aria-pressed={scope === "template"} onClick={() => setScope("template")}>All {templateName}</button>
         <button type="button" className="chip" aria-pressed={scope === "look"} onClick={() => setScope("look")}>{spec.skin.world}, {spec.skin.style}</button>
         <button type="button" className="chip" aria-pressed={scope === "game"} disabled={!hash} onClick={() => setScope("game")}>This exact game</button>
@@ -128,7 +139,7 @@ export default function ArkivBoard({ spec, result, mode, source, cover }) {
         </form>
       ) : (
         <p data-testid="posted">
-          Posted. You are #{posted.rank} of {posted.total} on {templateName}.{" "}
+          Posted. You are #{posted.rank} of {posted.total} on {posted.daily ? `the ${posted.daily} challenge` : templateName}.{" "}
           <a href={`${EXPLORER}/tx/${posted.txHash}`} target="_blank" rel="noreferrer">See the transaction</a>
         </p>
       )}

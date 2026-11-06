@@ -1,0 +1,67 @@
+/* Today's challenge on the home page: a court-line card with the day's preview beside it. */
+.card {
+  max-width: 880px;
+  margin: 0 auto 56px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 260px);
+  gap: 20px;
+  padding: 18px 20px;
+  border: 3px solid var(--volt);
+  background: var(--court-deep);
+}
+
+.card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.label {
+  margin: 0;
+  color: var(--volt);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 4px 0 6px;
+  font-size: clamp(1.6rem, 3.6vw, 2.4rem);
+}
+
+.facts {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .card {
+    grid-template-columns: 1fr;
+  }
+}
+
+.actions a:not(:global(.button)),
+.page a:not(:global(.button)) {
+  color: inherit;
+}
+
+.actions a:global(.button) {
+  text-decoration: none;
+}
+
+.page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding-top: 76px;
+}

@@ -3,6 +3,7 @@
 import { bytes, defineSchema, i32, str, u64 } from "@arkiv-network/sdk/schema";
 import { STYLES, WORLDS } from "../spec/contract.js";
 import { templateInfo } from "../templates/index.js";
+import { isDate } from "../daily/daily.js";
 
 // The dev writer wallet. A fresh clone with no key still reads the live board through it.
 export const DEFAULT_WRITER = "0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30";
@@ -22,6 +23,9 @@ export const Scores = defineSchema("taksh.scores.v1", {
   outcome: str(),
   actions: i32(),
   durationMs: i32(),
+  // The UTC date of a daily-challenge round, so today's board is one eq(). Optional, so every score
+  // posted before the daily challenge still reads under this schema, and other rounds leave it unset.
+  daily: str().indexed().optional(),
 });
 
 export const Games = defineSchema("taksh.games.v1", {
@@ -37,6 +41,14 @@ export const Games = defineSchema("taksh.games.v1", {
   // The game's Swarm collection: cover.webp, spec.json and index.html. Optional, so games
   // published before Swarm still read under this schema.
   swarmRef: str().optional(),
+});
+
+// Today's challenge: the game 0G made for one UTC date. Every instance reads it, so everyone plays the same game.
+export const Daily = defineSchema("taksh.daily.v1", {
+  date: str().indexed(),
+  theme: str(),
+  requestId: str(), // 0G's request ID for the call that made the spec
+  spec: bytes(),
 });
 
 // Same JSON for the same spec, whatever order its keys were built in.
@@ -73,8 +85,9 @@ export function cleanName(raw) {
 const wholeNumber = (value, max = 2_147_483_647) => (Number.isFinite(value) ? Math.min(max, Math.max(0, Math.round(value))) : 0);
 const OUTCOMES = ["win", "lose", "complete"];
 
-export function scoreValues({ spec, hash, result, mode, player }) {
+export function scoreValues({ spec, hash, result, mode, player, daily }) {
   return {
+    ...(isDate(daily) && { daily }),
     template: spec.template,
     world: spec.skin.world,
     style: spec.skin.style,
@@ -103,6 +116,10 @@ export function gameValues({ spec, hash, author, source, swarmRef, now = Date.no
   };
 }
 
+export function dailyValues({ date, theme, requestId, spec }) {
+  return { date, theme: fitStr(theme), requestId: fitStr(requestId, 64), spec: new TextEncoder().encode(stableJson(spec)) };
+}
+
 // bytes come back as hex.
 export function readSpecBytes(hex) {
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
@@ -124,7 +141,15 @@ export const ENTITY_KEY = /^0x[0-9a-f]{64}$/i;
 export const SPEC_HASH = /^[0-9a-f]{64}$/;
 
 // A board's scope from query parameters. Anything unknown is refused, not passed to the node.
+// A daily board is one date across the day's game, so it needs no template.
 export function readScope(params) {
+  const daily = params.get("daily");
+  if (daily) {
+    if (!isDate(daily)) throw new Error(`Unknown daily "${daily}".`);
+    const mode = params.get("mode");
+    if (mode && mode !== "camera" && mode !== "keyboard") throw new Error(`Unknown mode "${mode}".`);
+    return mode ? { daily, mode } : { daily };
+  }
   const scope = { template: params.get("template") };
   if (!templateInfo(scope.template)) throw new Error(`Unknown template "${scope.template}".`);
   const checks = {
