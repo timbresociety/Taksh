@@ -1,6 +1,6 @@
 # Taksh
 
-Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. Games are generated on 0G Private Computer, inside a TEE. Arkiv and ENS come in a later pass.
+Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. Games are generated on 0G Private Computer, inside a TEE. A published game is an ENSv2 name on Sepolia, and its records are the game.
 
 ## Run it
 
@@ -160,6 +160,8 @@ Also confirmed on the production build:
 
 Every published game is an ENSv2 subname on Sepolia, such as `moon-hop.taksh-games.eth`, and the game itself is stored in that name's text records. `/play/<name>` resolves the name through the ENS Universal Resolver on every visit, rebuilds the spec from the records, runs it through `src/lib/spec/validate.js` and loads it. There is no copy of a published game anywhere else, so a name that stops resolving is a game that stops loading.
 
+`/name/<name>` shows what ENSv2 says about any name under .eth, read live on every visit (`inspectName` in `src/lib/ens/chain.js`): each registry on the way down from the .eth registry, the token's owner, expiry and role bitmap, whether the registry holding it is emancipated, its resolver, the owner's resolver roles, every record, and which text keys the Taksh server wallet may write. The play page, the publish panel and the rival's result panel link to it. `/play/<name>` for a name with no game, such as the rival's, opens it instead. `docs/ens-judging.md` maps each ENSv2 feature to its code and a Sepolia transaction.
+
 Records on each game name:
 
 | Key | Holds |
@@ -217,9 +219,17 @@ The 0G rival in Counter Bout has its own name, `rival.taksh-games.eth`, so the a
 | `taksh.rival.model`, `taksh.rival.trust`, `taksh.rival.provider` | `glm-5.3`, `private`, and the 0G TEE provider's address |
 | `taksh.rival.last-episode` | The 0G Storage root hash of the latest stored round |
 
-The owner key holds every role on that resolver. The server's registrar wallet holds `ROLE_SET_TEXT` on one resource, `keccak256("taksh.rival.last-episode")`, granted with `grantSetterRoles`. After each stored round, the episode route writes the new root hash there. A `setText` from the same wallet on `agent-context` or any other key reverts with `EACUnauthorizedAccountRoles`. The resolver serves only this name, so the grant reaches no other name.
+The rival is also a namespace. `rival.taksh-games.eth` has its own UserRegistry, and every round stored on 0G Storage becomes a name under it: `round-<first 10 hex of the root hash>.rival.taksh-games.eth`. Each round name:
 
-Set it up after `ens:setup`, and run it again with `TAKSH_URL=<live url>` to point `agent-endpoint[web]` at the deploy:
+- belongs to the rival's owner, with no token roles, so it can't be transferred (a transfer reverts with `TransferDisallowed`), renewed or pointed at another resolver
+- expires 30 days after the round
+- uses the rival's resolver, with `taksh.round.episode` (the root hash) and `taksh.round.score` (the score the server replayed)
+
+The round registry is emancipated. The owner key keeps only registrar and renew roles there, and the server wallet holds only `ROLE_REGISTRAR`, so nobody can take a round back before it expires.
+
+The owner key holds every role on the rival's resolver. The server's registrar wallet holds `ROLE_SET_TEXT` on three resources, `keccak256` of `taksh.rival.last-episode`, `taksh.round.episode` and `taksh.round.score`, each granted with `grantSetterRoles`. After each stored round, the episode route registers the round's name, then sends one resolver `multicall` that writes the round's two records and points `taksh.rival.last-episode` at it. A `setText` from the same wallet on `agent-context` or any other key reverts with `EACUnauthorizedAccountRoles`. The grants cover every name this resolver serves, which is the rival's and its rounds', and no other.
+
+Set it up after `ens:setup`, and run it again with `TAKSH_URL=<live url>` to point `agent-endpoint[web]` at the deploy. A rerun also adds the round registry and the two round grants to a rival set up before them:
 
 ```bash
 npm run ens:rival
@@ -233,6 +243,8 @@ Live on Sepolia (2026-11-06), tested on an anvil fork first:
 | Resolver | `0xCaea9600A51CE2796816A04262A8ACBc8ECA059B` |
 | One-key grant | [`0x7f1ff9e9…1edaa6`](https://sepolia.etherscan.io/tx/0x7f1ff9e928e3825f205e76dd73b2db8288696b438f7d804f8f314d6c7d1edaa6). `hasRoles` reads true for `last-episode`, false for `agent-context` |
 | First pointer | [`0xf9413c69…f370a0`](https://sepolia.etherscan.io/tx/0xf9413c69e8527c64bd1283ca9b6c2c0d5afc0a77e9ca2117a99e65e91ef370a0), set to round `0x9ef7bb08…60b32c`, which `npm run replay-episode` plays back to the same score |
+| Round registry | `0x1337DfE7216c2a2bD20378b2F7741155c8B70D5E`, deployed in [`0x5514041c…8719`](https://sepolia.etherscan.io/tx/0x5514041c8c36c2e4b6020a9b62cd2d34c0bffadd1e7750eb0198aabeec9a8719), attached in [`0xf26d9285…7ad9`](https://sepolia.etherscan.io/tx/0xf26d928546778d63e99205d440bb97967a26446054ca62781a9132d179d57ad9), `isEmancipated() == true` (2026-11-07) |
+| First round name | `round-a56ccebb00.rival.taksh-games.eth`, registered by the server in [`0xb9d51652…4b06`](https://sepolia.etherscan.io/tx/0xb9d516527a908a6f5d0ad2c49cc0bd79d7e0447aa4caf387c17d124e5b8a4b06), records in [`0xec67edc0…6d61`](https://sepolia.etherscan.io/tx/0xec67edc01600f4d02dc98bbe529c92ddc36e64735fd6ccdc7e84b10d88ea6d61) |
 
 ## How it fits together
 
