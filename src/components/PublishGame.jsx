@@ -55,7 +55,8 @@ export default function PublishGame({ spec }) {
             Published as <a href={`/play/${published.name}`} data-testid="ens-name">{published.name}</a>. Anyone can play it from that name.
           </p>
           <p>
-            Owner {published.owner}. Resolver {tx(published.txs.resolver)}, registration {tx(published.txs.register)}.
+            Owner {published.owner}. Resolver {tx(published.txs.resolver)}, registration {tx(published.txs.register)}.{" "}
+            <a href={`/name/${published.name}`}>See its owner, roles and records on ENS</a>.
           </p>
         </>
       ) : (

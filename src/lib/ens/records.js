@@ -1,9 +1,10 @@
 // A published game lives in the text records of its ENS name. This file is the pure half: how a
 // spec becomes records and back, and how a title becomes a label. No chain access here.
 
-// `taksh.spec` holds the whole spec. The other keys repeat single fields so the game reads in any
-// ENS app, and they win over the spec when they differ, so editing `taksh.world` in the ENS app
-// moves the game to that world.
+// `taksh.spec` holds the spec minus the fields that have a record of their own: template, title,
+// objective (as `description`), world and style. Those read in any ENS app, and editing
+// `taksh.world` in one moves the game to that world. Names published before this split carry the
+// whole spec in `taksh.spec`; the single records still win there.
 export const KEYS = {
   spec: "taksh.spec",
   template: "taksh.template",
@@ -35,11 +36,13 @@ export function slugLabel(text) {
   return slug;
 }
 
+// Every byte of a text record costs about 3,600 gas on the ENSv2 Permissioned Resolver (measured on
+// Sepolia, 2026-11-07), so the spec record doesn't repeat what the other records hold.
 export function specToRecords(spec, url) {
-  const json = JSON.stringify(spec);
-  if (new TextEncoder().encode(json).length > MAX_SPEC_BYTES) throw invalid(`This spec is over ${MAX_SPEC_BYTES} bytes, too large to publish.`);
+  if (new TextEncoder().encode(JSON.stringify(spec)).length > MAX_SPEC_BYTES) throw invalid(`This spec is over ${MAX_SPEC_BYTES} bytes, too large to publish.`);
+  const { template, title, objective, skin: { world, style, ...skin }, ...rest } = spec;
   const records = [
-    [KEYS.spec, json],
+    [KEYS.spec, JSON.stringify({ ...rest, skin })],
     [KEYS.template, spec.template],
     [KEYS.world, spec.skin.world],
     [KEYS.style, spec.skin.style],
@@ -66,6 +69,7 @@ export function recordsToSpec(texts) {
     ...spec,
     template: pick(KEYS.template) ?? spec.template,
     title: pick(KEYS.title) ?? spec.title,
+    objective: pick(KEYS.description) ?? spec.objective,
     skin: { ...spec.skin, world: pick(KEYS.world) ?? spec.skin?.world, style: pick(KEYS.style) ?? spec.skin?.style },
   };
 }

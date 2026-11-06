@@ -36,7 +36,9 @@ export default function RivalEpisode({ episode }) {
       )}
       {stored?.rival && (
         <p>
-          The rival&apos;s ENS name is <code>{stored.rival}</code>. The server is setting its <code>taksh.rival.last-episode</code> record to this round.
+          This round is getting its own ENS name, <a href={`/name/${stored.round}`} data-testid="rival-round-name">{stored.round}</a>, under the
+          rival&apos;s <a href={`/name/${stored.rival}`}>{stored.rival}</a>. It belongs to the rival, expires in 30 days and can&apos;t be
+          transferred. It takes about half a minute to appear on Sepolia.
         </p>
       )}
       {stored?.error && <p className="rival-episode__error">{stored.error}{stored.rootHash && <> Root <code>{stored.rootHash.slice(0, 12)}…</code></>}</p>}

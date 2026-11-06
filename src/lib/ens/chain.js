@@ -1,8 +1,8 @@
 // ENSv2 on chain: publish a game as a subname, and read a game back from a name. Server only,
 // because publishing signs with the registrar key.
 import {
-  createPublicClient, createWalletClient, encodeFunctionData, http, isAddress, keccak256, labelhash, parseAbi, parseEventLogs,
-  toHex, zeroAddress,
+  createPublicClient, createWalletClient, encodeFunctionData, fallback, http, isAddress, keccak256, labelhash, nonceManager, parseAbi,
+  parseEventLogs, toHex, zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
@@ -54,6 +54,8 @@ export const ABI = {
     "function grantRootRoles(uint256 roleBitmap, address account) returns (bool)",
     "function hasRootRoles(uint256 roleBitmap, address account) view returns (bool)",
     "function isEmancipated() view returns (bool)",
+    "function roles(uint256 resource, address account) view returns (uint256)",
+    "function setSubregistry(uint256 anyId, address subregistry)",
   ]),
   registrar: parseAbi([
     "function isAvailable(string label) view returns (bool)",
@@ -73,6 +75,8 @@ export const ABI = {
     "function hasRootRoles(uint256 roleBitmap, address account) view returns (bool)",
     "function hasRoles(uint256 resource, uint256 roleBitmap, address account) view returns (bool)",
     "function grantSetterRoles(bytes setter, address account) returns (bool)",
+    "function roles(uint256 resource, address account) view returns (uint256)",
+    "function multicall(bytes[] calls) returns (bytes[])",
   ]),
   userRegistry: parseAbi(["function initialize((address account, uint256 roleBitmap)[] grants)"]),
   mockUsdc: parseAbi(["function mint(address to, uint256 amount)", "function approve(address spender, uint256 amount) returns (bool)"]),
@@ -91,12 +95,29 @@ export function ensConfig(env = process.env) {
   return config;
 }
 
-export function publicClient(config) {
-  return createPublicClient({ chain: config.deployment.chain, transport: http(config.rpcUrl, { batch: true }) });
+// viem's built-in Sepolia RPC (thirdweb) answers 429 once its free quota is used, and viem then
+// waits out Retry-After, so on 2026-11-07 /play/<name> hung 90 s and a publish never finished.
+// ENS_RPC_URL goes first, then two keyless public endpoints, then viem's own. Each gets 8 s and no
+// retry of its own, so a dead one costs seconds and the next takes over.
+export const PUBLIC_RPCS = {
+  sepolia: ["https://ethereum-sepolia-rpc.publicnode.com", "https://sepolia.gateway.tenderly.co"],
+};
+
+// undefined at the end is viem's own RPC for the chain.
+export const rpcUrls = (config) => [...new Set([config.rpcUrl, ...(PUBLIC_RPCS[config.chainName] ?? [])].filter(Boolean)), undefined];
+
+export function rpcTransport(config, { batch = false } = {}) {
+  return fallback(rpcUrls(config).map((url) => http(url, { batch, timeout: 8000, retryCount: 0 })), { retryCount: 1 });
 }
 
+export function publicClient(config) {
+  return createPublicClient({ chain: config.deployment.chain, transport: rpcTransport(config, { batch: true }) });
+}
+
+// A publish and a rival round can sign from the registrar wallet at the same moment. viem's nonce
+// manager hands out nonces in order within this process, so the two don't collide.
 export function walletClient(config, key) {
-  return createWalletClient({ account: privateKeyToAccount(key), chain: config.deployment.chain, transport: http(config.rpcUrl) });
+  return createWalletClient({ account: privateKeyToAccount(key, { nonceManager }), chain: config.deployment.chain, transport: rpcTransport(config) });
 }
 
 export const dnsEncode = (name) => toHex(packetToBytes(name));
@@ -177,27 +198,157 @@ export async function readGame(config, rawName) {
 }
 
 // The 0G rival's own name, rival.<parent>. Its owner holds every resolver role. The server's
-// registrar wallet holds ROLE_SET_TEXT on one key, LAST_EPISODE, and nothing else on it.
+// registrar wallet holds ROLE_SET_TEXT on three keys, LAST_EPISODE and the two ROUND_KEYS, and
+// nothing else on it.
 export const RIVAL_LABEL = "rival";
 export const LAST_EPISODE = "taksh.rival.last-episode";
 export const rivalName = (config) => `${RIVAL_LABEL}.${config.parent}`;
 
-// After a round is on 0G Storage: point the rival's name at it. One setText, about 60k gas. Only
-// while the parent's owner owns the name, so the server never signs for a resolver someone else set.
-export async function writeRivalEpisode(config, rootHash) {
+// The rival is a namespace too: rival.<parent> has its own UserRegistry, and every stored round
+// becomes round-<root hash prefix>.rival.<parent>. The server holds ROLE_REGISTRAR there and nothing
+// else. A round name belongs to the rival's owner, expires after ROUND_DAYS, and carries no token
+// roles, so it can't be transferred, renewed or pointed at another resolver. It uses the rival's
+// resolver, where the server may set the two ROUND_KEYS.
+export const ROUND_KEYS = { episode: "taksh.round.episode", score: "taksh.round.score" };
+export const ROUND_DAYS = 30;
+export const roundLabel = (rootHash) => `round-${rootHash.slice(2, 12).toLowerCase()}`;
+export const roundName = (config, rootHash) => `${roundLabel(rootHash)}.${rivalName(config)}`;
+// The keys the server wallet is granted on the rival's resolver, one grantSetterRoles each.
+export const RIVAL_SERVER_KEYS = [LAST_EPISODE, ROUND_KEYS.episode, ROUND_KEYS.score];
+
+// After a round is on 0G Storage. Only while the parent's owner owns the rival's name, so the server
+// never signs for a resolver someone else set. Two transactions:
+// 1. Register the round's name in the rival's registry, unless it is there already.
+// 2. One multicall on the rival's resolver: point the rival at the round, and write the round's
+//    root hash and server-replayed score on the round's own name.
+// Without a rival registry (ens:rival not re-run yet), only the pointer is written.
+export async function writeRivalEpisode(config, rootHash, score) {
   if (config.reason || !config.registrarKey) return null;
   const client = publicClient(config);
+  const wallet = walletClient(config, config.registrarKey);
   const name = rivalName(config);
   const parent = await readParent(config, client);
-  const state = await client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getState", args: [BigInt(labelhash(RIVAL_LABEL))] });
+  const rivalId = BigInt(labelhash(RIVAL_LABEL));
+  const [state, rivalRegistry, resolver] = await Promise.all([
+    client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getState", args: [rivalId] }),
+    client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getSubregistry", args: [RIVAL_LABEL] }),
+    client.getEnsResolver({ name }),
+  ]);
   if (STATUS[state.status] !== "registered" || state.latestOwner.toLowerCase() !== parent.owner.toLowerCase()) throw new Error(`${name} is not set up. Run npm run ens:rival.`);
-  const resolver = await client.getEnsResolver({ name });
-  const hash = await walletClient(config, config.registrarKey).writeContract({
-    address: resolver, abi: ABI.resolver, functionName: "setText", args: [dnsEncode(name), LAST_EPISODE, rootHash],
-  });
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error(`Setting ${LAST_EPISODE} on ${name} failed in ${hash}.`);
-  return hash;
+  const send = async (what, request) => {
+    const hash = await wallet.writeContract(request);
+    const receipt = await client.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") throw new Error(`${what} failed in ${hash}.`);
+    return hash;
+  };
+
+  const calls = [[name, LAST_EPISODE, rootHash]];
+  let round = null;
+  let registerTx = null;
+  if (rivalRegistry !== zeroAddress) {
+    round = roundName(config, rootHash);
+    const label = roundLabel(rootHash);
+    const taken = await client.readContract({ address: rivalRegistry, abi: ABI.registry, functionName: "getState", args: [BigInt(labelhash(label))] });
+    if (STATUS[taken.status] === "available") {
+      const expiry = BigInt(Math.floor(Date.now() / 1000) + ROUND_DAYS * 86_400);
+      registerTx = await send(`Registering ${round}`, {
+        address: rivalRegistry, abi: ABI.registry, functionName: "register", args: [label, state.latestOwner, zeroAddress, resolver, 0n, expiry],
+      });
+    }
+    calls.push([round, ROUND_KEYS.episode, rootHash]);
+    if (Number.isFinite(score)) calls.push([round, ROUND_KEYS.score, String(score)]);
+  }
+  const data = calls.map(([target, key, value]) => encodeFunctionData({ abi: ABI.resolver, functionName: "setText", args: [dnsEncode(target), key, value] }));
+  const recordsTx = await send(`Writing ${name}'s records`, { address: resolver, abi: ABI.resolver, functionName: "multicall", args: [data] });
+  return { round, registerTx, recordsTx };
+}
+
+// Role bit names from the Permissioned Registry and Permissioned Resolver role tables.
+export const REGISTRY_ROLE_NAMES = {
+  0n: "register", 4n: "register reserved", 8n: "set parent", 12n: "unregister", 16n: "renew", 20n: "set subregistry",
+  24n: "set resolver", 36n: "set URI", 124n: "upgrade",
+};
+export const RESOLVER_ROLE_NAMES = {
+  0n: "set address", 4n: "set text", 8n: "set contenthash", 12n: "set ABI", 16n: "set interface", 20n: "set name",
+  24n: "set data", 28n: "link records", 120n: "name this contract", 124n: "upgrade",
+};
+
+// A role bitmap as readable names. Bit b + 128 is the admin of bit b, which lets its holder grant
+// and revoke it. The registry's transfer permission exists only as an admin bit (28 + 128).
+export function roleNames(bitmap, names) {
+  const out = [];
+  for (const [bit, name] of Object.entries(names)) {
+    const b = BigInt(bit);
+    if (bitmap & (1n << b)) out.push(name);
+    if (bitmap & (1n << (b + 128n))) out.push(`${name} (admin)`);
+  }
+  if (names === REGISTRY_ROLE_NAMES && bitmap & ROLES.canTransferAdmin) out.push("transfer");
+  return out;
+}
+
+// The text keys the name view reads: the game's own, plus ENSIP-26 agent records and the rival's.
+export const NAME_KEYS = [
+  ...Object.values(KEYS), "agent-context", "agent-endpoint[web]", "taksh.rival.model", "taksh.rival.trust", "taksh.rival.provider", LAST_EPISODE,
+  ROUND_KEYS.episode, ROUND_KEYS.score,
+];
+
+// Everything ENSv2 says about one name under .eth, read live. Walks the registry hierarchy down
+// from the .eth registry, label by label, then reads the token's state and its owner's roles in
+// the registry that holds it, the resolver the Universal Resolver finds, and which text keys the
+// server wallet may write on that resolver.
+export async function inspectName(config, rawName) {
+  const name = normalize(rawName);
+  const labels = name.split(".");
+  if (labels.length < 2 || labels.at(-1) !== "eth") throw Object.assign(new Error("Only names under .eth can be read here."), { status: 400 });
+  const client = publicClient(config);
+  const read = (address, abi, functionName, args) => client.readContract({ address, abi, functionName, args });
+
+  const path = [];
+  let registry = config.deployment.ethRegistry;
+  for (let i = labels.length - 2; i >= 0; i -= 1) {
+    const label = labels[i];
+    const [state, subregistry] = await Promise.all([
+      read(registry, ABI.registry, "getState", [BigInt(labelhash(label))]),
+      read(registry, ABI.registry, "getSubregistry", [label]),
+    ]);
+    path.push({ name: labels.slice(i).join("."), registry, status: STATUS[state.status], owner: state.latestOwner, expiry: state.expiry, resource: state.resource });
+    if (i === 0 || subregistry === zeroAddress) break;
+    registry = subregistry;
+  }
+  const last = path.at(-1);
+  const entry = last.name === name && last.status !== "available" ? last : null;
+
+  const server = config.registrarKey ? privateKeyToAccount(config.registrarKey).address : null;
+  const [rivalResolver, resolver, emancipated, tokenRoles, ...texts] = await Promise.all([
+    config.parent ? client.getEnsResolver({ name: rivalName(config) }).catch(() => null) : null,
+    client.getEnsResolver({ name }),
+    entry ? read(entry.registry, ABI.registry, "isEmancipated") : null,
+    entry && entry.status === "registered" ? read(entry.registry, ABI.registry, "roles", [entry.resource, entry.owner]) : 0n,
+    ...NAME_KEYS.map((key) => client.getEnsText({ name, key }).catch(() => null)),
+  ]);
+  const records = Object.fromEntries(NAME_KEYS.map((key, i) => [key, texts[i]]).filter(([, value]) => value));
+
+  let ownerResolverRoles = 0n;
+  let serverKeys = [];
+  if (resolver && resolver !== zeroAddress) {
+    const keys = [...new Set([...Object.keys(records), ...RIVAL_SERVER_KEYS, KEYS.spec])];
+    const [ownerRoles, ...grants] = await Promise.all([
+      entry ? read(resolver, ABI.resolver, "roles", [0n, entry.owner]).catch(() => 0n) : 0n,
+      ...(server ? keys.map((key) => read(resolver, ABI.resolver, "hasRoles", [textResource(key), ROLES.setText, server]).catch(() => false)) : []),
+    ]);
+    ownerResolverRoles = ownerRoles;
+    serverKeys = server ? keys.map((key, i) => ({ key, canWrite: grants[i] })) : [];
+  }
+
+  return {
+    name, chain: config.chainName, explorer: config.deployment.chain.blockExplorers?.default.url,
+    path, entry, emancipated, resolver: resolver && resolver !== zeroAddress ? resolver : null, records,
+    // The rival or one of its rounds: under rival.<parent>, where only the owner and the server can
+    // register, and served by the rival's own resolver. Records anywhere else make no claim.
+    isRival: Boolean(config.parent && rivalResolver && resolver === rivalResolver && (name === rivalName(config) || name.endsWith(`.${rivalName(config)}`))),
+    tokenRoles: roleNames(tokenRoles, REGISTRY_ROLE_NAMES), ownerResolverRoles: roleNames(ownerResolverRoles, RESOLVER_ROLE_NAMES),
+    server, serverKeys, block: await client.getBlockNumber(),
+  };
 }
 
 function unavailable(message) {
