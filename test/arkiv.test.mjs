@@ -4,7 +4,7 @@ import { createPublicClient, createWalletClient, ExpirationTime, SchemaMismatchE
 import { rabdi } from "@arkiv-network/sdk/chains";
 import { custom, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Games, Scores, cleanName, fitStr, gameValues, plainRow, readScope, readSpecBytes, scoreValues, specHash, stableJson } from "../src/lib/arkiv/schema.js";
+import { Games, SCORE_DAYS, Scores, cleanName, daysLeft, fitStr, gameValues, plainRow, readScope, readSpecBytes, scoreValues, specHash, stableJson } from "../src/lib/arkiv/schema.js";
 import { gamesQuery, scoreQuery } from "../src/lib/arkiv/store.js";
 import { starterSpec } from "../src/lib/spec/starter.js";
 
@@ -97,6 +97,7 @@ describe("arkiv queries", () => {
   it("lists games newest first, optionally for one template", () => {
     assert.equal(gamesQuery(reader, OWNER).toString(), `arkiv.schema = str('taksh.games.v1') AND $owner = addr(${OWNER}) ORDER BY publishedAt:u64 DESC`);
     assert.match(gamesQuery(reader, OWNER, { template: "pads" }).toString(), /template = str\('pads'\)/);
+    assert.match(gamesQuery(reader, OWNER, { template: "pads", world: "moon" }).toString(), /template = str\('pads'\) AND world = str\('moon'\)/);
   });
 });
 
@@ -117,6 +118,17 @@ describe("arkiv write throttle", async () => {
     }
     assert.equal(accepted, 20);
     assert.doesNotThrow(() => throttle(from("10.0.1.1"), 4000, start + 61000));
+  });
+});
+
+describe("arkiv lifetimes", () => {
+  it("counts whole days left from 2 s blocks, never below zero", () => {
+    const day = 86400 / 2;
+    assert.equal(daysLeft(1000 + SCORE_DAYS * day, 1000), 30);
+    assert.equal(daysLeft(1000 + day - 1, 1000), 0);
+    assert.equal(daysLeft(10n, 500), 0); // read after it expired, before the node dropped it
+    // ExpirationTime.max() on a game, as read on 2026-11-06: about six months.
+    assert.equal(daysLeft(8167433, 308735), 181);
   });
 });
 

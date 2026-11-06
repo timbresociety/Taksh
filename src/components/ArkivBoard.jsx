@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { EXPLORER, MAX_NAME, specHash } from "@/lib/arkiv/schema";
+import { EXPLORER, MAX_NAME, SCORE_DAYS, specHash } from "@/lib/arkiv/schema";
 import { templateInfo } from "@/lib/templates";
 
 const NAME_KEY = "taksh.player";
@@ -106,6 +106,7 @@ export default function ArkivBoard({ spec, result, mode, source, cover, daily })
               <th scope="col">Score</th>
               <th scope="col">World</th>
               <th scope="col">Played with</th>
+              <th scope="col">Expires in</th>
             </tr>
           </thead>
           <tbody>
@@ -116,12 +117,17 @@ export default function ArkivBoard({ spec, result, mode, source, cover, daily })
                 <td>{row.score}</td>
                 <td>{row.world}, {row.style}</td>
                 <td>{row.mode}</td>
+                <td>{row.daysLeft} d</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      {board?.rows && <p className="fixture-hint">{board.count} scores match, read at block {board.block}.</p>}
+      {board?.rows && (
+        <p className="fixture-hint">
+          {board.count} scores match, read at block {board.block}. Arkiv deletes each score {SCORE_DAYS} days after it is posted, so this board is the last month of play.
+        </p>
+      )}
 
       {!posted ? (
         <form

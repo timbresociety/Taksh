@@ -7,10 +7,10 @@ import { i32 } from "@arkiv-network/sdk/schema";
 import { http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { pickEarliest } from "../daily/daily.js";
-import { DEFAULT_WRITER, Daily, ENTITY_KEY, Games, Scores, dailyValues, gameValues, plainRow, readSpecBytes, scoreValues } from "./schema.js";
+import { DEFAULT_WRITER, Daily, ENTITY_KEY, Games, SCORE_DAYS, Scores, dailyValues, daysLeft, gameValues, plainRow, readSpecBytes, scoreValues } from "./schema.js";
 
 export const BOARD_SIZE = 10;
-const SCORE_LIFETIME = () => ExpirationTime.fromDays(30); // a rolling monthly board
+const SCORE_LIFETIME = () => ExpirationTime.fromDays(SCORE_DAYS); // a rolling monthly board
 const GAME_LIFETIME = () => ExpirationTime.max(); // about 182 days, extendable
 // Today's and yesterday's games are the ones the app reads. Eight days keeps a week of past
 // challenges readable from the RPC, plus a day of slack.
@@ -81,7 +81,7 @@ export function connect() {
 // scope: { template, world?, style?, hash?, mode? } or { daily, mode? }. Every condition is an indexed column.
 export function scoreQuery(reader, owner, scope) {
   let query = reader
-    .select({ $key: true, player: true, score: true, world: true, style: true, mode: true, outcome: true, actions: true, durationMs: true })
+    .select({ $key: true, $expiresAt: true, player: true, score: true, world: true, style: true, mode: true, outcome: true, actions: true, durationMs: true })
     .from(Scores)
     .ownedBy(owner)
     .where(scope.daily ? eq("daily", scope.daily) : eq("template", scope.template));
@@ -92,20 +92,26 @@ export function scoreQuery(reader, owner, scope) {
   return query.orderBy(desc("score")).limit(BOARD_SIZE).withCount();
 }
 
-export function gamesQuery(reader, owner, { template, limit = 30 } = {}) {
+export function gamesQuery(reader, owner, { template, world, limit = 30 } = {}) {
   let query = reader
-    .select({ $key: true, title: true, template: true, world: true, style: true, author: true, source: true, specHash: true, publishedAt: true, swarmRef: true })
+    .select({ $key: true, $expiresAt: true, title: true, template: true, world: true, style: true, author: true, source: true, specHash: true, publishedAt: true, swarmRef: true })
     .from(Games)
     .ownedBy(owner);
   if (template) query = query.where(eq("template", template));
+  if (world) query = query.where(eq("world", world));
   return query.orderBy(desc("publishedAt")).limit(limit).withCount();
 }
+
+const withDaysLeft = (entity, block) => {
+  const { expiresAt, ...row } = plainRow(entity);
+  return { ...row, daysLeft: daysLeft(expiresAt, block) };
+};
 
 export async function topScores(scope) {
   const { reader, owner } = connect();
   const query = scoreQuery(reader, owner, scope);
   const page = await read(query, "read the board");
-  return { rows: page.entities.map(plainRow), count: Number(page.count), block: Number(page.blockNumber), query: query.toString(), owner };
+  return { rows: page.entities.map((entity) => withDaysLeft(entity, page.blockNumber)), count: Number(page.count), block: Number(page.blockNumber), query: query.toString(), owner };
 }
 
 function requireWriter() {
@@ -164,7 +170,7 @@ export const canWrite = () => Boolean(connect().writer);
 export async function listGames(options) {
   const { reader, owner } = connect();
   const page = await read(gamesQuery(reader, owner, options), "list games");
-  return { games: page.entities.map(plainRow), count: Number(page.count) };
+  return { games: page.entities.map((entity) => withDaysLeft(entity, page.blockNumber)), count: Number(page.count) };
 }
 
 // The same spec published twice points at the first entity instead of paying for a second.
