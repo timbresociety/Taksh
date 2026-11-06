@@ -19,7 +19,8 @@
     "replay-episode": "node scripts/replay-episode.mjs",
     "ens:setup": "node --env-file=.env.local scripts/ens-setup.mjs",
     "ens:rival": "node --env-file=.env.local scripts/ens-rival.mjs",
-    "swarm": "node --env-file-if-exists=.env.local scripts/swarm.mjs"
+    "swarm": "node --env-file-if-exists=.env.local scripts/swarm.mjs",
+    "arkiv:probe": "node --env-file-if-exists=.env.local scripts/arkiv-probe.mjs"
   },
   "dependencies": {
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.13",
