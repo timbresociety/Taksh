@@ -24,7 +24,7 @@ export default function RivalEpisode({ episode }) {
     <div className="rival-episode" data-testid="rival-episode">
       <p>
         The rival made {decided.length} {decided.length === 1 ? "decision" : "decisions"} on 0G (${cost.toFixed(4)})
-        {stops > 0 && `, and held its guard ${stops} ${stops === 1 ? "time" : "times"} when 0G did not answer`}.
+        {stops > 0 && `, and waited ${stops} ${stops === 1 ? "time" : "times"} when 0G did not answer`}.
         {last?.read && <> Its read on you: “{last.read}”</>}
       </p>
       {!stored && <p>Saving this round to 0G Storage…</p>}

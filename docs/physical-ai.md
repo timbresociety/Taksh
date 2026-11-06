@@ -1,4 +1,4 @@
-# Physical AI: a sparring rival whose brain runs on 0G
+# Physical AI: rivals whose brains run on 0G
 
 Taksh turns a typed or spoken idea into a body-controlled game you play in front of a webcam. In Counter Bout you box a rival. Your body is the controller: pose tracking reads your guard, your jabs and your leans, 30 times a second, on your machine. The rival's decisions come from `glm-5.3` on 0G Private Computer, inside a TEE.
 
@@ -15,6 +15,21 @@ Motion stays on the device. The game loop, the rival's animation, hit detection 
 The rival adapts to the person. In the round below, its second read was "Can't read the right hand at all, keep hammering it", and it threw right twice.
 
 A decision costs about $0.0004 and takes 3 to 5 s.
+
+## A second rival: the striker in Last Line
+
+Last Line is a goal cut into nine zones, and each zone takes a different move to save: a hand up for a top corner, a leg out for a low one, a squat for the bottom. With 0G on, the striker's zones come from `glm-5.3` the same way: the browser sends which zones you saved and which went in, and 0G plans the next three. With no plan the striker waits, the HUD says "Striker waiting", and after 20 s with no plan the match ends. It never picks a zone itself.
+
+A real-time match on 2026-11-07, with a keeper who saved every high shot and none of the low ones:
+
+```text
+t=3.4s   tr,bl,mc  "No data yet; probing all heights for weak spots."
+t=15.1s  br,tc,mr
+t=26.1s  tr,bc,bl  "Saved: tr, mc, tc; missed: bl, br; mixed zones."
+win, score 1880, stored after the server's replay matched
+```
+
+Both games share one route, one ledger and one set of checks. `src/lib/agent/rival.js` has a brain per game: the moves 0G may plan, its prompt, and the only observation fields that reach the model. Each decision on the ledger carries its game, so a decision issued for Counter Bout can't be used in a Last Line match.
 
 ## The four must-haves
 

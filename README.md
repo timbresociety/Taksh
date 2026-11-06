@@ -103,9 +103,11 @@ With thinking on, 8 of 20 games failed validation on the first try, all because 
 - Prompts: `prompts/intent.v2.md`, `prompts/generate.v2.md`, `prompts/revise.v2.md`. Versions are set in `src/lib/pipeline/prompts.js`. The list of templates, worlds, styles and tuning ranges is injected from `src/lib/spec/contract.js`.
 - The Claude path (`provider-claude.js`, default `claude-opus-5-5`) still works with `ANTHROPIC_API_KEY`. It hasn't been run since the colour pattern was added to the shared schema.
 
-## 0G rival in Counter Bout
+## 0G rivals in Counter Bout and Last Line
 
 With 0G connected, the Counter Bout rival only throws shots its 0G brain planned. This is our Physical AI entry, written up against the track's requirements in `docs/physical-ai.md`. Every few seconds the browser sends the fight so far to `/api/rival/decide`: health, time left, and which recent shots the player dodged. `glm-5.3` on the private tier returns the next three shots, a taunt and a read on the player. Each decision costs about $0.0004 and takes 3 to 5 s. The rival asks again while one shot is still queued.
+
+Last Line's striker works the same way. 0G picks which of the nine goal zones to shoot at next, from which zones the keeper saved and which went in. With no plan the striker waits rather than pick a zone itself.
 
 - **Safe stop.** If 0G errors or takes over 6 s, no plan arrives, so the rival holds its guard and throws nothing. It never makes up a shot, and the HUD says "0G signal lost".
 - **Episode log.** `GameSession` records every step's dt, every move and every plan. At the end of a round, `/api/rival/episode` checks each plan against what 0G really returned (by request ID, single use), replays the round, and uploads it to 0G Storage on Galileo testnet. The result screen shows the root hash.

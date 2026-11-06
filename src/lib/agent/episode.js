@@ -10,12 +10,12 @@
 // A bot that plays live with human timing still gets through. Nothing in a browser game stops that.
 import { replayEpisode } from "../game/session.js";
 import { templateInfo } from "../templates/index.js";
+import { brainFor } from "./rival.js";
 
 export const MAX_EPISODE_BYTES = 512 * 1024;
 const MAX_STEPS = 30000; // 120 s at 250 fps
 const MAX_LOG = 5000;
 const MAX_DT_MS = 50; // PlayStage never steps further than this
-const SIDES = ["left", "right", "high"];
 const CLOCK_SLACK_MS = 1500; // network and frame jitter between the server clock and the game clock
 const UPLOAD_WINDOW_MS = 5 * 60 * 1000; // a failed upload can be retried, for a while
 const IN_TIME_MS = 5000; // the browser gives up on a decision after 6 s; one served faster was played
@@ -28,13 +28,15 @@ const refuse = (message) => Object.assign(new Error(message), { status: 400, exp
 // Pure: round comes from loadRound, so this runs the same in tests and on any server instance.
 export function checkEpisode(raw, spec, round, now = Date.now()) {
   const { dts, log, decisions } = raw ?? {};
+  const brain = brainFor(spec?.template);
+  if (!brain) throw refuse("This game has no 0G rival.");
   if (!Array.isArray(dts) || dts.length > MAX_STEPS || !dts.every((dt) => Number.isFinite(dt) && dt > 0 && dt <= MAX_DT_MS)) throw refuse("The step times are not valid.");
   if (!Array.isArray(log) || log.length > MAX_LOG) throw refuse("The move log is not valid.");
   let lastStep = 0;
   for (const entry of log) {
     const [step, kind, value] = Array.isArray(entry) ? entry : [];
     const shaped = Number.isInteger(step) && step >= lastStep && step <= dts.length
-      && ((kind === "act" && typeof value === "string" && value.length <= 32) || (kind === "plan" && Array.isArray(value) && value.length <= 4 && value.every((side) => SIDES.includes(side))));
+      && ((kind === "act" && typeof value === "string" && value.length <= 32) || (kind === "plan" && Array.isArray(value) && value.length <= 4 && value.every((move) => brain.moves.includes(move))));
     if (!shaped) throw refuse("The move log is not valid.");
     lastStep = step;
   }
@@ -52,7 +54,7 @@ export function checkEpisode(raw, spec, round, now = Date.now()) {
   if (new Set(claimed.map((decision) => decision.requestId)).size !== claimed.length) throw refuse("A 0G decision appears twice in this round.");
   const issued = claimed.map((decision, index) => {
     const record = known.get(decision.requestId);
-    if (!record || JSON.stringify(record.plan) !== JSON.stringify(plans[index][2])) throw refuse("A 0G decision in this round was not issued by this server.");
+    if (!record || record.template !== spec.template || JSON.stringify(record.plan) !== JSON.stringify(plans[index][2])) throw refuse("A 0G decision in this round was not issued by this server.");
     return record;
   });
 

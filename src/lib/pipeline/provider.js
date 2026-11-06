@@ -1,16 +1,17 @@
-// Picks the provider once per server process: 0G when OG_API_KEY is set, then Claude, then fixtures.
+// Picks the provider: 0G when OG_API_KEY is set, then Claude, then fixtures. A fallback is checked again after a minute.
 // TAKSH_PROVIDER=0g|claude|fixture forces one. A forced provider that can't be reached falls to fixtures.
 import { checkClaude, createClaudeProvider } from "./provider-claude.js";
 import { createFixtureProvider } from "./provider-fixture.js";
 import { check0g, createOgProvider } from "./provider-0g.js";
 
-// A reached provider is kept for the process. A fallback is retried after a minute, so one slow
-// answer from the 0G router at startup doesn't leave the server on fixtures until it restarts.
-const RETRY_MS = 60_000;
+// A reached provider is kept for the process, and so is a forced TAKSH_PROVIDER=fixture. A fallback
+// is checked again after a minute, so one slow 0G /models answer doesn't leave the whole process on
+// fixtures until it restarts.
+const RETRY_FALLBACK_MS = 60_000;
 let cached = null;
 
 export async function getProvider() {
-  if (cached && (cached.kept || Date.now() - cached.at < RETRY_MS)) return cached.promise;
+  if (cached && (cached.kept || Date.now() - cached.at < RETRY_FALLBACK_MS)) return cached.promise;
   const entry = { at: Date.now(), kept: false };
   entry.promise = resolveProvider().then((result) => {
     entry.kept = result.reason === null || process.env.TAKSH_PROVIDER === "fixture";

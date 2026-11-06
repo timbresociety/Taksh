@@ -187,6 +187,9 @@ export default {
     state.plan = sides.filter((side) => side in ATTACKS).slice(0, 4);
   },
 
+  // The brain asks again while one shot is still queued, so the next plan lands before the queue runs dry.
+  needsPlan: (state) => state.plan.length <= 1 && !state.attack,
+
   // What the 0G brain sees: the fight so far, and which of its shots the player read.
   observe: (state) => ({
     secondsLeft: Math.max(0, Math.ceil((state.durationMs - state.t) / 1000)),

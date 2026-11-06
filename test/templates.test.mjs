@@ -407,6 +407,12 @@ describe("validator", () => {
     assert.deepEqual(check.spec.tuning, { ...defaultTuning(runner), lives: 2 });
   });
 
+  it("refuses a title or objective with no words, like the \"...\" glm-5.3 sometimes sends", () => {
+    assert.deepEqual(validateSpec({ ...specOf(runner), objective: "..." }).errors, ["objective must be words, not \"...\"."]);
+    assert.deepEqual(validateSpec({ ...specOf(runner), title: " — " }).errors, ["title must be words, not \" — \"."]);
+    assert.deepEqual(validateSpec({ ...specOf(runner), title: "दौड़" }).errors, []);
+  });
+
   it("takes its own output back unchanged", () => {
     const { spec } = validateSpec(specOf(runner));
     assert.deepEqual(validateSpec(spec).spec, spec);
