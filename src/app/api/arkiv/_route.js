@@ -21,14 +21,6 @@ export async function readBody(request) {
   }
 }
 
-// Every write costs the writer wallet gas, so one client gets one write every few seconds.
-// ponytail: in-memory and per server process, swap for a shared store if this runs on more than one.
-const lastWrite = new Map();
-export function throttle(request, ms = 4000) {
-  const client = request.headers.get("x-forwarded-for")?.split(",")[0].trim() || "local";
-  const now = Date.now();
-  if (now - (lastWrite.get(client) ?? 0) < ms) throw Object.assign(badRequest("Slow down: one post every few seconds."), { status: 429 });
-  lastWrite.set(client, now);
-}
+export { throttle } from "@/lib/arkiv/throttle";
 
 export { badRequest };

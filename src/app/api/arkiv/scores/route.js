@@ -17,12 +17,13 @@ export const GET = arkivRoute(async (request) => {
 });
 
 // The score is what the browser says it is. The spec must still be a real, playable game.
+// ponytail: anyone can post any score. Fix with a signed session token issued at play start if the board matters.
 export const POST = arkivRoute(async (request) => {
   const body = await readBody(request);
   const checked = validateSpec(body.spec);
   if (!checked.ok) throw badRequest(`That game spec is not valid: ${checked.errors[0]}`);
   if (typeof body.result?.score !== "number") throw badRequest("The score is missing.");
   throttle(request);
-  const hash = await specHash(body.spec);
+  const hash = await specHash(checked.spec);
   return { available: true, hash, ...(await postScore({ spec: checked.spec, hash, result: body.result, mode: body.mode, player: body.player })) };
 });

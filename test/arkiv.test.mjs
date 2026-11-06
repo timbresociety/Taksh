@@ -91,3 +91,23 @@ describe("arkiv queries", () => {
     assert.match(gamesQuery(reader, OWNER, { template: "pads" }).toString(), /template = str\('pads'\)/);
   });
 });
+
+describe("arkiv write throttle", async () => {
+  const { throttle } = await import("../src/lib/arkiv/throttle.js");
+  const from = (ip) => ({ headers: new Headers({ "x-forwarded-for": ip }) });
+
+  it("caps total writes per minute even when every request claims a new IP", () => {
+    const start = 1_000_000_000;
+    let accepted = 0;
+    for (let i = 0; i < 50; i += 1) {
+      try {
+        throttle(from(`10.0.0.${i}`), 4000, start + i);
+        accepted += 1;
+      } catch (error) {
+        assert.equal(error.status, 429);
+      }
+    }
+    assert.equal(accepted, 20);
+    assert.doesNotThrow(() => throttle(from("10.0.1.1"), 4000, start + 61000));
+  });
+});
