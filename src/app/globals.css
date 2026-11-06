@@ -954,6 +954,31 @@ kbd {
   height: auto;
 }
 
+.pitch__box:has(.button--mic) {
+  grid-template-columns: 1fr auto auto;
+}
+
+.button--mic {
+  border-right: 3px solid var(--line);
+}
+
+.button--mic.is-recording {
+  background: #e5484d;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .button--mic.is-recording {
+    animation: mic-pulse 1s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes mic-pulse {
+  to {
+    opacity: 0.7;
+  }
+}
+
 .shelf {
   max-width: 1320px;
   margin: 0 auto;
@@ -1271,8 +1296,14 @@ kbd {
     height: 46vh;
   }
 
-  .pitch__box {
+  .pitch__box,
+  .pitch__box:has(.button--mic) {
     grid-template-columns: 1fr;
+  }
+
+  .button--mic {
+    border-right: 0;
+    border-bottom: 3px solid var(--line);
   }
 }
 
@@ -1517,4 +1548,37 @@ kbd {
 .cursor-lab__field video {
   opacity: 0.45;
   transform: scaleX(-1);
+}
+
+/* The 0G rival's state, under the score in Counter Bout. */
+.hud__rival {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  margin: 0;
+  max-width: 28ch;
+  font-weight: 700;
+  text-align: center;
+}
+.hud__rival small {
+  display: block;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.hud__rival[data-status="lost"] {
+  color: var(--volt);
+}
+
+.rival-episode {
+  margin-top: 20px;
+  max-width: 46ch;
+  font-size: 0.95rem;
+}
+.rival-episode p {
+  margin: 0 0 8px;
+}
+.rival-episode__error {
+  color: var(--volt);
 }

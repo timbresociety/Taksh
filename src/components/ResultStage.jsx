@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import RivalEpisode from "./RivalEpisode";
+import ArkivBoard from "./ArkivBoard";
+import PublishGame from "./PublishGame";
 
 const SUGGESTIONS = ["Give me more time", "Make it harder", "Switch it to neon"];
 
@@ -29,6 +32,7 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
             </div>
           ))}
         </dl>
+        {result.episode && <RivalEpisode episode={result.episode} />}
       </section>
 
       <section className="result__revise">
@@ -91,11 +95,14 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
             Back to all games
           </button>
         </div>
+        <PublishGame key={JSON.stringify(spec)} spec={spec} />
         <details className="spec-json">
           <summary>GameSpec</summary>
           <pre>{JSON.stringify(spec, null, 2)}</pre>
         </details>
       </section>
+
+      <ArkivBoard spec={spec} result={result} mode={mode} source={game.source} cover={game.cover} />
     </main>
   );
 }
