@@ -99,6 +99,39 @@ describe("matka", () => {
     assert.ok(new Set(seen).size < seen.length / 2, `${new Set(seen).size} shapes in ${seen.length} bars`);
   });
 
+  it("high and low pots are a jump and a duck, never an arm slashing up or down", () => {
+    for (const game of [matka, blades]) {
+      const gestures = game.bindings.map((binding) => binding.gesture);
+      assert.ok(gestures.includes("jump") && gestures.includes("squat_down"), game.id);
+      assert.equal(gestures.some((gesture) => gesture === "slash_up" || gesture === "slash_down"), false, game.id);
+      assert.equal(game.framing, "full", game.id);
+      assert.deepEqual(game.actions.filter((action) => ["slash_up", "slash_down"].includes(action.id)).map((action) => action.label), ["Jump", "Duck"]);
+    }
+  });
+
+  it("leaves time to land or stand up around every jump and duck", () => {
+    for (const seed of [1, 7, 42]) {
+      const chart = chartOf({}, seed);
+      for (let i = 1; i < chart.length; i += 1) {
+        const body = ["up", "down"].includes(chart[i].dir) || ["up", "down"].includes(chart[i - 1].dir);
+        if (body) assert.ok(chart[i].at - chart[i - 1].at >= 900, `seed ${seed} pot ${i}`);
+      }
+      assert.ok(chart.some((pot) => pot.dir === "up") && chart.some((pot) => pot.dir === "down"), `seed ${seed}`);
+    }
+  });
+
+  it("a jump or a duck may land a little after the beat, a slash may not", () => {
+    const lateBy = (dir, offset) => {
+      const state = matka.create(specOf(matka, { windowMs: 200 }));
+      const pot = state.chart.find((item) => item.dir === dir);
+      while (state.t < pot.at + offset) matka.step(state, 10);
+      return matka.act(state, `slash_${dir}`)[0].type;
+    };
+    assert.equal(lateBy("up", 330), "good");
+    assert.equal(lateBy("down", 330), "good");
+    assert.notEqual(lateBy("left", 330), "good");
+  });
+
   it("a pot is on screen for its whole approach, at least 1.2 seconds", () => {
     assert.equal(matka.tuning.approachMs.min, 1200);
     const state = matka.create(specOf(matka, { approachMs: 1200 }));

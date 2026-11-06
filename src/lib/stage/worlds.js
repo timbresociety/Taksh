@@ -14,6 +14,7 @@ import { seafrontBackdrop } from "./props/seafront.js";
 // the same way for a model built in code, from the registry in props/index.js.
 //
 // Beyond the roles, a world may set:
+//   high         the overhead bar a runner rolls under, built a lane wide; a plain bar stands in without it
 //   clear        how far from the road's centre the scattered scenery starts, in a lane game
 //   farWidth     half the room a far model needs, measured from the kerb side
 //   behind       models for a further row, behindSpacing apart
@@ -104,6 +105,7 @@ export const WORLD_LOOKS = {
     ],
     backdrop: streetBackdrop,
     low: ["proc:pothole", "proc:puddle", "proc:cones@1", "proc:barricade@1", "proc:cowsitting@1"],
+    high: ["proc:metrobar", "proc:bmcbar"],
     wall: ["proc:board@2.5", "proc:auto@2.1", "proc:taxi@1.75"], pickup: "proc:vadapav@0.6", hazard: "proc:cone@1.1",
     train: "proc:local", ramp: "proc:ramp",
   },
@@ -121,7 +123,8 @@ export const WORLD_LOOKS = {
     ],
     keepInRing: (x, z) => z > -9, noFarInLayers: true,
     backdrop: seafrontBackdrop,
-    low: ["proc:tetrapod@1", "props:Barrel@1"], wall: ["proc:bhelcart@2.5", "proc:kulficart@2.5"], pickup: "proc:kulfi@0.7", hazard: "proc:tetrapod@1.1",
+    low: ["proc:tetrapod@1", "props:Barrel@1"], high: ["proc:metrobar", "proc:bmcbar"],
+    wall: ["proc:bhelcart@2.5", "proc:kulficart@2.5"], pickup: "proc:kulfi@0.7", hazard: "proc:tetrapod@1.1",
     train: "proc:coach", ramp: "proc:ramp",
   },
   diwali: {

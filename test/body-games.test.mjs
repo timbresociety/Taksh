@@ -3,6 +3,7 @@
 // camera: the drive path is fed readings by hand, and test/cardio.test.mjs is what reads a body.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { practiceMoves } from "../src/lib/game/practice.js";
 import { GameSession } from "../src/lib/game/session.js";
 import { CARDIO_MOVES, LOCKED_MOVES } from "../src/lib/motion/gestures.js";
 import { clarifyIdea } from "../src/lib/pipeline/pipeline.js";
@@ -11,7 +12,7 @@ import { DEFAULT_HERO, DEFAULT_RIVAL, SPEC_VERSION, gestureInfo } from "../src/l
 import { STARTER_LOOKS, starterSpec } from "../src/lib/spec/starter.js";
 import { MOVE_POSES } from "../src/lib/stage/coach.js";
 import { EXERCISES, calledExercise, repsFor } from "../src/lib/templates/circuit.js";
-import { LEAN_AT } from "../src/lib/templates/handi.js";
+import { LEAN_AT, potHeight, wobbling } from "../src/lib/templates/handi.js";
 import { MIN_LEAD_MS, ZONES } from "../src/lib/templates/keeper.js";
 import { TEMPLATES, defaultTuning, simulate, templateInfo } from "../src/lib/templates/index.js";
 
@@ -517,138 +518,150 @@ describe("Last Line", () => {
 });
 
 describe("Dahi Handi", () => {
-  const atWindow = (state) => {
-    run(handi, state, 8000, (live) => {
-      if (live.phase === "window") live.status = "paused";
-    });
-    state.status = "playing";
+  const climbed = (state) => {
+    handi.act(state, "climb");
     return state;
   };
 
-  it("the owner's spec: a squat jump climbs, and hands up or a flap steadies", () => {
-    assert.equal(handi.bindings.find((binding) => binding.gesture === "squat_jump").action, "climb");
-    assert.equal(handi.bindings.find((binding) => binding.gesture === "hands_up").action, "steady");
-    assert.equal(handi.bindings.find((binding) => binding.gesture === "flap").action, "steady");
+  it("a jump climbs and both hands up steadies, the two moves a laptop camera reads best", () => {
+    assert.deepEqual(handi.bindings.map(({ gesture, action }) => [gesture, action]), [["jump", "climb"], ["hands_up", "steady"]]);
   });
 
-  it("a jump in the window climbs a tier", () => {
-    const state = atWindow(handi.create(specOf(handi)));
-    const events = handi.act(state, "climb");
-    assert.ok(["climb", "perfect"].includes(events[0].type));
-    assert.equal(state.tier, 1);
-  });
-
-  it("a jump just before the shout still counts, because a squat starts early", () => {
-    const state = handi.create(specOf(handi));
-    state.phase = "call";
-    state.phaseMs = 200;
-    handi.act(state, "climb");
-    assert.equal(state.tier, 1);
-  });
-
-  it("a jump well before the window climbs nothing and shoves the tower", () => {
-    const state = handi.create(specOf(handi));
-    state.phase = "call";
-    state.phaseMs = 1000;
-    state.sway = 0.1;
-    assert.deepEqual(types(handi.act(state, "climb")), ["wrong"]);
-    assert.equal(state.tier, 0);
-    assert.ok(Math.abs(state.sway) > 0.1);
-  });
-
-  it("a window left to pass is a slip, and the call comes round again", () => {
-    const state = atWindow(handi.create(specOf(handi)));
-    const events = run(handi, state, state.windowMs + 3000);
-    assert.ok(types(events).includes("miss"));
-    assert.ok(types(events).includes("call"));
-  });
-
-  it("the shout gives the full warning before a fall, even at the fastest lean", () => {
-    const state = handi.create(specOf(handi, { swayRate: handi.tuning.swayRate.max }));
-    state.tier = state.tiers;
-    state.sway = LEAN_AT;
-    state.phaseMs = 1e9;
-    let warned = 0;
-    while (state.lives === state.startLives && warned < 20000) {
-      handi.step(state, 20);
-      warned += 20;
+  it("practice teaches each move once, with its own demo and its own key", () => {
+    for (const usesCamera of [true, false]) {
+      const moves = practiceMoves(handi, usesCamera);
+      assert.deepEqual(moves.map((move) => move.gesture), ["jump", "hands_up"]);
+      assert.deepEqual(moves.map((move) => move.action.keyLabel), ["Space", "H"]);
+      for (const { demo } of moves) assert.equal(typeof MOVE_POSES[demo], "function", demo);
     }
-    assert.ok(warned >= MIN_WARNING_MS, `${warned} ms`);
   });
 
-  it("a shove can't carry the tower past the shout", () => {
-    const state = atWindow(handi.create(specOf(handi)));
-    state.sway = 0.5;
-    handi.act(state, "climb");
-    assert.ok(Math.abs(state.sway) <= LEAN_AT);
-  });
-
-  it("steadying pulls the tower back, and arms can only go up so fast", () => {
+  it("a jump climbs a tier and sets the tower wobbling, and the call turns to hands up", () => {
     const state = handi.create(specOf(handi));
-    state.sway = 0.8;
-    handi.act(state, "steady");
-    assert.ok(Math.abs(state.sway) < 0.25);
-    const after = state.sway;
-    assert.deepEqual(handi.act(state, "steady"), []);
-    assert.equal(state.sway, after);
-  });
-
-  it("a tower left leaning falls a tier and costs a life, and enough falls end it", () => {
-    const state = handi.create(specOf(handi));
-    state.tier = 2;
-    state.sway = 0.98;
-    state.phaseMs = 1e9;
-    const lives = state.lives;
-    assert.ok(types(run(handi, state, 300)).includes("fall"));
-    assert.equal(state.lives, lives - 1);
+    assert.equal(handi.hud(state).extra, "Jump to climb");
+    assert.equal(types(handi.act(state, "climb"))[0], "climb");
     assert.equal(state.tier, 1);
+    assert.ok(wobbling(state));
+    assert.ok(Math.abs(state.sway) < LEAN_AT, "a climb alone never sets off the shout");
+    assert.equal(handi.hud(state).extra, "Hands up to steady");
   });
 
-  it("the last leap breaks the pot, and the next one hangs a tier higher", () => {
-    const state = atWindow(handi.create(specOf(handi, { pots: 2, tiers: 2 })));
-    state.tier = state.tiers;
-    assert.ok(types(handi.act(state, "climb")).includes("smash"));
-    assert.equal(state.broken, 1);
-    assert.equal(state.tier, 0);
-    assert.equal(state.pot, 1);
-    assert.equal(state.won, false);
-    atWindow(state);
-    state.tier = state.tiers + 1;
-    assert.ok(types(handi.act(state, "climb")).includes("smash"));
-    assert.equal(state.won, true);
+  it("a jump while it wobbles climbs nothing and costs nothing", () => {
+    const state = climbed(handi.create(specOf(handi)));
+    const { sway, lives, score } = state;
+    assert.deepEqual(types(handi.act(state, "climb")), ["shaky"]);
+    assert.equal(state.tier, 1);
+    assert.deepEqual([state.sway, state.lives, state.score], [sway, lives, score]);
   });
 
-  it("one missed shout on the ground is forgiven, and a climb clears a run of them", () => {
-    const state = handi.create(specOf(handi));
-    run(handi, state, 60000, (live) => {
-      if (live.stalled === 1) live.status = "paused";
+  it("hands up stands the tower straight, and it stays straight however long the next jump takes", () => {
+    const state = climbed(handi.create(specOf(handi)));
+    assert.equal(types(handi.act(state, "steady"))[0], "clear");
+    assert.equal(state.sway, 0);
+    run(handi, state, 20000);
+    assert.equal(state.sway, 0);
+    assert.equal(handi.hud(state).extra, "Jump to climb");
+    handi.act(state, "climb");
+    assert.equal(state.tier, 2);
+  });
+
+  it("arms can only go up so fast", () => {
+    const state = climbed(handi.create(specOf(handi)));
+    handi.act(state, "steady");
+    climbed(state);
+    assert.deepEqual(handi.act(state, "steady"), []);
+    assert.ok(wobbling(state));
+  });
+
+  it("a wobble grows by itself, the shout gives a full warning, and the tower falls a tier for a life", () => {
+    const state = climbed(climbed(handi.create(specOf(handi, { swayRate: handi.tuning.swayRate.max }))));
+    assert.equal(state.tier, 1, "the second jump was too soon");
+    let warned = null;
+    const events = run(handi, state, 20000, (live, t) => {
+      if (warned === null && Math.abs(live.sway) >= LEAN_AT) warned = t;
+      if (live.falls) live.status = "paused";
     });
     state.status = "playing";
-    const sway = state.sway;
-    run(handi, state, 500);
-    assert.equal(state.sway, sway);
-    state.stalled = 5;
-    state.phase = "window";
-    state.phaseMs = 1000;
+    const fell = events.findIndex((event) => event.type === "fall");
+    assert.ok(fell >= 0);
+    assert.equal(state.tier, 0);
+    assert.equal(state.lives, state.startLives - 1);
+    assert.equal(handi.hud(state).extra, "Tower fell. Regroup");
+    assert.ok(state.t - warned >= MIN_WARNING_MS, `${state.t - warned} ms`);
+  });
+
+  it("the climber regroups after a fall and can climb again, and enough falls lose the round", () => {
+    const state = handi.create(specOf(handi, { lives: 2 }));
+    const events = run(handi, state, 120000, (live) => {
+      if (!wobbling(live)) handi.act(live, "climb");
+    });
+    assert.equal(state.status, "ended");
+    assert.equal(handi.result(state).outcome, "lose");
+    assert.ok(types(events).filter((type) => type === "fall").length === 2);
+    assert.ok(state.climbed >= 2, "it climbed again after the first fall");
+  });
+
+  it("a jump from the top smashes the pot, the hero comes down, and the next pot hangs a tier higher", () => {
+    const state = handi.create(specOf(handi, { pots: 2, tiers: 2 }));
+    state.tier = 2;
+    assert.equal(handi.hud(state).extra, "Jump to smash the pot");
+    const events = handi.act(state, "climb");
+    assert.deepEqual(types(events), ["leap", "smash"]);
+    assert.equal(events[1].last, false);
+    assert.deepEqual([state.broken, state.tier, state.pot, state.won], [1, 0, 1, false]);
+    assert.equal(potHeight(state), 3);
+    assert.equal(handi.hud(state).extra, "Pot smashed!");
+    assert.deepEqual(handi.act(state, "climb"), [], "the crew is still building the next tower");
+    assert.ok(types(run(handi, state, 3000)).includes("ready"));
+    state.tier = 3;
+    assert.equal(handi.act(state, "climb")[1].last, true);
+    assert.equal(state.won, true);
+    run(handi, state, 5000);
+    assert.equal(handi.result(state).outcome, "win");
+  });
+
+  it("the clock ends a round that is not finished, and that is not a win", () => {
+    const state = handi.create(specOf(handi, { durationS: 45 }));
+    const events = run(handi, state, 60000);
+    assert.equal(state.t, 45000);
+    assert.ok(types(events).includes("timeout"));
+    assert.equal(handi.result(state).outcome, "complete");
+  });
+
+  it("the last pot's celebration plays out even with the clock run down", () => {
+    const state = handi.create(specOf(handi, { pots: 1 }));
+    state.tier = potHeight(state);
+    state.t = state.durationMs - 100;
     handi.act(state, "climb");
-    assert.equal(state.stalled, 0);
+    run(handi, state, 1000);
+    assert.equal(state.status, "playing");
+    run(handi, state, 5000);
+    assert.equal(handi.result(state).outcome, "win");
   });
 
-  it("the warning before a climb is never under the full time, and the window is generous", () => {
-    assert.ok(handi.tuning.callMs.min >= MIN_WARNING_MS);
-    assert.ok(handi.tuning.windowMs.min >= 1500);
+  it("the call on screen always names the move the bot would make", () => {
+    const state = handi.create(specOf(handi));
+    run(handi, state, 60000, (live) => {
+      const wanted = handi.bot(live, "quick");
+      const call = handi.hud(live).extra;
+      if (wanted === "climb") assert.match(call, /^Jump/);
+      if (wanted === "steady") assert.match(call, /^Hands up/);
+      if (wanted) handi.act(live, wanted);
+    });
+    assert.equal(handi.result(state).outcome, "win");
   });
 
-  it("flap and hands up both steady through the session, and a squat jump climbs", () => {
+  it("a jump and a hands up through the session climb and steady", () => {
     const session = new GameSession(specOf(handi), { usesCamera: true });
     session.tick(3100);
-    session.state.sway = 0.8;
-    session.handleGesture({ gesture: "flap", t: 0, confidence: 0.9 });
-    assert.ok(Math.abs(session.state.sway) < 0.25);
-    session.state.phase = "window";
-    session.state.phaseMs = 1000;
-    session.handleGesture({ gesture: "squat_jump", t: 0, confidence: 0.9 });
+    session.handleGesture({ gesture: "jump", t: 0, confidence: 0.9 });
     assert.equal(session.state.tier, 1);
+    session.tick(400);
+    session.handleGesture({ gesture: "hands_up", t: 400, confidence: 0.9 });
+    assert.equal(session.state.sway, 0);
+    session.tick(400);
+    session.handleGesture({ gesture: "jump", t: 800, confidence: 0.9 });
+    assert.equal(session.state.tier, 2);
   });
 });
 

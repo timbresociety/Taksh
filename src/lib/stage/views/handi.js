@@ -1,9 +1,9 @@
 // Dahi Handi: a human tower in matching shirts, a pot of curd on a rope, and the hero climbing to it.
+// A card beside the tower always names the next move, and every move answers with a word of its own.
 import * as THREE from "three";
-import { LEAN_AT, potHeight } from "../../templates/handi.js";
+import { LEAN_AT, atTop, potHeight, wobbling } from "../../templates/handi.js";
 import { MOVE_POSES, applyPose } from "../coach.js";
 import { forge } from "../props/forge.js";
-import { alarmCard } from "./blades.js";
 import { damp } from "./shared.js";
 
 const TIER_H = 1.4; // a shoulder to the next pair of feet
@@ -12,12 +12,56 @@ const PERSON_M = 0.95;
 const POT_ABOVE = 2.5;
 const SIDE_X = 2.1; // where the climber waits, beside the tower
 const CLIMB_S = 0.45;
+const DOWN_S = 0.8;
+const LEAP_S = 0.5;
 const STEADY_S = 0.5;
-const POT_BACK_S = 2.2;
-const TIER_BEND = 0.055;
+const TOP_HOLD_S = 1.4; // the hero stays up with the broken pot a moment before the next tower is built
+const POT_BACK_S = 2.4;
+const POP_S = 0.9;
+const CHEER_S = 2.2;
+const TIER_BEND = 0.08;
 const CROWD = 16;
+const SHARDS = 9;
+const MIN_BACK = 9;
+const FRAME_SLACK = 1.3; // of the span from the hero's feet to the top of the pot
 const SHIRTS = ["#e8791a", "#d8342c", "#f2b705", "#1f8f6a"];
 const SKINS = ["#a86e4a", "#6e4630", "#d9a074"];
+const GO = "#1f8f4a";
+const STOP = "#b5121f";
+const GOLD = "#c75a00";
+const CALM = "#1f6fb5";
+
+// A word on a rounded card, drawn on top of everything. Long words shrink to fit the card.
+function sign(word, fill) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 208;
+  const pen = canvas.getContext("2d");
+  pen.fillStyle = fill;
+  pen.beginPath();
+  pen.roundRect(10, 10, 620, 188, 36);
+  pen.fill();
+  pen.strokeStyle = "#fff4d6";
+  pen.lineWidth = 10;
+  pen.stroke();
+  let size = 120;
+  pen.font = `900 ${size}px system-ui, sans-serif`;
+  while (pen.measureText(word).width > 560 && size > 40) {
+    size -= 6;
+    pen.font = `900 ${size}px system-ui, sans-serif`;
+  }
+  pen.textAlign = "center";
+  pen.textBaseline = "middle";
+  pen.fillStyle = "#fff4d6";
+  pen.fillText(word, 320, 110);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, fog: false, toneMapped: false }));
+  sprite.userData.keepMaterial = true;
+  sprite.renderOrder = 8;
+  sprite.visible = false;
+  return sprite;
+}
 
 // A climber in a team shirt with a headband, arms out to the shoulders either side. They stand far
 // enough back that one merged shape reads, and a tower needs dozens of them.
@@ -85,6 +129,19 @@ function plaza(world) {
   return world.dress(mesh);
 }
 
+// The pot in pieces, flung out from where it hung.
+function shards(world) {
+  return Array.from({ length: SHARDS }, (_, i) => {
+    const b = forge();
+    b.box(0.26, 0.2, 0.05, i % 3 ? "#b5552a" : "#f2e2c0");
+    const piece = world.dress(b.finish());
+    piece.visible = false;
+    piece.userData.spin = new THREE.Vector3();
+    piece.userData.velocity = new THREE.Vector3();
+    return piece;
+  });
+}
+
 export const handi = {
   async build({ scene, camera, world, hero, fx, focusShadow, spec, accent }) {
     const { tiers, pots } = spec.tuning;
@@ -126,8 +183,9 @@ export const handi = {
       });
     };
 
-    // Crowd on the ground, cheering in a loose ring.
+    // Crowd on the ground, cheering in a loose ring, and jumping for joy when a pot goes.
     const cheerer = SHIRTS.map((shirt, index) => world.dress(climber(shirt, SKINS[index % SKINS.length], { cheering: true })));
+    const crowd = [];
     for (let i = 0; i < CROWD; i += 1) {
       const angle = Math.PI * (1.1 + (i / (CROWD - 1)) * 0.8);
       const radius = 5.6 + (i % 3) * 0.7;
@@ -135,49 +193,84 @@ export const handi = {
       person.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius - 0.5);
       person.rotation.y = -angle - Math.PI / 2;
       scene.add(person);
+      crowd.push(person);
     }
 
     const pot = world.dress(potModel());
     scene.add(pot);
     const sling = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 6), world.material("#d9c79c"));
     scene.add(world.dress(sling));
+    const pieces = shards(world);
+    scene.add(...pieces);
 
     hero.root.rotation.y = Math.PI;
+    // A marker over the hero's head in the hero's own shirt colour, seen through the crowd, so a player can find
+    // themselves on a tower of dozens.
+    const marker = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.55, 4), new THREE.MeshBasicMaterial({ color: spec.skin.hero.top ?? accent, depthTest: false, fog: false, toneMapped: false }));
+    marker.rotation.x = Math.PI;
+    marker.renderOrder = 8;
+    marker.userData.keepMaterial = true;
+    scene.add(marker);
     hero.play("Idle_Loop");
-    const words = { lean: alarmCard("HANDS UP"), jump: alarmCard("JUMP") };
-    for (const card of Object.values(words)) {
-      card.scale.set(2.6, 1.05, 1);
-      card.visible = false;
-      scene.add(card);
-    }
 
-    let shownTier = -1;
-    let climb = 0;
-    const climbFrom = new THREE.Vector3();
+    // The call to the left of the tower names the next move. The pops answer the move just made.
+    const calls = { jump: sign("JUMP", GO), hands: sign("HANDS UP", STOP), smash: sign("JUMP TO SMASH", GOLD) };
+    const pops = { up: sign("UP A TIER", GO), shaky: sign("TOO WOBBLY", STOP), steady: sign("STEADY", CALM), saved: sign("SAVED", CALM), fell: sign("FELL", STOP), smash: sign("SMASH!", GOLD) };
+    const popAt = new Map();
+    scene.add(...Object.values(calls), ...Object.values(pops));
+    // One answer at a time, so a quick pair of moves never stacks two words over the hero.
+    const pop = (card, at, big = 1) => {
+      for (const shown of popAt.keys()) shown.visible = false;
+      popAt.clear();
+      card.position.copy(at);
+      card.userData.big = big;
+      popAt.set(card, POP_S);
+    };
+
+    let shownTier = 0;
+    let shownHeight = potHeight({ tiers, pot: 0 });
+    let move = 0;
+    let moveS = CLIMB_S;
+    let rising = true;
+    const moveFrom = new THREE.Vector3();
+    let leap = 0;
     let steady = 0;
+    let topHold = 0;
+    let smashS = 0;
+    let cheer = 0;
     let sway = 0;
     let topY = 0;
-    let eyeY = 2.6;
-    let wasPhase = null;
-    let smashS = 0;
+    let eyeY = 4;
+    let back = MIN_BACK;
+    let pose = null;
     const seat = new THREE.Vector3();
     const place = new THREE.Vector3();
     const wordAt = new THREE.Vector3();
+    const popFrom = new THREE.Vector3();
 
-    const standOn = (state, out) => {
-      if (state.tier === 0) return out.set(SIDE_X, 0, 1.2);
-      layers[state.tier - 1].getWorldPosition(out);
+    const standOn = (tier, height, out) => {
+      if (tier === 0) return out.set(SIDE_X, 0, 1.2);
+      layers[tier - 1].getWorldPosition(out);
       out.y += TIER_H + 0.02;
-      out.z += (potHeight(state) - state.tier) * RING_STEP + 0.3; // on the face of the tower, towards the player
+      out.z += (height - tier) * RING_STEP + 0.1; // on the shoulders at the face of the tower, towards the player
       return out;
+    };
+    const potYFor = (height) => (height + 1) * TIER_H + POT_ABOVE - 1.1;
+    const animate = (name) => {
+      if (name === pose) return;
+      pose = name;
+      hero.play(name, { fade: 0.15 });
     };
 
     return {
       update(state, dt, elapsed) {
-        const needed = potHeight(state);
-        raise(needed);
-        const potY = (needed + 1) * TIER_H + POT_ABOVE - 1.1;
-        topY = damp(topY, potY, 3, dt);
+        // After a pot breaks the hero stays up there with it a moment, and only then is the next tower built.
+        topHold = Math.max(0, topHold - dt);
+        const height = topHold > 0 ? shownHeight : potHeight(state);
+        const tier = topHold > 0 ? shownTier : state.tier;
+        shownHeight = height;
+        raise(height);
+        topY = damp(topY, potYFor(height), 3, dt);
 
         sway = damp(sway, state.sway, 10, dt);
         const shiver = Math.abs(state.sway) >= LEAN_AT ? Math.sin(elapsed * 26) * 0.02 : 0;
@@ -185,81 +278,150 @@ export const handi = {
         for (const layer of layers) layer.rotation.z = -sway * TIER_BEND;
         base.updateMatrixWorld(true);
 
-        standOn(state, place);
-        if (state.tier !== shownTier) {
-          if (shownTier >= 0) {
-            climbFrom.copy(hero.root.position);
-            climb = CLIMB_S;
-          }
-          shownTier = state.tier;
+        standOn(tier, height, place);
+        if (tier !== shownTier) {
+          moveFrom.copy(hero.root.position);
+          rising = tier > shownTier;
+          moveS = rising ? CLIMB_S : DOWN_S;
+          move = moveS;
+          shownTier = tier;
         }
-        climb = Math.max(0, climb - dt);
-        if (climb > 0) {
-          const p = 1 - climb / CLIMB_S;
-          seat.lerpVectors(climbFrom, place, p);
-          seat.y += Math.sin(p * Math.PI) * 0.9;
+        move = Math.max(0, move - dt);
+        if (move > 0) {
+          const p = 1 - move / moveS;
+          seat.lerpVectors(moveFrom, place, rising ? p : p * p * (3 - 2 * p));
+          if (rising) seat.y += Math.sin(p * Math.PI) * 0.9;
         } else seat.copy(place);
+        leap = Math.max(0, leap - dt);
+        if (leap > 0) seat.y += Math.sin((1 - leap / LEAP_S) * Math.PI) * 0.8;
         hero.root.position.copy(seat);
-        hero.root.rotation.z = state.tier ? -sway * TIER_BEND * state.tier : 0;
-        if (state.phase !== wasPhase && climb <= 0 && state.finaleMs <= 0) {
-          wasPhase = state.phase;
-          hero.play(state.phase === "call" ? "Crouch_Idle_Loop" : "Idle_Loop", { fade: 0.12 });
-        }
+        marker.position.set(seat.x, seat.y + 2.25 + Math.abs(Math.sin(elapsed * 4)) * 0.15, seat.z);
+        marker.rotation.y = elapsed * 2;
+        marker.scale.setScalar(back / 12);
+        marker.visible = state.finaleMs <= 0 && tier < height; // right under the pot, the hero needs no finding
+        hero.root.rotation.z = tier ? -sway * TIER_BEND * tier : 0;
+
+        // Crouched and ready while the tower stands straight, upright and holding on while it wobbles.
+        const playing = state.phase === "climb" && state.finaleMs <= 0 && topHold <= 0;
+        if (move <= 0 && leap <= 0) animate(playing && !wobbling(state) ? "Crouch_Idle_Loop" : "Idle_Loop");
         steady = Math.max(0, steady - dt);
-        if (steady > 0) applyPose(hero, MOVE_POSES.hands_up(0.5), { flip: true });
-        if (state.finaleMs > 0) applyPose(hero, MOVE_POSES.hands_up(0.5), { flip: true });
+        if (steady > 0 || state.finaleMs > 0 || topHold > 0) applyPose(hero, MOVE_POSES.hands_up(0.5), { flip: true });
 
         const swing = Math.sin(elapsed * 1.5) * 0.14;
         smashS = Math.max(0, smashS - dt);
         pot.visible = smashS <= 0 && state.finaleMs <= 0;
+        // The pot swells a little in time while one more jump would break it.
+        const ready = playing && atTop(state) && !wobbling(state);
+        pot.scale.setScalar(ready ? 1 + Math.abs(Math.sin(elapsed * 5)) * 0.12 : 1);
         pot.position.set(swing, topY, 0);
         pot.rotation.z = swing * 0.5;
         sling.visible = pot.visible;
-        sling.scale.y = 1;
         sling.position.set(swing * 0.5, topY + 0.95, 0);
         sling.rotation.z = -swing * 0.5;
+        for (const piece of pieces) {
+          if (!piece.visible) continue;
+          const { velocity, spin } = piece.userData;
+          velocity.y -= 9.8 * dt;
+          piece.position.addScaledVector(velocity, dt);
+          piece.rotation.x += spin.x * dt;
+          piece.rotation.z += spin.z * dt;
+          if (piece.position.y < 0.05) piece.visible = false;
+        }
 
-        const leaning = Math.abs(state.sway) >= LEAN_AT;
-        wordAt.set(seat.x > 1 ? seat.x - 3.4 : seat.x + 2.8, seat.y + 1.2, 1.2);
-        words.lean.visible = leaning;
-        words.jump.visible = !leaning && state.phase === "window";
-        words.lean.position.copy(wordAt);
-        words.jump.position.copy(wordAt);
+        cheer = Math.max(0, cheer - dt);
+        crowd.forEach((person, i) => {
+          person.position.y = cheer > 0 ? Math.abs(Math.sin(elapsed * 9 + i * 1.7)) * 0.4 * Math.min(1, cheer) : 0;
+        });
 
-        eyeY = damp(eyeY, Math.max(2.4, seat.y + 0.8), 2.4, dt);
-        const back = 8.6 + needed * 0.75;
-        camera.position.set(0.6, eyeY - 0.2, back);
-        // The pot is the point of it, so it stays in frame however low the climb has got.
-        const reach = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * back;
-        camera.lookAt(0, Math.max(eyeY + 0.35, topY - reach * 0.68), 0);
+        // Both ends of the climb stay in frame: the hero's feet and the pot they are climbing to.
+        const low = Math.min(seat.y, place.y) - 0.3;
+        const high = topY + 1.4;
+        const half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        back = damp(back, Math.max(MIN_BACK, ((high - low) / 2) * FRAME_SLACK / half), 2.4, dt);
+        eyeY = damp(eyeY, (low + high) / 2 + 0.2, 2.4, dt);
+        camera.position.set(0.6, eyeY, back);
+        camera.lookAt(0, eyeY, 0);
         focusShadow(0, 0, 0);
+
+        const cardScale = back / 12;
+        const callOn = !playing ? null : wobbling(state) ? calls.hands : atTop(state) ? calls.smash : calls.jump;
+        // Always to the left of the tower, so the call never sits on the hero, who waits on the right.
+        wordAt.set(-0.4 - 2.6 * cardScale, seat.y + 1.1, 1.2);
+        for (const card of Object.values(calls)) {
+          card.visible = card === callOn;
+          card.position.copy(wordAt);
+          const throb = card === calls.hands && Math.abs(state.sway) >= LEAN_AT ? 1 + Math.abs(Math.sin(elapsed * 10)) * 0.15 : 1;
+          card.scale.set(3.1 * cardScale * throb, 1.0 * cardScale * throb, 1);
+        }
+        for (const [card, left] of popAt) {
+          const life = left - dt;
+          if (life <= 0) {
+            card.visible = false;
+            popAt.delete(card);
+            continue;
+          }
+          popAt.set(card, life);
+          const p = 1 - life / POP_S;
+          card.visible = true;
+          card.position.y += dt * 1.2;
+          card.material.opacity = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
+          const size = cardScale * card.userData.big * (0.8 + Math.min(1, p * 5) * 0.2);
+          card.scale.set(2.6 * size, 0.85 * size, 1);
+        }
       },
       event(event, state) {
         const at = hero.root.position;
-        if (event.type === "climb" || event.type === "perfect") {
+        // Above the marker, over where the hero is going rather than where they were.
+        standOn(state.tier, potHeight(state), popFrom);
+        popFrom.y += 3 + 0.4 * (back / 12);
+        popFrom.z += 0.4;
+        if (event.type === "climb") {
           hero.play("NinjaJump_Start", { once: true, speed: 1.6, fade: 0.06, then: "Idle_Loop" });
-          fx.burst({ x: at.x, y: at.y + 1, z: at.z + 0.2 }, event.type === "perfect" ? "#ffd23f" : accent, event.type === "perfect" ? 30 : 14);
+          pose = "Idle_Loop";
+          fx.burst({ x: at.x, y: at.y + 1, z: at.z + 0.2 }, accent, 16);
+          pop(pops.up, popFrom);
         }
         if (event.type === "clear") {
           steady = STEADY_S;
           fx.burst({ x: at.x, y: at.y + 2, z: at.z }, "#a8e8ff", event.close ? 26 : 10);
+          if (event.needed) pop(event.close ? pops.saved : pops.steady, popFrom);
         }
-        if (event.type === "wrong" || event.type === "miss") fx.shake(0.16);
+        if (event.type === "shaky") {
+          fx.shake(0.12);
+          pop(pops.shaky, popFrom);
+        }
         if (event.type === "fall") {
           hero.play("Hit_Knockback", { once: true, speed: 1.3, fade: 0.06, then: "Idle_Loop" });
+          pose = "Idle_Loop";
           fx.shake(0.6);
           fx.flash("#ff3b4e", 0.32);
+          pop(pops.fell, popFrom, 1.2);
+        }
+        if (event.type === "leap") {
+          leap = LEAP_S;
+          hero.play("NinjaJump_Start", { once: true, speed: 1.4, fade: 0.06, then: "Idle_Loop" });
+          pose = "Idle_Loop";
         }
         if (event.type === "smash") {
-          smashS = POT_BACK_S;
+          smashS = event.last ? Infinity : POT_BACK_S;
+          topHold = event.last ? 0 : TOP_HOLD_S;
+          cheer = CHEER_S;
           fx.flash("#fff8e6", 0.6);
           fx.shake(0.4);
           const y = topY;
-          fx.burst({ x: 0, y, z: 0 }, "#fbf6ea", 80);
+          fx.burst({ x: 0, y, z: 0 }, "#fbf6ea", 90);
           fx.burst({ x: 0, y, z: 0 }, "#b5552a", 40);
-          fx.burst({ x: 0, y, z: 0 }, "#ffd23f", 30);
+          fx.burst({ x: 0, y, z: 0 }, "#ffd23f", 40);
+          pieces.forEach((piece, i) => {
+            const angle = (i / SHARDS) * Math.PI * 2;
+            piece.visible = true;
+            piece.position.set(pot.position.x, y, 0);
+            piece.userData.velocity.set(Math.cos(angle) * 3, 2.5 + (i % 3), Math.sin(angle) * 2);
+            piece.userData.spin.set(4 + i, 0, 3 - i);
+          });
+          pop(pops.smash, popFrom.set(0, y + 0.9, 0.6), 1.6);
         }
-        if (event.type === "end" && !state.won) hero.play("Death01", { once: true });
+        if (event.type === "end" && state.lives <= 0) hero.play("Death01", { once: true });
       },
     };
   },

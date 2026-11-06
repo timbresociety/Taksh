@@ -21,6 +21,18 @@ export function createRandom(seed = 1) {
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+// Strikes in the four directions. Up and down are a jump and a duck: an arm slashing up or down looked
+// like the wind-up and the way back of every other slash, and a player can tell a jump from an arm swing.
+export const STRIKE_MOVES = [
+  { dir: "left", gesture: "slash_left", label: "Slash left", key: "ArrowLeft", keyLabel: "←" },
+  { dir: "right", gesture: "slash_right", label: "Slash right", key: "ArrowRight", keyLabel: "→" },
+  { dir: "up", gesture: "jump", label: "Jump", key: "ArrowUp", keyLabel: "↑" },
+  { dir: "down", gesture: "squat_down", label: "Duck", key: "ArrowDown", keyLabel: "↓" },
+];
+export const STRIKE_CALLS = Object.fromEntries(STRIKE_MOVES.map((move) => [move.dir, move.label]));
+export const strikeActions = () => STRIKE_MOVES.map(({ dir, label, key, keyLabel }) => ({ id: `slash_${dir}`, label, key, keyLabel }));
+export const strikeBindings = () => STRIKE_MOVES.map(({ dir, gesture, label }) => ({ gesture, action: `slash_${dir}`, exercise: label }));
+
 // How long each simulated player takes to act on what they see.
 export const REACTION_MS = { quick: 180, casual: 420 };
 

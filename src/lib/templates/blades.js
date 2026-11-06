@@ -1,7 +1,7 @@
-// Blade March: raiders close in from four sides. Cut each one the way it comes, guard the heavy blows,
-// and march on to a boss at the end of the road.
+// Blade March: raiders close in from four sides. Slash the ones at your sides, jump at the ones above and
+// duck under the ones below, guard the heavy blows, and march on to a boss at the end of the road.
 import { BOSS_TUNING, bossCall, bossHealthLeft, bossWants, createBoss, defendBoss, hitBoss, stepBoss } from "./bosses.js";
-import { REACTION_MS, createRandom } from "./shared.js";
+import { REACTION_MS, STRIKE_CALLS, createRandom, strikeActions, strikeBindings } from "./shared.js";
 
 export const SIDES = ["left", "right", "up", "down"];
 export const REACH_MS = 1000; // the last stretch of an approach, when a raider is close enough to cut
@@ -52,25 +52,19 @@ function bossEvents(state, list, events) {
 export default {
   id: "blades",
   name: "Blade March",
-  pitch: "Slash each raider the way they come, guard the heavy blows, and bring down the boss at the end of the road.",
+  pitch: "Slash the raiders at your sides, jump at the ones above, duck the ones below, guard the heavy blows, and bring down the boss.",
   kind: "Arms",
   space: "Stand up",
   length: "2 min",
-  framing: "upper",
+  framing: "full", // a jump needs the feet in view
   rival: true,
   score: "raiders",
   actions: [
-    { id: "slash_left", label: "Slash left", key: "ArrowLeft", keyLabel: "←" },
-    { id: "slash_right", label: "Slash right", key: "ArrowRight", keyLabel: "→" },
-    { id: "slash_up", label: "Slash up", key: "ArrowUp", keyLabel: "↑" },
-    { id: "slash_down", label: "Slash down", key: "ArrowDown", keyLabel: "↓" },
+    ...strikeActions(),
     { id: "guard", label: "Guard", key: " ", keyLabel: "Space" },
   ],
   bindings: [
-    { gesture: "slash_left", action: "slash_left", exercise: "Slash left" },
-    { gesture: "slash_right", action: "slash_right", exercise: "Slash right" },
-    { gesture: "slash_up", action: "slash_up", exercise: "Slash up" },
-    { gesture: "slash_down", action: "slash_down", exercise: "Slash down" },
+    ...strikeBindings(),
     { gesture: "guard", action: "guard", exercise: "Guard up" },
   ],
   tuning: {
@@ -187,12 +181,12 @@ export default {
 
   hud(state) {
     const inReach = state.enemies.filter((enemy) => enemy.arriveMs - enemy.ms <= REACH_MS).sort((a, b) => a.arriveMs - a.ms - (b.arriveMs - b.ms))[0];
-    const say = { defend: "Guard", strike: (side) => `Slash ${side}`, sleeping: (side) => `Slash ${side}` };
+    const say = { defend: "Guard", strike: (side) => STRIKE_CALLS[side], sleeping: (side) => STRIKE_CALLS[side] };
     return {
       score: state.score, label: "Score", lives: state.lives, maxLives: state.startLives,
       clock: state.boss ? state.boss.name : `Wave ${state.wave} of ${state.waves}`,
       bars: state.boss ? [{ label: state.boss.name, value: bossHealthLeft(state.boss) }] : undefined,
-      extra: state.boss ? bossCall(state.boss, say) : inReach ? (inReach.heavy ? "Guard" : `Slash ${inReach.side}`) : state.combo > 1 ? `${state.combo} in a row` : null,
+      extra: state.boss ? bossCall(state.boss, say) : inReach ? (inReach.heavy ? "Guard" : STRIKE_CALLS[inReach.side]) : state.combo > 1 ? `${state.combo} in a row` : null,
     };
   },
 

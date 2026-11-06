@@ -16,6 +16,8 @@ const SIDE_PATHS = {
   up: { from: [0, 7, -13], to: [0, 1.9, -2], turn: 0 },
   down: { from: [0.4, 0, -15], to: [0.4, 0, -2], turn: 0 },
 };
+const HOP_MS = 460;
+const HOP_M = 0.45;
 const SIDE_CLIPS = { left: "Jog_Fwd_Loop", right: "Jog_Fwd_Loop", up: "Jump_Loop", down: "Crouch_Fwd_Loop" };
 
 export function sword(world, length = 1.05) {
@@ -542,6 +544,7 @@ export const blades = {
     const arc = slashArc(world);
     scene.add(arc);
     let arcLife = 0;
+    let hopMs = 0; // a strike upward is a jump, so the hero leaves the ground with it
 
     const number = spec.tuning.boss;
     const stub = bossPreview(number);
@@ -629,6 +632,8 @@ export const blades = {
         }
 
         arcLife = Math.max(0, arcLife - dt * 6);
+        hopMs = Math.max(0, hopMs - dt * 1000);
+        hero.root.position.y = Math.sin((hopMs / HOP_MS) * Math.PI) * HOP_M;
         arc.material.opacity = arcLife;
 
         // The boss.
@@ -679,6 +684,7 @@ export const blades = {
       event(event, state) {
         if (event.type === "slash") {
           hero.play(SLASH_CLIPS[event.side], { once: true, speed: 2.1, fade: 0.05, then: "Sword_Idle" });
+          if (event.side === "up") hopMs = HOP_MS;
           arc.position.set(0, 1.35, -0.8);
           arc.rotation.set(0, 0, ARC_TURN[event.side]);
           arcLife = 0.9;

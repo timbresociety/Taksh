@@ -41,14 +41,14 @@ Each game is an original template with its own name, characters, art and levels.
 | `flyer` | Wing Beat | Lateral arm raise, then beat down | `Space` |
 | `poses` | Mirror Match | Hold the pose your character shows | `1` to `0` |
 | `guard` | Lane Guard | Side step, run on the spot | `←` `→` `F` |
-| `matka` | Matka Beats | Slash in four directions, on the beat | `←` `→` `↑` `↓` |
+| `matka` | Matka Beats | Slash left and right, jump and duck, on the beat | `←` `→` `↑` `↓` |
 | `harmonium` | Harmonium Hop | One hand up, one leg lift | `D` `F` `J` `K` |
 | `chop` | Chop Shop | Fast hand swipes through tossed fruit | `Space`, pointer aims |
-| `blades` | Blade March | Slash in four directions, guard, then a boss | `←` `→` `↑` `↓` `Space` |
+| `blades` | Blade March | Slash left and right, jump, duck, guard, then a boss | `←` `→` `↑` `↓` `Space` |
 | `keeper` | Last Line | Nine zones of a goal, one move each: a hand up on the diagonal, an arm out, a leg out, both hands up, fists to the chin, squat | `Q` `W` `E` / `A` `S` `D` / `Z` `X` `C` |
 | `oars` | Koli Race | Pump your arms to row, bend sideways to steer | `Space`, hold `←` `→` |
 | `rickshaw` | Auto Rally | Run on the spot for throttle, bend sideways to steer | `Space`, hold `←` `→` |
-| `handi` | Dahi Handi | Squat jump on the call, hands up or flap to steady the tower | `Space` `H` |
+| `handi` | Dahi Handi | Jump to climb the tower, both hands up to steady it, jump from the top to smash the pot | `Space` `H` |
 | `circuit` | Cardio Circuit | Twenty six exercises called one at a time, covering the whole move library | The key shown for each exercise |
 | `sights` | Twin Sights | Ghouls walk up the road; each hand's aim circle shoots the ones on its own half of the screen, squat for a grenade, jump the rolling drum, then a boss | Pointer aims anywhere, `F` sends a sight to each half, `G` `Space` |
 | `rangoli` | Rangoli Breaker | A tray on each hand keeps the ball in play until the pattern breaks | Pointer aims, `←` `→` |

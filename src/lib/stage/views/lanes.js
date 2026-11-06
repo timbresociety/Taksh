@@ -5,8 +5,9 @@ import { LANE_WIDTH, Pool, blink, clearRoad, damp, laneX } from "./shared.js";
 
 const ROAD_WIDTH = LANE_WIDTH * 3 + 0.8;
 
-// An overhead bar that reads at a glance as "go under this".
+// An overhead bar that reads at a glance as "go under this". A world may dress it as its own.
 function barrier(world) {
+  if (world.data.high) return world.role("high", LANE_WIDTH - 0.1);
   const group = new THREE.Group();
   const stripe = world.material(world.data.accent, { emissive: world.data.accent, emissiveIntensity: 0.35 });
   const dark = world.material("#20232b");

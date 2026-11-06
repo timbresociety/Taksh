@@ -24,7 +24,7 @@ const EVENT_CUES = {
   shot: "shot", grenade: "boom", empty: "tick",
   save: "hit", punch: "boom", kick: "tick", goal: "miss", rocket: "roar",
   stroke: "splash", pass: "hit", finish: "go", near: "horn", bump: "miss",
-  climb: "hit", call: "go", smash: "crack", set_done: "hit",
+  climb: "hit", call: "go", smash: "crack", set_done: "hit", shaky: "miss",
   downed: "smash", tile: "tile", crack: "tick", bounce: "bounce", garland: "hit", cleared: "go", pop: "pop", bop: "bop",
 };
 

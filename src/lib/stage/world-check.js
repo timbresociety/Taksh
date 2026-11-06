@@ -18,7 +18,7 @@ const luminance = (hex) => {
 const contrast = (a, b) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
 
 const entriesOf = (world) => [
-  ...ROLES.flatMap((role) => [world[role] ?? []].flat()),
+  ...[...ROLES, "high"].flatMap((role) => [world[role] ?? []].flat()), // high is optional: a plain bar stands in
   ...[world.behind, world.walls].flatMap((list) => list ?? []),
   ...(world.lines ?? []).flatMap((line) => [line.entry].flat()),
 ];
