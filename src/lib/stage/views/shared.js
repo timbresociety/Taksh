@@ -53,13 +53,18 @@ export function holdOnBone(bone, object, offset = [0, 0, 0]) {
   bone.add(object);
 }
 
+// Returns the gloves by hand, "l" and "r", each with a material of its own so one can glow alone.
 export function gloves(character, colour, world) {
+  const worn = {};
   for (const side of ["l", "r"]) {
     const glove = new THREE.Mesh(new THREE.SphereGeometry(0.095, 20, 14), world.material(colour, { roughness: 0.35 }));
     glove.castShadow = true;
     world.dress(glove);
+    glove.material = glove.material.clone();
     holdOnBone(character.bones.get(`hand_${side}`), glove);
+    worn[side] = glove;
   }
+  return worn;
 }
 
 // A flat word on a card, used for the punch names on pads.
