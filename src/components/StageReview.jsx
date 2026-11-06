@@ -6,6 +6,9 @@ import { DEFAULT_HERO, DEFAULT_RIVAL, SPEC_VERSION } from "@/lib/spec/contract";
 import { validateSpec } from "@/lib/spec/validate";
 import { REACTION_MS } from "@/lib/templates/shared";
 import { createStage } from "@/lib/stage/stage";
+import { roadBlockers } from "@/lib/stage/world-check";
+
+const ROAD_HALF_WIDTH = 3.7;
 
 // Plays any template with its own bot, so a world and style can be checked without a player.
 // Query: template, world, style, body, preview.
@@ -18,7 +21,11 @@ export default function StageReview() {
     const { spec } = validateSpec({
       specVersion: SPEC_VERSION, template, title: "Review", objective: "Review", seed: Number(query.get("seed") ?? 7),
       skin: { world: query.get("world") ?? "downtown", style: query.get("style") ?? "bright", hero: { ...DEFAULT_HERO, body: query.get("body") ?? DEFAULT_HERO.body }, rival: DEFAULT_RIVAL },
-      tuning: [],
+      // tune=waves:1,boss:2 sets tuning, so a late moment such as a boss can be looked at straight away.
+      tuning: (query.get("tune") ?? "").split(",").filter(Boolean).map((pair) => {
+        const [key, value] = pair.split(":");
+        return { key, value: Number(value) };
+      }),
     });
     let alive = true;
     let stage = null;
@@ -45,6 +52,7 @@ export default function StageReview() {
         requestAnimationFrame(frame);
       }
       requestAnimationFrame(frame);
+      window.__roadBlockers = () => roadBlockers(stage.scene, ROAD_HALF_WIDTH);
       window.__rigReady = true;
     }).catch((error) => {
       console.error(error);

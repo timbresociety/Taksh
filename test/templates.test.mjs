@@ -460,6 +460,18 @@ describe("tuning changes what a player experiences", () => {
     const pads = templateInfo("pads");
     assert.ok(simulate(pads, specOf(pads, { durationS: 60 })).score > simulate(pads, specOf(pads, { durationS: 20 })).score);
   });
+
+  it("a jab pad waits on the left and a cross pad on the right", () => {
+    const pads = templateInfo("pads");
+    const state = pads.create(specOf(pads));
+    const seen = new Set();
+    for (let tick = 0; tick < 3000 && state.status === "playing"; tick += 1) {
+      pads.step(state, 16);
+      if (state.pad) seen.add(`${state.pad.punch} ${state.pad.side}`);
+    }
+    assert.ok(seen.has("jab -1") && seen.has("cross 1"));
+    assert.ok(!seen.has("jab 1") && !seen.has("cross -1"));
+  });
 });
 
 describe("clearRoad", () => {

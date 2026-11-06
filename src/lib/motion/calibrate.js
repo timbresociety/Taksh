@@ -32,6 +32,8 @@ function measure(points) {
     shoulderX: shoulder.x,
     shoulderY: shoulder.y,
     ankleY,
+    leftAnkleX: points[LM.leftAnkle].x,
+    rightAnkleX: points[LM.rightAnkle].x,
     kneeY,
     thighLeft: Math.abs(points[LM.leftKnee].y - hip.y),
     thighRight: Math.abs(points[LM.rightKnee].y - hip.y),

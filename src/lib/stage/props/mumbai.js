@@ -131,20 +131,24 @@ function cow(b, sitting) {
 export const cowStanding = (b) => cow(b, false);
 export const cowSitting = (b) => cow(b, true);
 
-export function auto(b) {
+// open leaves the back off, so whoever is driving can be seen from behind.
+export function auto(b, { open = false } = {}) {
   const black = "#17181c";
   const shell = [[-1.32, 0.34], [-1.32, 0.72], [-1.14, 1.02], [-0.92, 1.02], [-0.72, 0.72], [0.34, 0.72], [0.42, 0.96], [1.26, 0.96], [1.3, 0.34]];
   b.profile(shell, 1.28, black);
   b.slab(-0.6, 0.6, 0.66, 0.74, -0.72, 0.42, "#2a2b30");
   // The driver's bench and passenger seat, which show through the open sides.
   b.slab(-0.54, 0.54, 0.72, 1, 0.4, 0.94, "#6b3b24");
-  b.slab(-0.54, 0.54, 0.98, 1.42, 0.86, 1.02, "#6b3b24");
+  if (!open) b.slab(-0.54, 0.54, 0.98, 1.42, 0.86, 1.02, "#6b3b24");
   b.slab(-0.34, 0.34, 0.72, 0.96, -0.5, -0.16, "#6b3b24");
   // The yellow hood: a curved roof over the frame.
   const roof = [[-1.14, 1.54], [-0.9, 1.72], [1, 1.74], [1.3, 1.56], [1.3, 1.5], [-1.14, 1.48]];
   b.profile(roof, 1.3, TAXI_YELLOW);
-  b.profile([[0.44, 0.96], [0.44, 1.5], [1.28, 1.5], [1.28, 0.96]], 1.26, TAXI_YELLOW);
-  b.slab(-0.34, 0.34, 1.12, 1.42, 1.27, 1.31, GLASS);
+  if (open) for (const x of [-0.6, 0.6]) b.box(0.06, 0.54, 0.06, TAXI_YELLOW, { at: [x, 1.23, 1.24] });
+  else {
+    b.profile([[0.44, 0.96], [0.44, 1.5], [1.28, 1.5], [1.28, 0.96]], 1.26, TAXI_YELLOW);
+    b.slab(-0.34, 0.34, 1.12, 1.42, 1.27, 1.31, GLASS);
+  }
   for (const x of [-0.62, 0.62]) {
     b.box(0.05, 0.56, 0.05, black, { at: [x, 1.26, -1.03], turn: [0.34, 0, 0] });
     b.box(0.05, 0.8, 0.05, black, { at: [x, 1.12, 0.42] });

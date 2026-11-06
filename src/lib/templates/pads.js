@@ -2,9 +2,12 @@
 import { createRandom } from "./shared.js";
 
 const PUNCHES = ["jab", "cross", "hook", "uppercut"];
+// A straight punch goes out slightly to its own side, where a front camera can see it, so its pad waits there.
+const SIDES = { jab: [-1], cross: [1], hook: [-1, 1], uppercut: [-1, 1] };
 
 function spawn(state) {
-  state.pad = { id: state.nextId++, punch: state.rng.pick(PUNCHES), side: state.rng.pick([-1, 1]), height: state.rng.range(1.1, 1.6), ms: 0, lifeMs: state.lifeMs };
+  const punch = state.rng.pick(PUNCHES);
+  state.pad = { id: state.nextId++, punch, side: state.rng.pick(SIDES[punch]), height: state.rng.range(1.1, 1.6), ms: 0, lifeMs: state.lifeMs };
 }
 
 export default {

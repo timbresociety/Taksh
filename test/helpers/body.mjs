@@ -28,6 +28,11 @@ export function rawPose(body, pose = {}) {
     leftKnee = 0,
     rightKnee = 0,
     feetRise = 0,
+    leftFootOut = 0,
+    rightFootOut = 0,
+    leftHeel = 0,
+    rightHeel = 0,
+    turn = 0,
     handsDown = false,
     lean = 0,
     leftArm = null,
@@ -42,9 +47,9 @@ export function rawPose(body, pose = {}) {
   const thigh = 0.85;
   const shin = 0.85;
 
-  const side = (dir, handOut, kick, knee, arm) => {
+  const side = (dir, handOut, kick, knee, arm, footOut, heel) => {
     const hipSide = { x: hip.x + dir * 0.22, y: hip.y };
-    const shoulder = { x: hip.x + dir * 0.45 + lean, y: shoulderY };
+    const shoulder = { x: hip.x + dir * 0.45 * (1 - Math.abs(turn)) + lean, y: shoulderY, z: -dir * turn };
     const handHangs = handOut === 0 && !handsDown;
     const wrist = arm
       ? { x: shoulder.x + arm.wrist[0], y: shoulder.y + arm.wrist[1], z: arm.wrist[2] ?? 0 }
@@ -60,14 +65,14 @@ export function rawPose(body, pose = {}) {
     const ankleFloor = 1.7 - feetRise;
     const kneePoint = { x: hipSide.x + dir * kick * 0.5, y: hip.y + thigh * (1 - knee) - kick * 0.1 };
     const ankle = {
-      x: hipSide.x + dir * kick,
-      y: knee > 0 ? kneePoint.y + shin : ankleFloor - kick * 0.45,
+      x: hipSide.x + dir * (kick + footOut),
+      y: knee > 0 ? kneePoint.y + shin : ankleFloor - kick * 0.45 - heel,
     };
     return { hipSide, shoulder, elbow, wrist, knee: kneePoint, ankle };
   };
 
-  const left = side(-1, leftHandOut, leftKick, leftKnee, leftArm);
-  const right = side(1, rightHandOut, rightKick, rightKnee, rightArm);
+  const left = side(-1, leftHandOut, leftKick, leftKnee, leftArm, leftFootOut, leftHeel);
+  const right = side(1, rightHandOut, rightKick, rightKnee, rightArm, rightFootOut, rightHeel);
 
   const points = Array.from({ length: SLOTS }, () => ({ x: 0, y: 0 }));
   const put = (index, point) => {

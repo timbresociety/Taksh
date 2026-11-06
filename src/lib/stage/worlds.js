@@ -371,6 +371,7 @@ export async function loadWorld(id, look) {
   // Scenery beside a straight course. It loops, so a run can go on forever on a fixed set of models.
   function strip({ length = 170, clear = data.clear ?? 7 } = {}) {
     const group = new THREE.Group();
+    group.name = "scenery";
     const items = [];
     const add = (entry, x, z, turn) => {
       const object = entryFor(entry);

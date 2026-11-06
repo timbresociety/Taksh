@@ -15,6 +15,7 @@ const TRAVEL_SAMPLES = 24;
 const MOVING_SHARE = 0.5;
 const STILL_M = 0.01;
 const CARRIED_M = 0.15;
+const TURNED = 0.3;
 
 // The tracker's joints on the rig, so the demonstration is drawn exactly like the player's own skeleton.
 // The player's left is the rig's right, because it faces them.
@@ -30,6 +31,7 @@ const JOINT_BONES = {
 
 // The ends of the body a move can be about, each with the joints that lead to it.
 const FEET = [LM.leftAnkle, LM.rightAnkle];
+const HANDS = [LM.leftWrist, LM.rightWrist];
 const LIMB_CHAINS = {
   [LM.leftWrist]: [LM.leftShoulder, LM.leftElbow, LM.leftWrist], [LM.rightWrist]: [LM.rightShoulder, LM.rightElbow, LM.rightWrist],
   [LM.leftAnkle]: [LM.leftHip, LM.leftKnee, LM.leftAnkle], [LM.rightAnkle]: [LM.rightHip, LM.rightKnee, LM.rightAnkle],
@@ -69,7 +71,7 @@ function punch(side, p) {
   const { out } = facing(side);
   const t = strike(p);
   return {
-    aims: [...arm(side, blend(guardUpper(out), [-out * 0.12, -0.05, 1], t), blend(guardLower(out), [-out * 0.12, 0, 1], t)), ...guardArm(other(side))],
+    aims: [...arm(side, blend(guardUpper(out), [out * 0.55, -0.05, 0.85], t), blend(guardLower(out), [out * 0.55, 0, 0.85], t)), ...guardArm(other(side))],
     turn: -out * 0.45 * t,
   };
 }
@@ -194,6 +196,99 @@ function stepTo(side, p) {
   return { aims: [], x: facing(side).out * 0.6 * rise(p) };
 }
 
+const both = (make) => ["left", "right"].flatMap((side) => make(side, facing(side).out));
+const handsOverhead = (out, t) => arm(out < 0 ? "left" : "right", [out * 0.55, 0.85, 0.05], [out * 0.25, 1, 0], t);
+
+function jumpingJack(p) {
+  const t = rise(p);
+  return { aims: both((side, out) => [...leg(side, [out * 0.42, -1, 0.05], [out * 0.32, -1, 0], t), ...handsOverhead(out, t)]), y: 0.05 * t };
+}
+
+function stepJack(p) {
+  const t = rise(p);
+  return { aims: [...leg("left", [-0.55, -1, 0.05], [-0.42, -1, 0], t), ...both((side, out) => handsOverhead(out, t))] };
+}
+
+function squatJump(p) {
+  return p < 0.42 ? squat(0.2 + (p / 0.42) * 0.3) : jump(0.3 + ((p - 0.42) / 0.58) * 0.4);
+}
+
+function ropeSkip(p) {
+  return { aims: both((side, out) => arm(side, [out * 0.25, -1, 0.1], [out * 0.7, -0.2, 0.3])), y: 0.16 * Math.abs(Math.sin(p * Math.PI * 6)) };
+}
+
+// The arms trade places over and over, like running arms or a quick "which one" with both palms.
+function armPump(p) {
+  const beat = Math.sin(p * Math.PI * 6);
+  return { aims: both((side, out) => {
+    const lead = out < 0 ? beat : -beat;
+    return arm(side, [out * 0.2, -1, 0.15 + lead * 0.35], [out * 0.1, lead * 0.8, 0.8]);
+  }) };
+}
+
+function buttKick(side, p) {
+  const { out } = facing(side);
+  return { aims: leg(side, [out * 0.05, -1, -0.08], [out * 0.02, 0.45, -1], strike(p)) };
+}
+
+function lunge(p) {
+  const t = rise(p);
+  return { aims: [...leg("left", [-0.1, -0.62, 0.8], [-0.03, -1, -0.05], t), ...leg("right", [0.1, -0.8, -0.55], [0.03, -0.35, -1], t)], y: -0.3 * t };
+}
+
+function sideLunge(side, p) {
+  const { out } = facing(side);
+  const t = rise(p);
+  return { aims: [...leg(side, [out * 0.8, -0.65, 0.25], [out * 0.05, -1, -0.1], t), ...leg(other(side), [-out * 0.7, -0.75, 0], [-out * 0.7, -0.75, 0], t)], x: out * 0.3 * t, y: -0.28 * t };
+}
+
+function skater(side, p) {
+  const { out } = facing(side);
+  const t = rise(p);
+  return {
+    aims: [...leg(side, [out * 0.12, -0.8, 0.45], [out * 0.04, -1, -0.2], t), ...leg(other(side), [out * 0.35, -0.75, -0.55], [out * 0.25, -0.55, -0.8], t),
+      ...arm(side, [-out * 0.4, -0.7, 0.5], [-out * 0.3, -0.2, 0.9], t), ...arm(other(side), [-out * 0.5, -0.8, -0.3], [-out * 0.4, -0.8, -0.2], t)],
+    x: out * 0.55 * t,
+  };
+}
+
+function toeTouch(p) {
+  const t = rise(p);
+  return { aims: [["spine_02", [0, 0.2, 1], t], ...both((side, out) => arm(side, [out * 0.08, -1, 0.3], [out * 0.04, -1, 0.1], t))], y: -0.08 * t };
+}
+
+function windmill(side, p) {
+  const { out } = facing(side);
+  const t = rise(p);
+  return { aims: [["spine_02", [out * 0.55, 0.3, 0.8], t], ...arm(other(side), [out * 0.45, -1, 0.3], [out * 0.25, -1, 0.1], t), ...arm(side, [out * 0.3, 1, 0], [out * 0.15, 1, 0], t)], y: -0.08 * t };
+}
+
+function crossCrunch(side, p) {
+  const { out } = facing(side);
+  const t = rise(p);
+  return { aims: [["spine_02", [out * 0.28, 1, 0.3], t], ...leg(side, [-out * 0.2, -0.1, 1], [out * 0.02, -1, 0.05], t), ...arm(other(side), [out * 0.75, -0.55, 0.5], [-out * 0.25, 0.9, 0.3], t)] };
+}
+
+function twist(side, p) {
+  const { out } = facing(side);
+  const t = rise(p);
+  return { aims: both((armSide, armOut) => arm(armSide, [armOut * 0.35, -0.8, 0.4], [-armOut * 0.45, 0.1, 0.9])), turn: out * 0.75 * t };
+}
+
+function curl(side, p) {
+  const { out } = facing(side);
+  return { aims: arm(side, [out * 0.12, -1, 0.1], [out * 0.08, 1, 0.3], rise(p)) };
+}
+
+function woodChop(p) {
+  const wind = p < 0.25 ? smooth(p / 0.25) : p > 0.8 ? 1 - smooth((p - 0.8) / 0.2) : 1;
+  const swept = p < 0.32 ? 0 : p < 0.44 ? smooth((p - 0.32) / 0.12) : 1;
+  return { aims: both((side, out) => {
+    const direction = blend([-out * 0.12, 1, 0.3], [-out * 0.12, -0.8, 0.65], swept);
+    return arm(side, direction, direction, wind);
+  }), y: -0.14 * swept * wind };
+}
+
 const heldPose = (pose) => (p) => {
   const t = rise(p);
   return { aims: ["left", "right"].flatMap((side) => {
@@ -202,7 +297,32 @@ const heldPose = (pose) => (p) => {
   }) };
 };
 
+// A game read by where a limb ends up shows only that place: the pose snaps in, holds, and snaps back,
+// so no swing on the way is mistaken for the move. Each is sampled where its move peaks.
+const snapped = (p) => (p > 0.12 && p < 0.88 ? 1 : 0);
+const still = (make, peak) => (p) => {
+  const t = snapped(p);
+  const pose = make(peak);
+  return { ...pose, aims: pose.aims.map(([bone, direction, weight]) => [bone, direction, weight * t]), y: (pose.y ?? 0) * t, x: (pose.x ?? 0) * t };
+};
+const diagonal = (side) => () => {
+  const { out } = facing(side);
+  return { aims: arm(side, [out * 0.75, 0.7, 0.05], [out * 0.75, 0.7, 0]) };
+};
+const STILL_POSES = {
+  still_reach_up_left: still(diagonal("left"), 0),
+  still_reach_up_right: still(diagonal("right"), 0),
+  still_hands_up: still((p) => reach(["left", "right"], p), 0.55),
+  still_hand_left: still((p) => handOut("left", p), 0.45),
+  still_hand_right: still((p) => handOut("right", p), 0.45),
+  still_guard: still((p) => guardUp(p), 0.55),
+  still_kick_left: still((p) => kick("left", p), 0.45),
+  still_kick_right: still((p) => kick("right", p), 0.45),
+  still_squat_down: still(squat, 0.55),
+};
+
 export const MOVE_POSES = {
+  ...STILL_POSES,
   step_left: (p) => stepTo("left", p),
   step_right: (p) => stepTo("right", p),
   jump,
@@ -233,6 +353,28 @@ export const MOVE_POSES = {
   hand_right: (p) => handOut("right", p),
   kick_left: (p) => kick("left", p),
   kick_right: (p) => kick("right", p),
+  jumping_jack: jumpingJack,
+  step_jack: stepJack,
+  squat_jump: squatJump,
+  bounce: ropeSkip,
+  arm_pump: armPump,
+  butt_kick_left: (p) => buttKick("left", p),
+  butt_kick_right: (p) => buttKick("right", p),
+  lunge,
+  side_lunge_left: (p) => sideLunge("left", p),
+  side_lunge_right: (p) => sideLunge("right", p),
+  skater_left: (p) => skater("left", p),
+  skater_right: (p) => skater("right", p),
+  toe_touch: toeTouch,
+  windmill_left: (p) => windmill("left", p),
+  windmill_right: (p) => windmill("right", p),
+  cross_crunch_left: (p) => crossCrunch("left", p),
+  cross_crunch_right: (p) => crossCrunch("right", p),
+  twist_left: (p) => twist("left", p),
+  twist_right: (p) => twist("right", p),
+  curl_left: (p) => curl("left", p),
+  curl_right: (p) => curl("right", p),
+  wood_chop: woodChop,
   flap,
   burpee,
   ...Object.fromEntries(POSES.map((pose) => [`pose_${pose.id}`, heldPose(pose)])),
@@ -335,9 +477,11 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
     root.rotation.y = 0;
     const seen = new Map();
     let carried = 0;
+    let turned = 0;
     for (let step = 0; step < TRAVEL_SAMPLES; step += 1) {
       const pose = make(step / TRAVEL_SAMPLES);
       carried = Math.max(carried, Math.abs(pose.x ?? 0), Math.abs(pose.y ?? 0));
+      turned = Math.max(turned, Math.abs(pose.turn ?? 0));
       character.update(0);
       root.updateMatrixWorld(true);
       applyPose(character, pose);
@@ -348,6 +492,7 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
     const travel = [...seen].map(([end, path]) => [Number(end), Math.hypot(...["x", "y", "z"].map((axis) => spread(path.map((point) => point[axis]))))]);
     const most = Math.max(...travel.map(([, metres]) => metres));
     const moving = most < STILL_M ? [] : travel.filter(([, metres]) => metres >= most * MOVING_SHARE).map(([end]) => end);
+    if (!moving.length && turned >= TURNED) return HANDS; // a twist turns the whole chest, and the hands show it
     return carried >= CARRIED_M ? [...new Set([...moving, ...FEET])] : moving;
   }
 
@@ -387,7 +532,7 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
     ctx.stroke();
 
     // The limb doing the move, and the path its hand or foot takes.
-    for (const end of lit) {
+    for (const end of gesture?.startsWith("still_") ? [] : lit) {
       const trail = trails.get(end) ?? [];
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = stroke * 0.7;

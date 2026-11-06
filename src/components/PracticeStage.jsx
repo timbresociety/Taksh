@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { onDot, practiceMoves } from "@/lib/game/practice";
 import { playCue } from "@/lib/game/sound";
 import { GestureEngine, MOVE_READINGS, personalLevel } from "@/lib/motion/gestures";
-import { drawGhost, drawSkeleton } from "@/lib/motion/overlay";
-import { gestureInfo } from "@/lib/spec/contract";
+import { drawAim, drawGhost, drawSkeleton } from "@/lib/motion/overlay";
 import { templateInfo } from "@/lib/templates";
 import MoveCoach from "./MoveCoach";
 
@@ -14,22 +14,10 @@ const RANGE_CHECK_MS = 5000;
 const NEXT_MOVE_MS = 650;
 const NEAR_MISS = 0.6; // below this the player was doing something else, and their range is not known
 
-// One row per move the game listens to, with the key that stands in for it.
-function movesOf(template) {
-  const seen = new Set();
-  return template.bindings.flatMap(({ gesture, action }) => {
-    const info = gestureInfo(gesture);
-    if (seen.has(gesture) || !info || info.hidden) return [];
-    seen.add(gesture);
-    return [{ gesture, label: info.label, cue: info.cue, action: template.actions.find((item) => item.id === action) }];
-  });
-}
-
 export default function PracticeStage({ spec, mode, feed, calibration, onDone }) {
   const template = templateInfo(spec.template);
-  const moves = useMemo(() => movesOf(template), [template]);
   const usesCamera = mode === "camera";
-  const reps = usesCamera ? CAMERA_REPS : KEY_REPS;
+  const moves = useMemo(() => practiceMoves(template, usesCamera), [template, usesCamera]);
 
   const video = useRef(null);
   const overlay = useRef(null);
@@ -41,6 +29,7 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
   const [note, setNote] = useState(null);
   const [replay, setReplay] = useState(0);
   const move = moves[index];
+  const reps = move?.dots?.length ?? (usesCamera ? CAMERA_REPS : KEY_REPS);
 
   // The whole list is known up front, so the shelf can never strand a player on an empty step.
   useEffect(() => {
@@ -69,13 +58,20 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
 
     let unsubscribe = () => {};
     if (usesCamera && feed.current?.running) {
-      const engine = new GestureEngine(calibration, { framing: template.framing, moves: [move.gesture], personal: personal.current });
+      const engine = new GestureEngine(calibration, { framing: template.framing, moves: move.dots ? [] : [move.gesture], personal: personal.current });
       unsubscribe = feed.current.subscribe(({ points, t, aspect }) => {
         if (overlay.current) {
           drawSkeleton(overlay.current, points, aspect, "#e9ff3a");
-          drawGhost(overlay.current, coach.current?.ghost(), aspect, calibration);
+          if (!move.dots) drawGhost(overlay.current, coach.current?.ghost(), aspect, calibration);
         }
         const result = engine.push(points, t);
+        if (move.dots) {
+          if (!result.features) return;
+          const dot = move.dots[done];
+          drawAim(overlay.current, result.features.cursor, dot);
+          if (dot && onDot(result.features.cursor[dot.hand], dot, aspect)) landed();
+          return;
+        }
         for (const event of result.events) if (event.gesture === move.gesture && !event.returning && done < reps) landed();
         if (!result.features) return;
 
@@ -119,11 +115,11 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
   return (
     <main className="practice" data-testid="practice" data-gesture={move.gesture}>
       <section className="practice__teach">
-        <MoveCoach gesture={move.gesture} look={spec.skin.hero} replay={replay} coachRef={coach} />
+        {!move.dots && <MoveCoach gesture={move.demo ?? move.gesture} look={spec.skin.hero} replay={replay} coachRef={coach} />}
         <div className="practice__move">
           <h1>{move.label}</h1>
           <p>{move.cue}</p>
-          <p className="practice__hint">Copy it like a mirror. The thick white limb is the one that moves, and the thin line is the path it takes.</p>
+          {!move.dots && <p className="practice__hint">Copy it like a mirror. The thick white limb is the one that moves, and the thin line is the path it takes.</p>}
           {move.action && (
             <p className="practice__key">
               <kbd>{move.action.keyLabel}</kbd> on the keyboard
@@ -139,12 +135,12 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
               <video ref={video} playsInline muted />
               <canvas ref={overlay} />
             </div>
-            <p className="practice__hint">Yellow is you. Match the white skeleton.</p>
+            <p className="practice__hint">{move.dots ? "Yellow is you. Small hand moves go a long way, so raise each hand in front of its shoulder." : "Yellow is you. Match the white skeleton."}</p>
           </>
         ) : (
           <p className="practice__prompt">Press <kbd>{move.action?.keyLabel}</kbd> to try it.</p>
         )}
-        {usesCamera && (
+        {usesCamera && !move.dots && (
           <div className="meter practice__meter" aria-hidden="true">
             <span ref={fill} />
           </div>

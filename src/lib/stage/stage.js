@@ -145,6 +145,7 @@ export async function createStage(host, spec, { preview = false } = {}) {
   let elapsed = 0;
   let body = null;
   return {
+    scene,
     resize,
     // Call once per frame. dtMs is real time, so the scene keeps breathing while the game is paused.
     frame(state, dtMs) {

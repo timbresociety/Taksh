@@ -51,6 +51,12 @@ export class GameSession {
     if (this.phase === "playing") this.template.aim?.(this.state, aim);
   }
 
+  // Speed and tilt are readings rather than moves: how fast the fast moves are going, and how far the
+  // player is leaning, from -1 to 1.
+  handleDrive(drive) {
+    if (this.phase === "playing") this.template.drive?.(this.state, drive);
+  }
+
   log(id, label, confidence, used) {
     this.movements = [{ id, label, confidence, used }, ...this.movements].slice(0, LOG_LENGTH);
   }

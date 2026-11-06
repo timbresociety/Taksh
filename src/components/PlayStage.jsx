@@ -21,6 +21,10 @@ const EVENT_CUES = {
   cut: "chop", blast: "boom",
   slash: "chop", clang: "clang", boss_enter: "roar", boss_hit: "hit", boss_part: "boom", boss_parry: "clang", boss_blocked: "clang", boss_down: "boom",
   shot: "shot", grenade: "boom", empty: "tick",
+  save: "hit", punch: "boom", kick: "tick", goal: "miss", rocket: "roar",
+  stroke: "splash", pass: "hit", finish: "go", near: "horn", bump: "miss",
+  climb: "hit", call: "go", smash: "crack", set_done: "hit",
+  downed: "smash", tile: "tile", crack: "tick", bounce: "bounce", garland: "hit", cleared: "go", pop: "pop", bop: "bop",
 };
 
 export default function PlayStage({ spec, mode, feed, calibration, personal, onEnd, onQuit, onRecalibrate }) {
@@ -51,7 +55,8 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, onE
         tracking = result.tracking;
         session.setTracking(tracking);
         for (const event of result.events) session.handleGesture(event);
-        if (template.aim && result.features) session.handleAim(result.features.aim);
+        if (template.aim && result.features) session.handleAim(result.features.cursor);
+        if (template.drive && result.features) session.handleDrive({ speed: result.features.speed, tilt: result.features.tilt });
         stage?.follow(points, calibration.torso);
         if (overlay.current) drawSkeleton(overlay.current, points, aspect, "#e9ff3a");
         if (result.features && template.framing === "full") scaleDrift = result.features.scale < 0.72 || result.features.scale > 1.32;
@@ -196,7 +201,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, onE
       )}
 
       <div className="keys" aria-label="Keyboard controls">
-        {template.actions.slice(0, 6).map((action) => (
+        {(hud?.keys ? template.actions.filter((action) => hud.keys.includes(action.id)) : template.actions.slice(0, 6)).map((action) => (
           <span key={action.id}>
             <kbd>{action.keyLabel}</kbd>
             {action.label}

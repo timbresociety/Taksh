@@ -8,19 +8,27 @@ export const FIXTURE_MODEL = "fixture-v2";
 
 // First match wins, so an idea that mentions two games gets the one earlier in this list.
 const TEMPLATE_WORDS = [
+  ["sights", /\b(sights?|crosshairs?|aim\w*|shoot\w*|guns?|grenades?|lock on)\b/i],
+  ["rangoli", /\b(rangoli|bricks?|tiles?|paddle and ball|ball and paddle)\b/i],
+  ["dabba", /\b(dabbas?|tiffins?|catch\w*|lunch ?box\w*)\b/i],
+  ["popup", /\b(whack\w*|pop.?ups?|potholes?|monkeys?)\b/i],
+  ["rickshaw", /\b(rickshaws?|auto rally|tuk.?tuks?)\b/i],
+  ["oars", /\b(boats?|oars?|rowing|koli|paddl\w*|fishing|pump\w*)\b/i],
+  ["handi", /\b(dahi|handi|govindas?|janmashtami|human (tower|pyramid)|pyramid)\b/i],
+  ["circuit", /\b(cardio|circuit|reps|exercises|couch)\b/i],
+  ["keeper", /\b(top corners?|corners? of (the|a) goal|(nine )?zones? of (the|a) goal|goal.?line|last line)\b/i],
   ["lane_runner", /\b(run\w*|lanes?|trains?|chas(e|es|ed|ing))\b/i],
   ["hop", /\b(jump\w*|moon|hop|hops|hopping|platforms?)\b/i],
   ["rally", /\b(tennis|rally|rallies|rackets?)\b/i],
   ["pads", /\b(pads?|punch\w*)\b/i],
+  ["chop", /\b(chop\w*|slic\w+|fruit\w*|mangoes|mango)\b/i],
+  ["blades", /\b(swords?|blades?|slash\w*|melee|ravana)\b/i],
   ["bout", /\b(box\w*|fight\w*|rivals?)\b/i],
   ["flyer", /\b(fly|flying|flies|birds?|flap\w*|wings?)\b/i],
   ["poses", /\b(pose|poses|posing|copy\w*|danc\w+|mirror\w*)\b/i],
   ["guard", /\b(goal.?keep\w*|keepers?|save|saves|saving|dodg\w+|robots?)\b/i],
   ["matka", /\b(matka|pots?|rhythm|dhol|drums?)\b/i],
   ["harmonium", /\b(harmonium|piano|keyboard|melody|tune)\b/i],
-  ["chop", /\b(chop\w*|slic\w+|fruit\w*|mangoes|mango)\b/i],
-  ["blades", /\b(swords?|blades?|slash\w*|melee|ravana)\b/i],
-  ["corners", /\b(shoot\w*|gun\w*|quadrants?|corners?|grenades?)\b/i],
 ];
 
 const WORLD_WORDS = [

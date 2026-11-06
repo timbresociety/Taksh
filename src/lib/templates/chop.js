@@ -13,7 +13,7 @@ const KINDS = Object.keys(FRUIT);
 const BOMB_RADIUS = 0.09;
 const GRAVITY = 2.1;
 const STALL_Y = -0.3;
-const SCREEN_RATIO = 16 / 9; // the field is wider than it is tall, and a cut should feel round
+export const SCREEN_RATIO = 16 / 9; // the field is wider than it is tall, and a cut should feel round
 const HAND_RADIUS = 0.05;
 const SPEED_WINDOW_MS = 110; // long enough that one jittery camera frame is not a slice
 const HAND_LOST_MS = 300;
@@ -38,7 +38,7 @@ function toss(state) {
 }
 
 // How far an item sits from a stroke of the hand, measured as the eye would see it.
-function strokeGap(item, from, to) {
+export function strokeGap(item, from, to) {
   const ax = from.x * SCREEN_RATIO;
   const bx = to.x * SCREEN_RATIO;
   const px = item.x * SCREEN_RATIO;

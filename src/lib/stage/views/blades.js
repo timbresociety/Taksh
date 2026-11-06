@@ -1,5 +1,5 @@
 // Blade March: raiders close in down a road, then the road ends at a boss. The bosses and the masked
-// fighters live here because Four Corners fights the same ones.
+// fighters live here because Twin Sights fights the same ones.
 import * as THREE from "three";
 import { BOSSES } from "../../templates/bosses.js";
 import { REACH_MS } from "../../templates/blades.js";
@@ -34,7 +34,7 @@ export function sword(world, length = 1.05) {
   return world.dress(group);
 }
 
-function maskTexture(colour) {
+export function maskTexture(colour) {
   const canvas = document.createElement("canvas");
   canvas.width = 192;
   canvas.height = 192;
@@ -95,9 +95,9 @@ const BOSS_LOOKS = {
 
 const SIZE = { ravana: 3, kumbhakarna: 3 };
 
-// Ten heads on one body, nine in the fan and the king's own in the middle, in two rows so that every
-// corner of the screen has a head in it. Each one looks around, flinches and goes out on its own.
-async function ravanaFigure({ scene, world, boss, hero, fx, z }) {
+// Ten heads on one body: his own, eight beside it in a slight arch and one crowned above. They sit side
+// by side on gold collars rather than on necks, and each one looks around, flinches and goes out on its own.
+async function ravanaFigure({ scene, world, boss, hero, fx, z, pin }) {
   const character = await createCharacter(BOSS_LOOKS.ravana);
   const fan = addHeads(character, boss.parts.length - 1, { separate: true });
   fan.children.at(-1).visible = false; // the yoke follows a single row, and these necks replace it
@@ -112,29 +112,24 @@ async function ravanaFigure({ scene, world, boss, hero, fx, z }) {
   blade.scale.setScalar(2.1);
   holdOnBone(character.bones.get("hand_r"), blade);
 
-  const neckMaterial = world.material(BOSS_LOOKS.ravana.skinTone);
   const collar = world.material("#e8b23a", { metalness: 0.6, roughness: 0.35 });
   const heads = boss.parts.map((part, index) => {
     const own = index === boss.parts.length - 1;
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.22, 1, 10), neckMaterial);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 6, 16), collar);
-    world.dress(neck);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.07, 6, 16), collar);
+    ring.rotation.x = Math.PI / 2;
     world.dress(ring);
-    if (!own) scene.add(neck, ring);
-    return { object: own ? null : fan.heads[index], neck, ring, own, flinch: 0, fall: 0, seed: index * 1.7, at: new THREE.Vector3(), yaw: 0, pitch: 0 };
+    if (!own) scene.add(ring);
+    return { object: own ? null : fan.heads[index], ring, own, flinch: 0, fall: 0, seed: index * 1.7, at: new THREE.Vector3(), yaw: 0, pitch: 0 };
   });
 
-  const chest = new THREE.Vector3();
   const lean = new THREE.Vector3();
-  const up = new THREE.Vector3(0, 1, 0);
-  const forward = new THREE.Vector3(0, 0, 1);
   const heroAt = new THREE.Vector3();
   let lastMood = null;
   let rise = 0;
 
   return {
     root: character.root,
-    extras: heads.flatMap((head) => [head.neck, head.ring]),
+    extras: heads.map((head) => head.ring),
     centre: new THREE.Vector3(0, 5.3, z),
     camera: { position: [0, 2.2, 4.3], look: [0, 3.35, z] },
     spotOf(part, out) {
@@ -146,7 +141,6 @@ async function ravanaFigure({ scene, world, boss, hero, fx, z }) {
       rise = damp(rise, 1, 1.6, dt);
       character.root.position.z = z - (1 - rise) * 22;
       character.root.updateMatrixWorld(true);
-      character.bones.get("spine_03").getWorldPosition(chest);
       hero.root.getWorldPosition(heroAt);
       if (state.mood !== lastMood) {
         if (state.mood === "enter") character.play("Walk_Formal_Loop", { speed: 0.8 });
@@ -173,18 +167,18 @@ async function ravanaFigure({ scene, world, boss, hero, fx, z }) {
         head.yaw = damp(head.yaw, attacking ? atPlayer : wander, 5, dt);
         head.pitch = damp(head.pitch, attacking ? 0.42 : 0.12 + Math.sin(elapsed * 0.8 + head.seed) * 0.12, 7, dt);
         const sway = Math.sin(elapsed * 0.9 + head.seed) * 0.022;
-        head.object.position.set(part.x * 0.94 + sway, (part.y + 0.3) * 0.46 - Math.abs(part.x) * 0.13 + Math.cos(elapsed * 1.2 + head.seed) * 0.015 - head.fall * 0.3, -Math.abs(part.x) * 0.08 - head.flinch * 0.12);
+        head.object.position.set(part.x * 0.94 + sway, (part.y + 0.3) * 0.46 + Math.cos(elapsed * 1.2 + head.seed) * 0.015 - head.fall * 0.3, -Math.abs(part.x) * 0.08 - head.flinch * 0.12);
+        // A game that aims at the heads says where each one must be.
+        if (pin) {
+          // A head knocked out drops all the way to the road, rather than hanging in the air beside him.
+          pin(part, lean);
+          lean.y = THREE.MathUtils.lerp(lean.y, 0.3, head.fall * head.fall);
+          head.object.position.copy(head.object.parent.worldToLocal(lean));
+        }
         head.object.rotation.set(head.pitch - head.flinch * 0.7 + head.fall * 0.95, head.yaw * (1 - head.fall), head.fall * (part.x < 0 ? 0.6 : -0.6));
         head.object.scale.setScalar((open ? 1.5 + Math.sin(elapsed * 7) * 0.05 : 1.2) * (1 - head.fall * 0.2));
-
-        lean.copy(head.at).sub(chest);
-        const length = lean.length() - 0.34;
-        lean.normalize();
-        head.neck.position.copy(chest).addScaledVector(lean, length / 2);
-        head.neck.scale.set(1, length, 1);
-        head.neck.quaternion.setFromUnitVectors(up, lean);
-        head.ring.position.copy(chest).addScaledVector(lean, length);
-        head.ring.quaternion.setFromUnitVectors(forward, lean);
+        head.ring.position.copy(head.at);
+        head.ring.visible = head.fall < 0.5;
       }
     },
     event(event, boss) {
@@ -309,7 +303,7 @@ function serpentHead(world, dark, pale, ball) {
   return { head, jaw };
 }
 
-function serpentFigure({ scene, world, boss, fx, z }) {
+function serpentFigure({ scene, world, boss, fx, z, pin }) {
   const group = new THREE.Group();
   group.position.z = z;
   scene.add(group);
@@ -410,6 +404,7 @@ function serpentFigure({ scene, world, boss, fx, z }) {
         const open = !down && state.open === index;
         const [x, y] = index === 4 ? [head.position.x, head.position.y + 1.5] : [curve.points[index + 1].x, curve.points[index + 1].y];
         knot.position.set(x, y, curve.points[Math.min(index + 1, 7)].z + 1.1);
+        if (pin) pin(part, knot.position).sub(group.position);
         knot.rotation.y = elapsed * 2 + index;
         knot.material.color.set(open ? "#ffe27a" : "#7fa8c4");
         knot.scale.setScalar(down ? 0.001 : (open ? 1.05 + Math.sin(elapsed * 9) * 0.1 : 0.6) + flash * (open ? 0.5 : 0));
@@ -449,7 +444,7 @@ export const bossPreview = (number) => ({
 
 // A word and a ring around the player's feet for what must be defended, closing as the blow comes.
 // The one word that has to be read over anything, so it brings its own plate.
-function alarmCard(word) {
+export function alarmCard(word) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 208;

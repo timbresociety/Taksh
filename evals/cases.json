@@ -45,7 +45,7 @@
     "id": "clear-reps",
     "kind": "clear",
     "idea": "How fast can I pump my arms in fifteen seconds?",
-    "expect": { "status": "ready", "templates": ["reps"] }
+    "expect": { "status": "ready", "templates": ["oars"] }
   },
   {
     "id": "clear-poses",
@@ -72,16 +72,64 @@
     "expect": { "status": "ready", "templates": ["chop"] }
   },
   {
+    "id": "clear-sights",
+    "kind": "clear",
+    "idea": "Aim two crosshairs with my hands and lock on to ghouls walking up the road until the boss falls.",
+    "expect": { "status": "ready", "templates": ["sights"] }
+  },
+  {
+    "id": "clear-rangoli",
+    "kind": "clear",
+    "idea": "Keep a ball bouncing off a tray I slide with my hand until it breaks a rangoli into tiles.",
+    "expect": { "status": "ready", "templates": ["rangoli"] }
+  },
+  {
+    "id": "clear-dabba",
+    "kind": "clear",
+    "idea": "Catch tiffins falling from a rack with the hand that matches their colour.",
+    "expect": { "status": "ready", "templates": ["dabba"] }
+  },
+  {
+    "id": "clear-popup",
+    "kind": "clear",
+    "idea": "Monkeys pop up from potholes and windows and I reach them before they hide.",
+    "expect": { "status": "ready", "templates": ["popup"] }
+  },
+  {
     "id": "clear-blades",
     "kind": "clear",
     "idea": "A sword fight where I slash raiders from every side and then face Ravana.",
     "expect": { "status": "ready", "templates": ["blades"] }
   },
   {
-    "id": "clear-corners",
+    "id": "clear-keeper",
     "kind": "clear",
-    "idea": "Shoot enemies in the four corners of the screen, with a grenade when it gets too much.",
-    "expect": { "status": "ready", "templates": ["corners"] }
+    "idea": "Save shots flying at the nine zones of the goal, with a hand, an arm, a leg or a squat for each one.",
+    "expect": { "status": "ready", "templates": ["keeper"] }
+  },
+  {
+    "id": "clear-oars",
+    "kind": "clear",
+    "idea": "A fishing boat race where I pump my arms to row and bend sideways to steer.",
+    "expect": { "status": "ready", "templates": ["oars"] }
+  },
+  {
+    "id": "clear-rickshaw",
+    "kind": "clear",
+    "idea": "Drive an auto rickshaw through traffic by running on the spot and leaning to steer.",
+    "expect": { "status": "ready", "templates": ["rickshaw"], "world": "mumbai" }
+  },
+  {
+    "id": "clear-handi",
+    "kind": "clear",
+    "idea": "Climb a human pyramid with squat jumps and break the dahi handi at the top.",
+    "expect": { "status": "ready", "templates": ["handi"] }
+  },
+  {
+    "id": "clear-circuit",
+    "kind": "clear",
+    "idea": "A cardio circuit that calls exercises one at a time and counts my reps against a lazy boss.",
+    "expect": { "status": "ready", "templates": ["circuit"] }
   },
   {
     "id": "ambiguous",

@@ -37,6 +37,7 @@ const PROPS = {
   cow: mumbai.cowStanding,
   cowsitting: mumbai.cowSitting,
   auto: mumbai.auto,
+  rallyauto: (b) => mumbai.auto(b, { open: true }),
   taxi: mumbai.taxi,
   bus: mumbai.bus,
   local: mumbai.localTrain,
@@ -84,7 +85,7 @@ const PER_WORLD = new Set(["coach", "ramp"]);
 
 // How a prop sits beside a road: vehicles lie along it, and small round things can face anywhere.
 // Everything else has a front, which is turned to the road.
-const ALONG = new Set(["auto", "taxi", "bus", "local", "coach", "cow", "cowsitting", "seawall", "kerb", "tetrapods"]);
+const ALONG = new Set(["auto", "rallyauto", "taxi", "bus", "local", "coach", "cow", "cowsitting", "seawall", "kerb", "tetrapods"]);
 const ANYWAY = new Set(["cone", "pothole", "puddle", "tetrapod", "diya", "diyaring", "rangoli0", "rangoli1", "rangoli2", "rangoli3", "anaar", "chakri", "umbrella", "merrygo", "palm", "palm2"]);
 export const propHabit = (name) => (ALONG.has(name) ? "along" : ANYWAY.has(name) ? "any" : "faces");
 

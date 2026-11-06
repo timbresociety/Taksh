@@ -1,4 +1,4 @@
-// The three bosses that end Blade March and Four Corners. A boss is pure logic like a template: it
+// The three bosses that end Blade March and Twin Sights. A boss is pure logic like a template: it
 // knows its parts, its moods and its attacks, and each game says how its own moves answer them.
 // A slot is whatever a game calls one of its four directions, so a boss works in both games.
 import { REACTION_MS } from "./shared.js";
@@ -12,7 +12,10 @@ const PHASES = 3;
 
 // Where each part sits on the figure, in a box from -1 to 1, in the order they are knocked out. The
 // king's own head is last, so the fight ends looking him in the eye.
-const HEADS = [[-1, -0.3], [1, -0.3], [-0.8, 0.5], [0.8, 0.5], [-0.5, -0.3], [0.5, -0.3], [-0.4, 0.5], [0.4, 0.5], [0.01, 0.5], [0.01, -0.3]];
+// Ravana's heads sit side by side either side of his own in a slight arch, dipping toward the shoulders,
+// with one more crowned above the middle. The outer ones go first.
+const ARCH = (x) => [x, -0.25 - 0.12 * x * x];
+const HEADS = [ARCH(-1), ARCH(1), ARCH(-0.75), ARCH(0.75), ARCH(-0.5), ARCH(0.5), ARCH(-0.25), ARCH(0.25), [0.01, 0.25], [0.01, -0.3]];
 const GIANT_MARKS = [[-0.9, 0.1, "hand_l"], [0.9, 0.1, "hand_r"], [-0.4, -0.8, "calf_l"], [0.4, -0.8, "calf_r"], [0.01, -0.15, "spine_02"], [-0.01, 0.85, "head"]];
 const STORM_KNOTS = [[-0.8, -0.5], [0.8, -0.4], [-0.55, 0.4], [0.55, 0.5], [0.01, 0.85]];
 

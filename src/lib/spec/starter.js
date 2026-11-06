@@ -16,7 +16,15 @@ export const STARTER_LOOKS = {
   harmonium: { world: "village", style: "toon" },
   chop: { world: "mumbai", style: "bright" },
   blades: { world: "diwali", style: "comic" },
-  corners: { world: "marine_drive", style: "bright" },
+  keeper: { world: "marine_drive", style: "bright" },
+  oars: { world: "marine_drive", style: "toon" },
+  rickshaw: { world: "mumbai", style: "bright" },
+  handi: { world: "mumbai", style: "comic" },
+  circuit: { world: "sunset", style: "bright" },
+  sights: { world: "downtown", style: "bright" },
+  rangoli: { world: "diwali", style: "bright" },
+  dabba: { world: "mumbai", style: "toon" },
+  popup: { world: "village", style: "bright" },
 };
 
 export function starterSpec(id, seed = Math.floor(Math.random() * 1e6)) {

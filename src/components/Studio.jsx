@@ -97,8 +97,9 @@ export default function Studio() {
     else setStage(afterSetup());
   }
 
-  // The moves are taught once per game; a replay goes straight in.
-  const afterSetup = () => (practised[game.spec.template] ? "play" : "practice");
+  // The moves are taught once per game; a replay goes straight in. A game that shows each move as it
+  // calls it needs no lesson first.
+  const afterSetup = () => (practised[game.spec.template] || templateInfo(game.spec.template).teachesItsOwnMoves ? "play" : "practice");
 
   const finishPractice = useCallback((levels) => {
     setPractised((current) => ({ ...current, [game.spec.template]: levels }));

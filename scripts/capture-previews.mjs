@@ -16,8 +16,11 @@ const shots = [
   ...STYLES.map((style) => ({ name: `style-${style.id}`, query: { preview: "1", world: "forest", style: style.id }, wait: 1500, width: 320 })),
 ];
 
+// ONLY=game-keeper,world-moon recaptures just those stills.
+const only = process.env.ONLY?.split(",");
+
 const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--use-angle=metal", "--ignore-gpu-blocklist"] });
-for (const shot of shots) {
+for (const shot of shots.filter((item) => !only || only.includes(item.name))) {
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
   await page.goto(`http://localhost:${PORT}/debug/stage?${new URLSearchParams(shot.query)}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.__rigReady || window.__rigError, null, { timeout: 60000 });

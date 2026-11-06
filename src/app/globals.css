@@ -749,6 +749,17 @@ kbd {
   text-align: center;
 }
 
+.lab__left {
+  margin-left: 12px;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.lab__drill .button[aria-pressed="true"] {
+  background: var(--volt);
+  color: var(--rubber);
+}
+
 .lab__stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1409,7 +1420,101 @@ kbd {
   opacity: 0.85;
 }
 
-/* The limb panels fill the corners here, so only the newest move shows, below the panel. */
-.play[data-template="corners"] .movements li:not(:first-child) {
+/* Hands reach all over the screen in these, so the camera picture keeps to the very corner. */
+.play[data-template="sights"] .pip,
+.play[data-template="rangoli"] .pip,
+.play[data-template="dabba"] .pip,
+.play[data-template="popup"] .pip {
+  top: 70px;
+  width: clamp(120px, 12vw, 190px);
+}
+
+/* The goal fills the screen here, so only the newest move shows, tucked in the corner under it. */
+.play[data-template="keeper"] .movements {
+  right: var(--gutter);
+  bottom: 12px;
+  left: auto;
+  align-items: flex-end;
+}
+
+.play[data-template="keeper"] .movements li:not(:first-child) {
   display: none;
+}
+
+/* The nine keys sit like the nine zones, each in its zone's colour, so the grid is its own label. */
+.play[data-template="keeper"] .keys {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 5px 6px;
+  padding: 8px 10px;
+}
+
+.play[data-template="keeper"] .keys span {
+  font-size: 0;
+}
+
+.play[data-template="keeper"] .keys kbd {
+  min-width: 2.1em;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.play[data-template="keeper"] .keys span:nth-child(1) kbd,
+.play[data-template="keeper"] .keys span:nth-child(4) kbd {
+  color: #3fd8c8;
+}
+
+.play[data-template="keeper"] .keys span:nth-child(3) kbd,
+.play[data-template="keeper"] .keys span:nth-child(6) kbd {
+  color: #ff6fa3;
+}
+
+.play[data-template="keeper"] .keys span:nth-child(2) kbd {
+  color: #ffc23a;
+}
+
+.play[data-template="keeper"] .keys span:nth-child(5) kbd {
+  color: #6aa6ff;
+}
+
+.play[data-template="keeper"] .keys span:nth-child(7) kbd {
+  color: #ff9a4a;
+}
+
+.play[data-template="keeper"] .keys span:nth-child(8) kbd {
+  color: #6fd46a;
+}
+
+.play[data-template="keeper"] .keys span:nth-child(9) kbd {
+  color: #ad8cff;
+}
+
+.play[data-template="keeper"] .keys .text-button {
+  grid-column: 1 / -1;
+  font-size: 0.78rem;
+}
+
+.cursor-lab__field {
+  position: relative;
+  grid-column: 1 / -1;
+  aspect-ratio: 16 / 9;
+  max-height: 68vh;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #000;
+}
+
+.cursor-lab__field video,
+.cursor-lab__field canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cursor-lab__field video {
+  opacity: 0.45;
+  transform: scaleX(-1);
 }

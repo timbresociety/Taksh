@@ -1,4 +1,4 @@
-// The five newer games and their bosses, played headless. test/templates.test.mjs runs the checks every
+// The four newer games and their bosses, played headless. test/templates.test.mjs runs the checks every
 // template shares; this file holds what is particular to each of these.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -11,8 +11,7 @@ const matka = templateInfo("matka");
 const harmonium = templateInfo("harmonium");
 const chop = templateInfo("chop");
 const blades = templateInfo("blades");
-const corners = templateInfo("corners");
-const NEW_GAMES = [matka, harmonium, chop, blades, corners];
+const NEW_GAMES = [matka, harmonium, chop, blades];
 const LOCKED = new Set(["step_left", "step_right", "jump", "squat_down", "reach_up_left", "reach_up_right", "hands_up", "lift_left", "lift_right", "slash_left", "slash_right", "slash_up", "slash_down", "punch_left", "punch_right", "guard", "run_step"]);
 
 function specOf(template, tuning = {}, seed = 7) {
@@ -346,11 +345,9 @@ describe("bosses", () => {
       assert.ok(types(events).includes("boss_strike"));
     });
 
-    it(`${info.name} can be fought from both games`, () => {
-      for (const template of [blades, corners]) {
-        const result = simulate(template, specOf(template, { boss: number }), { skill: "quick" });
-        assert.equal(result.outcome, "win", `${template.id}: ${JSON.stringify(result)}`);
-      }
+    it(`${info.name} can be fought from Blade March`, () => {
+      const result = simulate(blades, specOf(blades, { boss: number }), { skill: "quick" });
+      assert.equal(result.outcome, "win", JSON.stringify(result));
     });
   }
 
@@ -450,7 +447,7 @@ describe("bosses", () => {
   });
 
   it("the boss tuning is a whole number that selects one", () => {
-    for (const template of [blades, corners]) {
+    for (const template of [blades]) {
       assert.equal(template.tuning.boss.whole, true);
       assert.deepEqual([template.tuning.boss.min, template.tuning.boss.max], [1, BOSSES.length]);
       for (const [index, { id }] of BOSSES.entries()) {
@@ -534,95 +531,6 @@ describe("blades", () => {
   it("guard answers a boss's blow, and the finale waits for the boss to fall", () => {
     const result = simulate(blades, specOf(blades, { waves: 1, boss: 1, bossHealth: 1 }), { skill: "quick" });
     assert.equal(result.outcome, "win");
-  });
-});
-
-describe("corners", () => {
-  const quadrantOf = { reach_up_left: "shoot_tl", reach_up_right: "shoot_tr", lift_left: "shoot_bl", lift_right: "shoot_br" };
-  const withEnemies = (quadrants, tuning) => {
-    const state = corners.create(specOf(corners, tuning));
-    state.nextMs = 1e9;
-    state.enemies = quadrants.map((quadrant, index) => ({ id: 50 + index, quadrant, ms: 0, lifeMs: 3000 }));
-    return state;
-  };
-
-  it("the owner's spec: each limb fires into its own quadrant, and hands up throws", () => {
-    for (const [gesture, action] of Object.entries(quadrantOf)) assert.equal(corners.bindings.find((binding) => binding.gesture === gesture).action, action);
-    assert.equal(corners.bindings.find((binding) => binding.gesture === "hands_up").action, "grenade");
-    assert.equal(corners.bindings.find((binding) => binding.gesture === "jump").action, "jump");
-  });
-
-  it("every shot finds the enemy in its quadrant, with no aiming", () => {
-    for (const quadrant of ["tl", "tr", "bl", "br"]) {
-      const state = withEnemies(["tl", "tr", "bl", "br"]);
-      const events = corners.act(state, `shoot_${quadrant}`);
-      assert.deepEqual(events.find((event) => event.type === "hit")?.quadrant, quadrant);
-      assert.equal(state.enemies.length, 3);
-      assert.ok(!state.enemies.some((enemy) => enemy.quadrant === quadrant));
-    }
-  });
-
-  it("a shot into an empty quadrant is wasted, and hits nothing else", () => {
-    const state = withEnemies(["tl"]);
-    assert.ok(!types(corners.act(state, "shoot_br")).includes("hit"));
-    assert.equal(state.enemies.length, 1);
-    assert.equal(state.wasted, 1);
-  });
-
-  it("the grenade clears all four, and the stock runs out", () => {
-    const state = withEnemies(["tl", "tr", "bl", "br"], { grenades: 1 });
-    assert.ok(types(corners.act(state, "grenade")).includes("grenade"));
-    assert.equal(state.enemies.length, 0);
-    assert.equal(state.grenades, 0);
-    state.enemies = [{ id: 60, quadrant: "tl", ms: 0, lifeMs: 3000 }];
-    assert.deepEqual(types(corners.act(state, "grenade")), ["empty"]);
-    assert.equal(state.enemies.length, 1);
-  });
-
-  it("an enemy left alone fires", () => {
-    const state = withEnemies(["bl"]);
-    const lives = state.lives;
-    assert.ok(types(run(corners, state, 3100)).includes("fire"));
-    assert.equal(state.lives, lives - 1);
-  });
-
-  it("a jump clears what rolls at you, and standing still does not", () => {
-    const roll = (jump) => {
-      const state = corners.create(specOf(corners));
-      state.nextMs = 1e9;
-      state.nextRollMs = 1e9;
-      state.rolls = [{ id: 70, ms: 0, arriveMs: 400 }];
-      if (jump) corners.act(state, "jump");
-      return types(run(corners, state, 500));
-    };
-    assert.ok(roll(true).includes("clear"));
-    assert.ok(roll(false).includes("hurt"));
-  });
-
-  it("every boss part sits in a quadrant, and all four are used", () => {
-    for (const [index] of BOSSES.entries()) {
-      const state = corners.create(specOf(corners, { boss: index + 1, enemies: 6 }));
-      for (let t = 0; t < 120000 && !state.boss; t += 20) {
-        const wanted = corners.bot(state, "quick");
-        if (wanted) corners.act(state, wanted);
-        corners.step(state, 20);
-      }
-      const used = new Set(state.boss.parts.map((part) => part.slot));
-      assert.equal(used.size, 4, BOSSES[index].id);
-    }
-  });
-
-  it("a grenade hurts the boss wherever its open part sits", () => {
-    const state = corners.create(specOf(corners, { boss: 1, enemies: 6, grenades: 5 }));
-    for (let t = 0; t < 120000 && !state.boss; t += 20) {
-      const wanted = corners.bot(state, "quick");
-      if (wanted) corners.act(state, wanted);
-      corners.step(state, 20);
-    }
-    while (state.boss.mood === "enter") corners.step(state, 20);
-    const before = state.boss.parts[0].hp;
-    corners.act(state, "grenade");
-    assert.ok(state.boss.parts[0].hp < before);
   });
 });
 

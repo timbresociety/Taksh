@@ -9,8 +9,9 @@ const HAIR_LABELS = { "simple-parted": "Parted", long: "Long", buns: "Buns", buz
 
 export function Controls({ spec }) {
   const template = templateInfo(spec.template);
-  // Mirror Match shows its pose on screen, so ten rows of poses would only get in the way.
-  const shown = template.actions.length > 6 ? template.actions.slice(0, 3) : template.actions;
+  // Mirror Match and the circuit show their move on screen, so ten or more rows would only get in the
+  // way. Last Line's nine zones each need their own move, so nine still fit.
+  const shown = template.actions.length > 9 ? template.actions.slice(0, 3) : template.actions;
   return (
     <table className="controls" data-testid="controls">
       <thead>

@@ -115,6 +115,7 @@ export function lightPool(radius, colour = "#ffb45a", strength = 0.5) {
   mesh.position.y = 0.05;
   mesh.userData.keepMaterial = true;
   mesh.userData.flat = true;
+  mesh.userData.light = true;
   return mesh;
 }
 

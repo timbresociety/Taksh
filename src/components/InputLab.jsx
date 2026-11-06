@@ -4,20 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import { Calibrator } from "@/lib/motion/calibrate";
 import { cameraProblem } from "@/lib/motion/camera-error";
 import { PoseFeed } from "@/lib/motion/feed";
-import { GestureEngine, LOCKED_MOVES, MOVE_READINGS } from "@/lib/motion/gestures";
+import { CARDIO_MOVES, GestureEngine, LOCKED_MOVES, MOVE_READINGS } from "@/lib/motion/gestures";
 import { drawGhost, drawSkeleton } from "@/lib/motion/overlay";
 import { GESTURES, gestureInfo } from "@/lib/spec/contract";
+import { templateInfo } from "@/lib/templates";
 import MoveCoach from "./MoveCoach";
 
 const PROMPT_MS = 3200;
 const REST_MS = 1400;
-const REPS = 6;
+const REP_CHOICES = [3, 6]; // six is steadier, three keeps a drill of twenty moves to about four minutes
 
 // Bars show each live signal against the level that fires it, locked moves first. 1.00 fires.
 const GAUGES = [...LOCKED_MOVES.filter((id) => MOVE_READINGS[id]), ...Object.keys(MOVE_READINGS).filter((id) => !LOCKED_MOVES.includes(id))];
 const readings = (engine, f) => GAUGES.map((id) => [id, gestureInfo(id)?.label ?? id, engine.meter(id, f), 1]);
 
 const DRILLABLE = GESTURES.filter((gesture) => !gesture.hidden);
+const drillMinutes = (moves, reps) => Math.max(1, Math.round((moves * reps * (PROMPT_MS + REST_MS)) / 60000));
+// The moves one game listens to, so a drill can check just those.
+const movesOf = (id) => [...new Set(templateInfo(id).bindings.map((binding) => binding.gesture))].filter((gesture) => DRILLABLE.some((item) => item.id === gesture));
 
 function emptyTotals() {
   return Object.fromEntries(DRILLABLE.map((gesture) => [gesture.id, { prompts: 0, detected: 0, missed: 0, doubles: 0, wrong: 0 }]));
@@ -50,6 +54,7 @@ export default function InputLab() {
   const [prompt, setPrompt] = useState(null);
   const [falseFires, setFalseFires] = useState(0);
   const [selected, setSelected] = useState(LOCKED_MOVES);
+  const [reps, setReps] = useState(REP_CHOICES[0]);
   const [framing, setFraming] = useState("full");
   const [shown, setShown] = useState(LOCKED_MOVES[0]);
 
@@ -125,7 +130,7 @@ export default function InputLab() {
   }
 
   function runDrill() {
-    const queue = selected.flatMap((id) => Array(REPS).fill(id)).sort(() => Math.random() - 0.5);
+    const queue = selected.flatMap((id) => Array(reps).fill(id)).sort(() => Math.random() - 0.5);
     setTotals(emptyTotals());
     setFalseFires(0);
     drill.current = { queue, current: null };
@@ -227,6 +232,7 @@ export default function InputLab() {
           {prompt && (
             <p className="lab__prompt" data-testid="lab-prompt">
               {gestureInfo(prompt.gesture).cue}
+              <span className="lab__left">{prompt.left} left</span>
             </p>
           )}
         </div>
@@ -271,7 +277,18 @@ export default function InputLab() {
 
       <section className="lab__drill">
         <h2>Drill</h2>
-        <p>Each move is prompted {REPS} times in random order. Do it once per prompt.</p>
+        <p>
+          Each move is prompted {reps} times in random order. Do it once per prompt. {selected.length} moves take about {drillMinutes(selected.length, reps)} min, and the trace can be saved at any point.
+        </p>
+        <div className="answers">
+          <button type="button" className="button" onClick={() => setSelected(LOCKED_MOVES)}>Core moves</button>
+          <button type="button" className="button" onClick={() => setSelected(CARDIO_MOVES)}>Cardio moves</button>
+          <button type="button" className="button" onClick={() => setSelected(movesOf("keeper"))}>Last Line moves</button>
+          {REP_CHOICES.map((count) => (
+            <button key={count} type="button" className="button" aria-pressed={reps === count} onClick={() => setReps(count)}>{count} each</button>
+          ))}
+          <a className="button" href="/debug/cursor">Hand cursor test</a>
+        </div>
         <fieldset className="drill-picks">
           <legend className="visually-hidden">Moves in the drill</legend>
           {DRILLABLE.map((gesture) => (

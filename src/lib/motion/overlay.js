@@ -1,5 +1,7 @@
 import { LM, SKELETON } from "./landmarks.js";
 
+export const HAND_COLOURS = { left: "#39d0c6", right: "#ff2d78" };
+
 // object-fit: cover, matching the video element underneath.
 function projection(canvas, aspect) {
   const scale = Math.max(canvas.width / aspect, canvas.height);
@@ -29,6 +31,28 @@ export function drawSkeleton(canvas, points, aspect, color = "#e9ff3a") {
     ctx.beginPath();
     ctx.moveTo(...at(points[a]));
     ctx.lineTo(...at(points[b]));
+    ctx.stroke();
+  }
+}
+
+// Draws each hand's cursor, and the dot it should reach, over the mirrored view. Call after drawSkeleton.
+export function drawAim(canvas, cursors, dot) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const place = ({ x, y }) => [((x + 1) / 2) * canvas.width, ((1 - y) / 2) * canvas.height];
+  const size = canvas.height * 0.03;
+  if (dot) {
+    ctx.fillStyle = HAND_COLOURS[dot.hand];
+    ctx.beginPath();
+    ctx.arc(...place(dot), canvas.height * 0.11, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.lineWidth = Math.max(3, canvas.height * 0.008);
+  for (const side of ["left", "right"]) {
+    if (!cursors[side]) continue;
+    ctx.strokeStyle = HAND_COLOURS[side];
+    ctx.beginPath();
+    ctx.arc(...place(cursors[side]), size, 0, Math.PI * 2);
     ctx.stroke();
   }
 }

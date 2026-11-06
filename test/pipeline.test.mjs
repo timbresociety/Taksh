@@ -1,6 +1,7 @@
 // Exercises the pipeline's control flow with stubbed model output. These tests say nothing about
 // real model quality. Those checks live in `npm run eval`, which needs credentials.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { clarifyIdea, generateGame, reviseGame } from "../src/lib/pipeline/pipeline.js";
 import { INTENT_SCHEMA, PROMPT_VERSIONS, REVISION_SCHEMA, loadPrompt } from "../src/lib/pipeline/prompts.js";
@@ -12,6 +13,7 @@ import { validateSpec } from "../src/lib/spec/validate.js";
 import { TEMPLATES, templateInfo } from "../src/lib/templates/index.js";
 
 const fixtures = createFixtureProvider();
+const EVAL_CASES = JSON.parse(readFileSync("evals/cases.json", "utf8"));
 const modelSpec = async (idea = "escape a robot") => (await fixtures.complete({ stage: "generate", input: { idea } })).data;
 const savedSpec = async (idea) => validateSpec(await modelSpec(idea)).spec;
 
@@ -434,4 +436,21 @@ describe("claude provider request shape", () => {
       await assert.rejects(provider.complete({ stage: "generate", system: "s", user: "u", schema: {} }));
     }
   });
+});
+
+// With no key the fixture is the only thing choosing a game, so a typed idea has to land on the right one.
+describe("eval ideas through the fixture", () => {
+  for (const item of EVAL_CASES.filter((entry) => entry.kind === "clear")) {
+    it(`${item.id} lands on ${item.expect.templates.join(" or ")}`, async () => {
+      const { status, brief } = await clarifyIdea({ idea: item.idea }, fixtures);
+      assert.equal(status, "ready");
+      const game = await generateGame({ idea: item.idea, brief }, fixtures);
+      assert.ok(game.ok);
+      assert.ok(item.expect.templates.includes(game.spec.template), `got ${game.spec.template}`);
+    });
+
+    it(`${item.id} expects a game that exists`, () => {
+      for (const id of item.expect.templates) assert.ok(templateInfo(id), id);
+    });
+  }
 });

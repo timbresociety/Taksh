@@ -23,6 +23,29 @@ function tone(frequency, startIn, length, { type = "triangle", gain = 0.16, slid
   oscillator.stop(at + length + 0.02);
 }
 
+// A burst of noise through a sweeping filter, for what water and clay do and an oscillator can't.
+let hissBuffer = null;
+function hiss(startIn, length, { from, to, gain, q = 0.8 }) {
+  if (!audio) return;
+  const at = audio.currentTime + startIn;
+  hissBuffer ??= noiseBuffer();
+  const source = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const envelope = audio.createGain();
+  source.buffer = hissBuffer;
+  source.loop = true;
+  filter.type = "bandpass";
+  filter.Q.value = q;
+  filter.frequency.setValueAtTime(from, at);
+  filter.frequency.exponentialRampToValueAtTime(to, at + length);
+  envelope.gain.setValueAtTime(0.0001, at);
+  envelope.gain.exponentialRampToValueAtTime(gain, at + 0.012);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, at + length);
+  source.connect(filter).connect(envelope).connect(audio.destination);
+  source.start(at);
+  source.stop(at + length + 0.02);
+}
+
 const CUES = {
   hit: () => {
     tone(660, 0, 0.09);
@@ -43,6 +66,26 @@ const CUES = {
   shot: () => tone(900, 0, 0.1, { type: "square", slideTo: 140, gain: 0.09 }),
   boom: () => tone(120, 0, 0.5, { type: "sawtooth", slideTo: 38, gain: 0.24 }),
   roar: () => tone(95, 0, 0.8, { type: "sawtooth", slideTo: 55, gain: 0.18 }),
+  tile: () => {
+    tone(1760, 0, 0.05, { type: "square", slideTo: 1320, gain: 0.075 });
+    tone(2640, 0.012, 0.09, { gain: 0.09 });
+  },
+  bounce: () => [392, 1046].forEach((frequency) => tone(frequency, 0, 0.18, { gain: 0.09 })),
+  pop: () => tone(300, 0, 0.1, { slideTo: 720, gain: 0.14 }),
+  bop: () => {
+    tone(210, 0, 0.12, { type: "square", slideTo: 90, gain: 0.11 });
+    tone(620, 0.03, 0.16, { slideTo: 900, gain: 0.09 });
+  },
+  splash: () => {
+    hiss(0, 0.34, { from: 700, to: 2600, gain: 0.2, q: 0.7 });
+    tone(240, 0.03, 0.14, { type: "sine", slideTo: 520, gain: 0.08 });
+  },
+  horn: () => [0, 0.2].forEach((at) => [392, 494].forEach((frequency) => tone(frequency, at, 0.17, { type: "sawtooth", gain: 0.075 }))),
+  crack: () => {
+    tone(170, 0, 0.16, { type: "square", slideTo: 70, gain: 0.14 });
+    hiss(0, 0.32, { from: 4200, to: 900, gain: 0.26, q: 0.6 });
+    [2300, 1650, 2900].forEach((frequency, i) => tone(frequency, 0.05 + i * 0.06, 0.05, { type: "triangle", gain: 0.06 }));
+  },
 };
 
 // A dhol has two voices: the deep dagga on one skin and the sharp tilli on the other. Each letter is a
