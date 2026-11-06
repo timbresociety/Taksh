@@ -4,6 +4,18 @@ Written as the work happened, on 6 and 7 November 2026 (UTC), with `@arkiv-netwo
 
 `npm run arkiv:probe` (`scripts/arkiv-probe.mjs`) is read-only and prints the live counts, query times and rate-limit headers quoted below.
 
+## Every break, in one table
+
+| What broke | What we expected | What happened | How to reproduce |
+| --- | --- | --- | --- |
+| Reads without an access key | Reads keep working at hackathon load, or a documented limit | `429 ANON_COST_LIMITED` after about 1,000 queries per client address, for about 10 minutes. In a judge-style walkthrough on 2026-11-06 it ran out 5 minutes after a reset and failed 2 of 22 steps | The `curl` loop under "The public endpoint runs out of query budget" |
+| The access key in errors | The key kept out of logs | `error.message` from viem prints the RPC URL, with the key in its path | The 4-line script under "The access key is in the URL" |
+| Funding a dev wallet from a script | A faucet an agent or CI job can call | `401 {"error":"Unauthorized"}` without a signed-in Hub session | `curl -X POST https://hub.arkiv.network/api/faucet -H 'content-type: application/json' -d '{"recipient":"0x0000000000000000000000000000000000000001","captchaToken":"x"}'` |
+| A write from an unfunded wallet | An error that says the wallet has no tGLM | `Execution error without revert data` | `createEntity` from `privateKeyToAccount(generatePrivateKey())` on Rabdi |
+| A read during a 429, with viem's default retries | The request fails fast | Every route hung over 2 minutes, because viem sleeps the full `Retry-After: 761` before retrying | Any query through `http()` (default `retryCount: 3`) while the budget is spent |
+| `ne` and `not` filters | Exported, as `llms.txt` lists them | Not in `@arkiv-network/sdk/query` 1.0.1 | `node -e "import('@arkiv-network/sdk/query').then(m => console.log('ne' in m, 'not' in m))"` prints `false false` |
+| A `bigint` for a `u64` column | Accepted, since `1n` fits a `u64` | `SchemaMismatchError` at runtime: a bare `bigint` is a `u256` | `test/arkiv.test.mjs`, "stores a game spec as bytes and reads it back", which writes `publishedAt: 1n` |
+
 ## The public endpoint runs out of query budget, and the app has to say so
 
 This was the friction that cost the most. Without an access key, the public endpoint gives a budget of query cost. When it's spent, every `arkiv_query` answers:
@@ -32,6 +44,10 @@ What we changed:
 - **Name the cause on every page.** All Arkiv errors go through `arkivCause` in `src/lib/arkiv/store.js`. The board, the gallery, a shared game, the daily board and today's card all say "Arkiv's public endpoint is rate limiting this server, which has no ARKIV_ACCESS_KEY", instead of "Arkiv did not respond". Before, only the API routes did.
 - **Don't fail a post that already landed.** Because a 429 stops queries but not transactions, a score post during one wrote its entity (tx [`0x0813e2be…`](https://rabdi.explorer.arkiv.network/tx/0x0813e2bea9d05f28ed7e3038e8eeea2a16ad15ee7adf7f81b33479699b862c1e)) and then failed the two `count()` calls that work out the rank. The player saw an error for a score that was on chain, and a retry would post it twice. The 2026-11-06 daily board shows it: two `fm-probe` rows at 1234, from one post that answered with the rank and one at 22:24:58 UTC that answered `429` after 8.7 s. Now the post returns its key and transaction, and the board says "Posted" and that the rank can't be counted right now.
 - **Read `ARKIV_ACCESS_KEY`.** `connect()` passes it, trimmed, to `rabdi({ accessKey })`. With a key set, a 429 says the key is being rate limited, not the public endpoint.
+
+With the captain's access key the same walkthrough passed 22 of 22. The keyed endpoint sends `ratelimit: limit=5000, remaining=…, reset=6`, and there was no query budget to run out.
+
+The Rabdi indexer answered `arkiv_query` with no `RateLimit` header while we were testing, at `https://indexer.rabdi.db-chain.testnet.arkiv.network/api/entity-explorer/rpc`, the endpoint the explorer itself uses. It returned the same 8 scores as the RPC at the same block. It doesn't serve `arkiv_getEntity` or `eth_*` ("Method not found"), so it can stand in for queries, not for writes. If it's meant for public reads, a line in the docs would give every app a fallback for its boards. If it isn't, it's a way around the budget that nobody intended.
 
 I'd like the 429 to include the cost of the query that tripped it and the window length, and the SDK to throw a named `RateLimitedError` with `retryAfter`. Right now the cause is three levels down a viem `HttpRequestError`, and the SDK warns once at startup and never again.
 
@@ -96,7 +112,7 @@ The SDK's runtime checks run before anything is sent, and they were good. A wall
 
 Each column comes back as `{ type, value }`, and `u64`, `count` and `blockNumber` come back as `bigint`, which `Response.json` can't serialise. Every API route needs a small mapper (`plainRow` in `schema.js`).
 
-`$expiresAt` is a block number. To show "29 d" next to a score, the server takes the query's own `blockNumber`, subtracts, and multiplies by the 2 s block time (`daysLeft` in `schema.js`). That's cheap, but a `$expiresAtTime` projection, or `blockTime` on the query result, would save every app the same arithmetic and the hard-coded 2.
+`$expiresAt` is a block number. To show "30 d" next to a score posted today, the server takes the query's own `blockNumber`, subtracts, and multiplies by the 2 s block time (`daysLeft` in `schema.js`). That's cheap, but a `$expiresAtTime` projection, or `blockTime` on the query result, would save every app the same arithmetic and the hard-coded 2.
 
 ## What was easy
 
