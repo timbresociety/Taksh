@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import RivalEpisode from "./RivalEpisode";
 
 const SUGGESTIONS = ["Give me more time", "Make it harder", "Switch it to neon"];
 
@@ -29,6 +30,7 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
             </div>
           ))}
         </dl>
+        {result.episode && <RivalEpisode episode={result.episode} />}
       </section>
 
       <section className="result__revise">

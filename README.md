@@ -1,13 +1,13 @@
 # Taksh
 
-Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. 0G, Arkiv and ENS come in a later pass.
+Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. Games are generated on 0G Private Computer, inside a TEE. Arkiv and ENS come in a later pass.
 
 ## Run it
 
 ```bash
 npm install
 npm run setup          # copies the MediaPipe runtime and fetches the pose models into public/
-cp .env.example .env.local   # add ANTHROPIC_API_KEY for real generation
+cp .env.example .env.local   # add OG_API_KEY (or ANTHROPIC_API_KEY) for real generation
 npm run build && npm start   # or: npm run dev
 ```
 
@@ -81,14 +81,46 @@ The camera only works on `http://localhost` or an HTTPS address. The `Network` a
 
 ## Model and prompts
 
-**Not chosen yet.** No credentials were configured, so no prompt has been sent to a real model.
+Games are generated on **0G Private Computer** with `glm-5.3`, on the `private` trust tier. Only TeeML providers can serve those requests, so the model runs inside a TEE and the prompt never leaves the enclave. The provider is `src/lib/pipeline/provider-0g.js`. It calls the 0G Router (`https://router-api.0g.ai/v1`, OpenAI-compatible) with plain `fetch` and needs no SDK.
 
-- Provisional default: `claude-opus-5-5`, set in `src/lib/pipeline/provider-claude.js`. Override it with `TAKSH_MODEL`.
-- Effort: `low` for intent, `medium` for generate and revise.
+The idea can also be spoken. "Say it" records up to 15 s in the browser, and `/api/transcribe` sends it to `whisper-large-v3` on the same private tier. The words land in the idea box to read and fix before "Make my game". A 4 s idea costs $0.00052. The button shows only when 0G is the provider. The route refuses non-audio and anything over 1 MB, and allows 20 a minute.
+
+- **Order.** The app picks 0G when `OG_API_KEY` is set, then Claude, then labelled fixtures. `TAKSH_PROVIDER=0g|claude|fixture` forces one. `OG_MODEL` changes the model, which must have a TeeML provider.
+- **Receipts.** Every reply carries `x_0g_trace` with a request ID, the provider's on-chain address and the cost. The pipeline returns these as `traces`, and the brief and result screens show the call count, total cost and last request ID.
+- **Request shape.** Strict JSON schema output, thinking off, and a price ceiling on every call (`X-0G-Provider-Max-Price-Usd-*`). A `402` (empty balance), `429` or `503` becomes a message the player can act on. `429` and `5xx` are retried once.
+- **What breaks without 0G.** Taksh can't turn an idea into a game. You're left with 13 starter games and keyword fixtures.
+
+Eval on 2026-11-06 (`npm run eval -- --provider 0g`, 20 cases, saved in `evals/results/`):
+
+| Setting | Passed | Generate time | Cost per game |
+| --- | --- | --- | --- |
+| Thinking on, no colour pattern | 7/20 | 21 to 113 s | about $0.014 |
+| Thinking off, `#rrggbb` pattern in the schema | 17/20 | 5 to 12 s | about $0.003 |
+
+With thinking on, 8 of 20 games failed validation on the first try, all because of colours that weren't `#rrggbb`. Each one needed a repair call. The three cases still failing are judgment calls. One idea got a question when it should have become a game, one became a game when it needed a question, and one became a game when it should have been marked unsupported.
+
 - Prompts: `prompts/intent.v2.md`, `prompts/generate.v2.md`, `prompts/revise.v2.md`. Versions are set in `src/lib/pipeline/prompts.js`. The list of templates, worlds, styles and tuning ranges is injected from `src/lib/spec/contract.js`.
-- Requests use server-side refusal fallback (`fallbacks: "default"`). Remove it from `provider-claude.js` if you don't want it.
+- The Claude path (`provider-claude.js`, default `claude-opus-5-5`) still works with `ANTHROPIC_API_KEY`. It hasn't been run since the colour pattern was added to the shared schema.
 
-To settle this, add a key and run `npm run eval`. It checks each case for idea preservation, validity, playability and speed, against a budget of 8s for intent and 30s for generate or revise. If Opus misses the time budget, that is the reason to compare a second model with `npm run eval -- --model claude-haiku-5-5`.
+## 0G rival in Counter Bout
+
+With 0G connected, the Counter Bout rival only throws shots its 0G brain planned. Every few seconds the browser sends the fight so far to `/api/rival/decide`: health, time left, and which recent shots the player dodged. `glm-5.3` on the private tier returns the next three shots, a taunt and a read on the player. Each decision costs about $0.0004 and takes 3 to 5 s. The rival asks again while one shot is still queued.
+
+- **Safe stop.** If 0G errors or takes over 6 s, no plan arrives, so the rival holds its guard and throws nothing. It never makes up a shot, and the HUD says "0G signal lost".
+- **Episode log.** `GameSession` records every step's dt, every move and every plan. At the end of a round, `/api/rival/episode` checks each plan against what 0G really returned (by request ID, single use), replays the round, and uploads it to 0G Storage on Galileo testnet. The result screen shows the root hash.
+- **Player moves.** The player's keys come from the browser, so the server doesn't take the score on trust. It stores the score from its own replay. It also refuses a round if its decisions come from more than one round ID, if it stops before the round ended, if it leaves out a plan 0G served in time to be played (judged on the server clock), if the game clock runs ahead of the server clock (a fast-forwarded round), if it arrives more than 5 minutes after ending, or if more than 2 dodges land under 120 ms after the windup shows. While the rival guards for lack of a plan, punches don't land, so a browser that stops asking 0G gains nothing. A bot playing at human speed still gets through. Stopping that needs inputs signed on the server as they happen.
+- **Replay.** `npm run replay-episode -- <rootHash>` downloads the episode with Merkle proof checking, plays it again from the seed, and exits 1 if the score differs.
+
+First stored round (2026-11-06), writer `0x07996A4De073dD64219fb84e05FA048145802aa2`:
+
+| | |
+| --- | --- |
+| Root hash | `0xd17bfb19d7ae5c2090b8a98aa81abf5e40466d1771372435e973d958aa9dcc7b` |
+| Upload tx | [`0x4f56b07a…58bc76`](https://chainscan-galileo.0g.ai/tx/0x4f56b07ab69d300da7783ce7f6de9d398601d4ca33cf7cd7c0899cae0858bc76) |
+| 0G decisions | `f3c65784-25cc-4088-a959-d6eda4a6eb5f`, `23aeeff2-d81b-4a5d-aa6d-6e6339d63471` |
+| Replay | 873 steps, win, score 3000, matches the stored result |
+
+The rival's second read was "Never dodges left; leads with same head-side tell." The test player never leaned right, and the rival kept throwing left.
 
 ## What was tested
 
