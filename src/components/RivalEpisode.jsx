@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const EXPLORER = "https://storagescan-galileo.0g.ai";
+const EXPLORER = "https://chainscan-galileo.0g.ai";
 const sent = new WeakMap(); // one upload per episode, even when React mounts this twice
 
 // After a round against the 0G rival: what its brain decided, and where the round lives on 0G Storage.

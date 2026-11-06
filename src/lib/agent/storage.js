@@ -6,7 +6,7 @@ import { MAX_EPISODE_BYTES } from "./episode.js";
 
 export const OG_STORAGE_RPC = process.env.OG_STORAGE_RPC || "https://evmrpc-testnet.0g.ai";
 export const OG_STORAGE_INDEXER = process.env.OG_STORAGE_INDEXER || "https://indexer-storage-testnet-turbo.0g.ai";
-export const OG_STORAGE_EXPLORER = "https://storagescan-galileo.0g.ai";
+export const OG_STORAGE_EXPLORER = "https://chainscan-galileo.0g.ai";
 
 export function encodeEpisode(episode) {
   const bytes = new TextEncoder().encode(JSON.stringify(episode));

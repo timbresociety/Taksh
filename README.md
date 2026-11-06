@@ -75,6 +75,25 @@ With thinking on, 8 of 20 games failed validation on the first try, all because 
 - Prompts: `prompts/intent.v2.md`, `prompts/generate.v2.md`, `prompts/revise.v2.md`. Versions are set in `src/lib/pipeline/prompts.js`. The list of templates, worlds, styles and tuning ranges is injected from `src/lib/spec/contract.js`.
 - The Claude path (`provider-claude.js`, default `claude-opus-5-5`) still works with `ANTHROPIC_API_KEY`. It hasn't been run since the colour pattern was added to the shared schema.
 
+## 0G rival in Counter Bout
+
+With 0G connected, the Counter Bout rival only throws shots its 0G brain planned. Every few seconds the browser sends the fight so far to `/api/rival/decide`: health, time left, and which recent shots the player dodged. `glm-5.3` on the private tier returns the next three shots, a taunt and a read on the player. Each decision costs about $0.0004 and takes 3 to 5 s. The rival asks again while one shot is still queued.
+
+- **Safe stop.** If 0G errors or takes over 6 s, no plan arrives, so the rival holds its guard and throws nothing. It never makes up a shot, and the HUD says "0G signal lost".
+- **Episode log.** `GameSession` records every step's dt, every move and every plan. At the end of a round, `/api/rival/episode` checks each plan against what 0G really returned (by request ID, single use), replays the round, and uploads it to 0G Storage on Galileo testnet. The result screen shows the root hash.
+- **Replay.** `npm run replay-episode -- <rootHash>` downloads the episode with Merkle proof checking, plays it again from the seed, and exits 1 if the score differs.
+
+First stored round (2026-11-06), writer `0x07996A4De073dD64219fb84e05FA048145802aa2`:
+
+| | |
+| --- | --- |
+| Root hash | `0xd17bfb19d7ae5c2090b8a98aa81abf5e40466d1771372435e973d958aa9dcc7b` |
+| Upload tx | [`0x4f56b07a…58bc76`](https://chainscan-galileo.0g.ai/tx/0x4f56b07ab69d300da7783ce7f6de9d398601d4ca33cf7cd7c0899cae0858bc76) |
+| 0G decisions | `f3c65784-25cc-4088-a959-d6eda4a6eb5f`, `23aeeff2-d81b-4a5d-aa6d-6e6339d63471` |
+| Replay | 873 steps, win, score 3000, matches the stored result |
+
+The rival's second read was "Never dodges left; leads with same head-side tell." The test player never leaned right, and the rival kept throwing left.
+
 ## What was tested
 
 **No person has played this on a webcam yet.** The FaceTime camera on the build machine was not used. Movement was tested by feeding video files to Chrome as a fake camera, which runs the real capture, local MediaPipe, calibration and gesture code.
