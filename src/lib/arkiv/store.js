@@ -23,26 +23,46 @@ let clients;
 export const READ_MS = 10_000;
 export const WRITE_MS = 25_000;
 
-const unavailable = (message) => Object.assign(new Error(message), { status: 503, expose: true });
+const unavailable = (message, reason) => Object.assign(new Error(message), { status: 503, expose: true, reason });
 
 // Rejects with an exposed 503 carrying message once ms pass. The call it wraps keeps running.
-export function withDeadline(promise, ms, message) {
+export function withDeadline(promise, ms, message, reason) {
   let timer;
   const late = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(unavailable(message)), ms);
+    timer = setTimeout(() => reject(unavailable(message, reason)), ms);
   });
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
-export const late = (what, ms) => `Arkiv took longer than ${ms / 1000} s to ${what}, so this is unavailable right now.`;
-export const arkiv = (promise, what, ms = READ_MS) => withDeadline(promise, ms, late(what, ms));
+export function arkiv(promise, what, ms = READ_MS) {
+  const reason = `Arkiv took longer than ${ms / 1000} s to ${what}`;
+  return withDeadline(promise, ms, `${reason}, so this is unavailable right now.`, reason);
+}
 export const read = (query, what = "answer") => arkiv(query.fetch(), what);
+
+const accessKey = () => process.env.ARKIV_ACCESS_KEY?.trim() ?? "";
+
+// viem wraps the HTTP error, so its status is somewhere down the cause chain.
+const httpStatus = (error) => (error ? (error.name === "HttpRequestError" ? error.status : httpStatus(error.cause)) : undefined);
+
+// Why an Arkiv call failed, as a clause the caller finishes with what the player loses.
+// Never the error's own message: viem prints the RPC URL, and the access key is in its path.
+export function arkivCause(error) {
+  if (error?.reason) return error.reason;
+  const status = httpStatus(error);
+  if (status === 429) return accessKey() ? "Arkiv is rate limiting this server's access key" : "Arkiv's public endpoint is rate limiting this server, which has no ARKIV_ACCESS_KEY";
+  if (status === 401 || status === 403) return "Arkiv refused this server's ARKIV_ACCESS_KEY";
+  return "Arkiv did not respond";
+}
+
+export const arkivMessage = (error, outcome = "this is unavailable right now") =>
+  error?.expose && !error.reason ? error.message : `${arkivCause(error)}, so ${outcome}.`;
 
 // The public endpoint answers 429 with Retry-After in minutes (761 s on 2026-11-06) once its quota
 // is used. viem sleeps that long before a retry, past its own timeout, so the transport doesn't retry.
 export function connect() {
   if (clients) return clients;
-  const chain = rabdi({ accessKey: process.env.ARKIV_ACCESS_KEY ?? "" });
+  const chain = rabdi({ accessKey: accessKey() });
   const transport = http(undefined, { timeout: 8000, retryCount: 0 });
   let account = null;
   try {

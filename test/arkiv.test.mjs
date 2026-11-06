@@ -136,6 +136,28 @@ describe("arkiv deadline", async () => {
     assert.ok(Date.now() - started < 1000);
   });
 
+  it("names a 429, a refused key and a timeout, and never prints the RPC URL", async () => {
+    const { arkivMessage } = await import("../src/lib/arkiv/store.js");
+    const { HttpRequestError } = await import("viem");
+    // How the SDK throws: its own error, with viem's HTTP error as the cause. The key sits in the URL.
+    const http = (status) => Object.assign(new Error("query failed"), { cause: new HttpRequestError({ status, url: "https://rpc.example/secret-key" }) });
+    const saved = process.env.ARKIV_ACCESS_KEY;
+    try {
+      delete process.env.ARKIV_ACCESS_KEY;
+      assert.match(arkivMessage(http(429)), /public endpoint is rate limiting this server, which has no ARKIV_ACCESS_KEY, so this is unavailable/);
+      process.env.ARKIV_ACCESS_KEY = "secret-key";
+      assert.match(arkivMessage(http(429)), /rate limiting this server's access key/);
+      assert.match(arkivMessage(http(401), "the board is off"), /^Arkiv refused this server's ARKIV_ACCESS_KEY, so the board is off\.$/);
+      assert.equal(arkivMessage(new Error("socket hang up")), "Arkiv did not respond, so this is unavailable right now.");
+      for (const status of [401, 429, 500]) assert.doesNotMatch(arkivMessage(http(status)), /secret-key|rpc\.example/);
+    } finally {
+      if (saved === undefined) delete process.env.ARKIV_ACCESS_KEY;
+      else process.env.ARKIV_ACCESS_KEY = saved;
+    }
+    const timedOut = await arkiv(new Promise(() => {}), "read the board", 20).catch((error) => error);
+    assert.equal(arkivMessage(timedOut, "this is the starter game"), "Arkiv took longer than 0.02 s to read the board, so this is the starter game.");
+  });
+
   it("passes a value through and keeps reads at about 10 s", async () => {
     assert.equal(await withDeadline(Promise.resolve(7), 50, "late"), 7);
     assert.equal(READ_MS, 10_000);

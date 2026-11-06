@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listGames } from "@/lib/arkiv/store";
+import { arkivMessage, listGames } from "@/lib/arkiv/store";
 import { TEMPLATES, templateInfo } from "@/lib/templates";
 import { SWARM_REF, swarmUrl } from "@/lib/swarm/bee";
 
@@ -11,10 +11,12 @@ export default async function Page({ searchParams }) {
   const { template } = await searchParams;
   const filter = templateInfo(template) ? template : undefined;
   let listing = null;
+  let failure = null;
   try {
     listing = await listGames({ template: filter });
   } catch (error) {
     console.error("Arkiv gallery read failed:", error.shortMessage ?? error.message);
+    failure = arkivMessage(error, "shared games are unavailable right now. Games on the main page still play");
   }
 
   return (
@@ -30,7 +32,7 @@ export default async function Page({ searchParams }) {
             <Link key={t.id} className="chip" href={`/games?template=${t.id}`} aria-pressed={filter === t.id}>{t.name}</Link>
           ))}
         </p>
-        {!listing && <p className="error" role="alert">Arkiv did not respond, so shared games are unavailable right now. Games on the main page still play.</p>}
+        {failure && <p className="error" role="alert">{failure}</p>}
         {listing?.games.length === 0 && <p>No games shared here yet. Play one and press Publish on the result screen.</p>}
         {listing?.games.length > 0 && (
           <ul data-testid="gallery">
