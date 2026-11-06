@@ -12,7 +12,7 @@ import { readRound, writeDecision, writeSpent } from "../arkiv/ledger.js";
 const issued = (globalThis.__takshRivalLedger ??= new Map()); // requestId -> decision
 const rounds = (globalThis.__takshRivalRounds ??= new Map()); // roundId -> "pending" | "spent"
 const LIMIT = 5000;
-const ROUND_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const ROUND_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const bound = (map) => {
   if (map.size > LIMIT) map.delete(map.keys().next().value);
@@ -35,12 +35,13 @@ export function recordDecision(requestId, decision) {
 // already stored. It starts when its first decision was asked for, on the server's clock.
 export async function loadRound(roundId) {
   const local = [...issued].filter(([, decision]) => decision.roundId === roundId).map(([requestId, decision]) => ({ requestId, ...decision }));
-  const remote = onArkiv() ? await readRound(roundId) : { records: [], spent: false };
+  const remote = onArkiv() ? await readRound(roundId) : { records: [], spent: false, full: false };
   const records = [...new Map([...remote.records, ...local].map((record) => [record.requestId, record])).values()].sort((a, b) => a.issuedAt - b.issuedAt);
   return {
     roundId,
     records,
     spent: remote.spent || rounds.get(roundId) === "spent",
+    full: remote.full,
     startedAt: records.length ? Math.min(...records.map((record) => record.askedAt)) : null,
   };
 }

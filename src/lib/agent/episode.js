@@ -41,6 +41,7 @@ export function checkEpisode(raw, spec, round, now = Date.now()) {
   if (!Array.isArray(decisions) || decisions.length > MAX_LOG) throw refuse("The decisions are not valid.");
 
   if (!round || round.spent) throw refuse("This round is already stored.");
+  if (round.full) throw refuse("This round has more 0G decisions than the server can check.");
   const known = new Map(round.records.map((record) => [record.requestId, record]));
 
   // Every plan in the log, in order, has to be a decision 0G really made for this round.

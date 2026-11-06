@@ -242,6 +242,12 @@ describe("0G rival episodes", async () => {
     assert.notEqual(roundIdFor(round.roundId), round.roundId, "a stored round's ID is not reused");
   });
 
+  it("a round that fills Arkiv's 100-row page is refused, not checked against part of it", async () => {
+    const round = playRound();
+    const loaded = { ...(await loadRound(round.roundId)), full: true };
+    assert.throws(() => checkEpisode(round.raw, round.raw.spec, loaded, round.endsAt), /more 0G decisions than the server can check/);
+  });
+
   it("the browser keeps the round ID it was given, and junk gets a fresh one", () => {
     const id = roundIdFor(null);
     assert.match(id, /^[0-9a-f-]{36}$/);
