@@ -1,6 +1,6 @@
 # Schemas
 
-Taksh writes two kinds of entity, defined in `src/lib/arkiv/schema.js`. Both are named schemas, so every entity carries an indexed `arkiv.schema` tag. The name ends in `.v1`. If the shape changes, a `.v2` schema starts a new board and old entities stay readable under `.v1` until they expire.
+Taksh writes four kinds of entity. Scores and games are defined in `src/lib/arkiv/schema.js`, the rival ledger in `src/lib/arkiv/ledger.js`. Both are named schemas, so every entity carries an indexed `arkiv.schema` tag. The name ends in `.v1`. If the shape changes, a `.v2` schema starts a new board and old entities stay readable under `.v1` until they expire.
 
 Every read also filters on `$owner`, the server's writer wallet. Arkiv is public and anyone can write an entity tagged `taksh.scores.v1`, so the tag alone can't be trusted.
 
@@ -49,8 +49,32 @@ Lifetime: the maximum, about 182 days (`ExpirationTime.max()`). A shared link sh
 
 The gallery selects every column except `spec`, so a page of thirty games doesn't download thirty specs. Opening a game reads one entity with `getEntity(key, Games)`, checks `$owner`, decodes the bytes and validates the spec again before it plays.
 
+## `taksh.rival.decisions.v1`: one plan 0G served the rival
+
+| Column | Type | Indexed | Why |
+| --- | --- | --- | --- |
+| `roundId` | `str` | yes | The upload check reads a whole round with `eq("roundId", …)`. A UUID the server picks on the round's first decision. |
+| `requestId` | `str` | yes | 0G's request ID for the call. Kept indexed so one decision can be looked up. |
+| `askedAt` | `u64` | no | Unix ms when the server asked 0G. The earliest one is when the round started, on the server's clock. |
+| `issuedAt` | `u64` | no | Unix ms when the plan left the server. The real-time and missing-plan checks use it. |
+| `record` | `bytes` | no (can't be) | The plan, the model's read, the observation it saw and the 0G trace, as JSON. |
+
+Lifetime: one hour. A round has to be uploaded within 5 minutes of ending, so after that its records have no use.
+
+One read returns at most 100 entities, the node's limit. A 120 s round asks 0G about 30 times.
+
+## `taksh.rival.spent.v1`: one round already on 0G Storage
+
+| Column | Type | Indexed | Why |
+| --- | --- | --- | --- |
+| `roundId` | `str` | yes | The upload check counts spent entities with `eq("roundId", …)` and refuses the round if there is one. |
+| `rootHash` | `str` | no | The 0G Storage root hash the round was stored under. |
+| `storedAt` | `u64` | no | Unix ms. |
+
+Lifetime: two hours, longer than the decisions it guards.
+
 ## Values that need care
 
-- `publishedAt` is written as `u64(…)`. A bare `bigint` is a `u256` and fails the schema. A test checks this.
+- `publishedAt`, `askedAt`, `issuedAt` and `storedAt` are written as `u64(…)`. A bare `bigint` is a `u256` and fails the schema. A test checks this.
 - `str` limits count UTF-8 bytes. Titles go through `fitStr`, which stops before the character that would pass 128 bytes.
 - Scores are rounded and clamped to the `i32` range before they're written.

@@ -1,8 +1,9 @@
+import { after } from "next/server";
 import { uploadEpisode } from "@/lib/agent/storage";
 import { MAX_EPISODE_BYTES, checkEpisode } from "@/lib/agent/episode";
 import { validateSpec } from "@/lib/spec/validate";
 import { createBudget } from "@/lib/agent/budget";
-import { releaseRound, spendRound } from "@/lib/agent/ledger";
+import { loadRound, releaseRound, reserveRound, spendRound } from "@/lib/agent/ledger";
 import { readText } from "../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -20,16 +21,29 @@ export async function POST(request) {
     } catch {}
     const checked = validateSpec(raw?.spec);
     if (!checked.ok) return Response.json({ error: "That is not a Taksh episode." }, { status: 400 });
-    const episode = checkEpisode(raw, checked.spec);
-    const ids = episode.decisions.map((decision) => decision.requestId);
+    if (typeof raw.roundId !== "string") return Response.json({ error: "This episode has no round ID." }, { status: 400 });
+
+    // A decision reaches Arkiv about 8 s after it was served, so the last one of a round may not be
+    // readable yet. Wait once for it rather than refuse an honest round.
+    let round = await loadRound(raw.roundId);
+    const known = new Set(round.records.map((record) => record.requestId));
+    if ((Array.isArray(raw.decisions) ? raw.decisions : []).some((decision) => decision?.requestId && !known.has(decision.requestId))) {
+      await new Promise((done) => setTimeout(done, 9000));
+      round = await loadRound(raw.roundId);
+    }
+
+    // No await between the check and the reservation, so two uploads here can't both pass.
+    const episode = checkEpisode(raw, checked.spec, round);
+    if (!reserveRound(episode.roundId)) return Response.json({ error: "This round is already being stored." }, { status: 409 });
     try {
       spend();
       const stored = await uploadEpisode({ ...episode, storedAt: new Date().toISOString() });
-      spendRound(episode.roundId, ids);
+      const write = spendRound(episode.roundId, stored.rootHash);
+      if (write) after(() => write.catch((error) => console.error("rival spent write failed:", error.shortMessage ?? error.message)));
       // The score here is the server's replay. Show this one, not the browser's.
       return Response.json({ ...stored, replayed: episode.replayed });
     } catch (error) {
-      releaseRound(episode.roundId, ids);
+      releaseRound(episode.roundId);
       throw error;
     }
   } catch (error) {

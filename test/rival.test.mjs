@@ -82,13 +82,14 @@ describe("0G rival inputs", async () => {
 
 describe("0G rival episodes", async () => {
   const { checkEpisode } = await import("../src/lib/agent/episode.js");
-  const { openRound, recordDecision, releaseRound, spendRound } = await import("../src/lib/agent/ledger.js");
+  const { loadRound, recordDecision, releaseRound, reserveRound, roundIdFor, spendRound } = await import("../src/lib/agent/ledger.js");
   let next = 0;
 
   // A round as /api/rival/decide would issue it: one round ID, decisions stamped with server time.
+  // speed 1 is real time; a fast-forwarded round runs game time faster than the server's clock.
   // The player dodges each shot `reactMs` after it shows, using the template's own answer.
-  function playRound({ reactMs = 300, startedAt = 1_000_000, issueGapMs = 0, serveMs = 3000, jabEvery = 6 } = {}) {
-    const roundId = openRound(null, startedAt);
+  function playRound({ reactMs = 300, startedAt = 1_000_000, speed = 1, issueGapMs = 0, serveMs = 3000, jabEvery = 6 } = {}) {
+    const roundId = roundIdFor(null);
     const session = new GameSession(starterSpec("bout"), { rival: "0g" });
     const decisions = [];
     const answer = { left: "slip_right", right: "slip_left", high: "duck" };
@@ -98,7 +99,7 @@ describe("0G rival episodes", async () => {
       if (session.state.plan.length === 0 && !session.state.attack && decisions.length < 6) {
         const requestId = `req-${next++}`;
         const plan = ["left", "high", "right"];
-        const issuedAt = startedAt + gameMs + issueGapMs;
+        const issuedAt = startedAt + serveMs + gameMs * speed + (decisions.length ? issueGapMs : 0);
         recordDecision(requestId, { roundId, askedAt: issuedAt - serveMs, issuedAt, plan, read: "r", observation: {}, trace: { requestId } });
         session.plan(plan);
         decisions.push({ requestId, t: gameMs });
@@ -111,52 +112,56 @@ describe("0G rival episodes", async () => {
       session.tick(16);
     }
     const gameMs = session.recording.dts.reduce((sum, dt) => sum + dt, 0);
-    return { raw: { spec: session.spec, ...session.recording, decisions }, roundId, session, endsAt: startedAt + gameMs + 3000 };
+    const raw = { spec: session.spec, roundId, ...session.recording, decisions };
+    const round = { raw, roundId, session, endsAt: startedAt + serveMs + gameMs * speed + issueGapMs + 3000 };
+    round.check = async (now, episode = round.raw) => checkEpisode(episode, episode.spec, await loadRound(roundId), now);
+    return round;
   }
 
-  it("stores a real round, with the server's own replayed score and records", () => {
-    const { raw, session, endsAt } = playRound();
-    raw.decisions[0].read = "forged read";
-    raw.extra = "dropped";
-    const stored = checkEpisode(raw, raw.spec, endsAt);
-    assert.deepEqual(stored.replayed, session.template.result(session.state));
+  it("stores a real round, with the server's own replayed score and records", async () => {
+    const round = playRound();
+    round.raw.decisions[0].read = "forged read";
+    round.raw.extra = "dropped";
+    const stored = await round.check(round.endsAt);
+    assert.deepEqual(stored.replayed, round.session.template.result(round.session.state));
     assert.equal(stored.decisions[0].read, "r");
+    assert.equal(stored.roundId, round.roundId);
     assert.equal(stored.extra, undefined);
   });
 
-  it("refuses a round built faster than real time", () => {
-    const { raw } = playRound({ issueGapMs: -20000 });
-    assert.throws(() => checkEpisode(raw, raw.spec, Date.now()), /faster than real time/);
+  it("refuses a round built faster than real time", async () => {
+    const fast = playRound({ speed: 0.2 });
+    await assert.rejects(fast.check(fast.endsAt), /faster than real time/);
     const live = playRound();
-    assert.throws(() => checkEpisode(live.raw, live.raw.spec, live.endsAt - 30000), /faster than real time/, "uploaded before the round could have finished");
+    await assert.rejects(live.check(live.endsAt - 30000), /faster than real time/, "uploaded before the round could have finished");
   });
 
-  it("refuses a round sent long after it ended, but not one that paused", () => {
+  it("refuses a round sent long after it ended, but not one that paused", async () => {
     const paused = playRound({ issueGapMs: 20000 });
-    assert.doesNotThrow(() => checkEpisode(paused.raw, paused.raw.spec, paused.endsAt + 20000));
+    await assert.doesNotReject(paused.check(paused.endsAt));
     const live = playRound();
-    assert.throws(() => checkEpisode(live.raw, live.raw.spec, live.endsAt + 10 * 60 * 1000), /too old/);
+    await assert.rejects(live.check(live.endsAt + 10 * 60 * 1000), /too old/);
   });
 
-  it("refuses a round that leaves out a plan 0G served in time, but not one the browser gave up on", () => {
+  it("refuses a round that leaves out a plan 0G served in time, but not one the browser gave up on", async () => {
     const cut = playRound({ jabEvery: 40 });
     const dropped = cut.raw.decisions[1].requestId;
     assert.ok(cut.raw.decisions[1].t < cut.raw.dts.reduce((sum, dt) => sum + dt, 0) - 3000, "a plan from mid-round");
     let seen = 0;
     cut.raw.log = cut.raw.log.filter(([, kind]) => kind !== "plan" || seen++ !== 1);
     cut.raw.decisions = cut.raw.decisions.filter((decision) => decision.requestId !== dropped);
-    assert.throws(() => checkEpisode(cut.raw, cut.raw.spec, cut.endsAt), /leaves out a 0G decision/);
+    await assert.rejects(cut.check(cut.endsAt), /leaves out a 0G decision/);
 
     const late = playRound();
-    recordDecision("req-late", { roundId: late.roundId, askedAt: 1_000_000, issuedAt: 1_007_000, plan: ["high"], read: "r", observation: {}, trace: {} });
-    assert.doesNotThrow(() => checkEpisode(late.raw, late.raw.spec, late.endsAt), "served after the 6 s browser timeout");
+    recordDecision("req-late", { roundId: late.roundId, askedAt: 1_003_000, issuedAt: 1_010_000, plan: ["high"], read: "r", observation: {}, trace: {} });
+    await assert.doesNotReject(late.check(late.endsAt), "served after the 6 s browser timeout");
   });
 
-  it("refuses a round cut short, and a dropped plan even when pauses put the game clock behind", () => {
+  it("refuses a round cut short, and a dropped plan even when pauses put the game clock behind", async () => {
     const short = playRound();
     short.raw.dts = short.raw.dts.slice(0, -40);
     short.raw.log = short.raw.log.filter(([step]) => step < short.raw.dts.length);
-    assert.throws(() => checkEpisode(short.raw, short.raw.spec, short.endsAt), /stops before it ended/);
+    await assert.rejects(short.check(short.endsAt), /stops before it ended/);
 
     const lagged = playRound({ jabEvery: 40, issueGapMs: 30000 });
     const dropped = lagged.raw.decisions.at(-1).requestId;
@@ -164,14 +169,14 @@ describe("0G rival episodes", async () => {
     const last = lagged.raw.log.filter(([, kind]) => kind === "plan").length - 1;
     lagged.raw.log = lagged.raw.log.filter(([, kind]) => kind !== "plan" || seen++ !== last);
     lagged.raw.decisions = lagged.raw.decisions.filter((decision) => decision.requestId !== dropped);
-    assert.throws(() => checkEpisode(lagged.raw, lagged.raw.spec, lagged.endsAt + 30000), /leaves out a 0G decision/);
+    await assert.rejects(lagged.check(lagged.endsAt), /leaves out a 0G decision/);
   });
 
-  it("a plan still in the air at the bell may be missing", () => {
+  it("a plan still in the air at the bell may be missing", async () => {
     const round = playRound();
     const now = round.endsAt;
     recordDecision("req-bell", { roundId: round.roundId, askedAt: now - 4000, issuedAt: now - 1000, plan: ["left"], read: "r", observation: {}, trace: {} });
-    assert.doesNotThrow(() => checkEpisode(round.raw, round.raw.spec, now));
+    await assert.doesNotReject(round.check(now));
   });
 
   it("a dodge pressed before the shot shows runs out before the shot lands", () => {
@@ -202,37 +207,45 @@ describe("0G rival episodes", async () => {
     assert.equal(session.template.hud(session.state).extra, "Guard up");
   });
 
-  it("refuses scripted dodges faster than a person can react", () => {
-    const { raw, endsAt } = playRound({ reactMs: 20 });
-    assert.throws(() => checkEpisode(raw, raw.spec, endsAt), /faster than a person can react/);
+  it("refuses scripted dodges faster than a person can react", async () => {
+    const round = playRound({ reactMs: 20 });
+    await assert.rejects(round.check(round.endsAt), /faster than a person can react/);
   });
 
-  it("refuses made-up, swapped or mixed-round decisions", () => {
+  it("refuses made-up, swapped or mixed-round decisions", async () => {
     const forged = playRound();
     forged.raw.decisions[0].requestId = "req-fake";
-    assert.throws(() => checkEpisode(forged.raw, forged.raw.spec, forged.endsAt), /not issued by this server/);
+    await assert.rejects(forged.check(forged.endsAt), /not issued by this server/);
 
     const a = playRound();
     const b = playRound();
     a.raw.decisions[1] = b.raw.decisions[1];
-    assert.throws(() => checkEpisode(a.raw, a.raw.spec, a.endsAt), /not issued|not from one round/);
+    await assert.rejects(a.check(a.endsAt), /not issued by this server/);
 
     const junk = playRound();
     junk.raw.dts[3] = 9999;
-    assert.throws(() => checkEpisode(junk.raw, junk.raw.spec, junk.endsAt), /step times/);
+    await assert.rejects(junk.check(junk.endsAt), /step times/);
   });
 
-  it("a round is stored once; a racing second upload is refused; a failed one can retry", () => {
-    const { raw, roundId, endsAt } = playRound();
-    const twice = { ...raw, decisions: [raw.decisions[0], raw.decisions[0]] };
-    assert.throws(() => checkEpisode(twice, raw.spec, endsAt), /appears twice|line up/);
+  it("a round is stored once; a racing second upload is refused; a failed one can retry", async () => {
+    const round = playRound();
+    const twice = { ...round.raw, decisions: [round.raw.decisions[0], round.raw.decisions[0]] };
+    await assert.rejects(round.check(round.endsAt, twice), /appears twice|line up/);
 
-    const first = checkEpisode(raw, raw.spec, endsAt);
-    assert.throws(() => checkEpisode(raw, raw.spec, endsAt), /not issued by this server|not from one round/, "racing upload");
-    const ids = first.decisions.map((decision) => decision.requestId);
-    releaseRound(roundId, ids);
-    assert.doesNotThrow(() => checkEpisode(raw, raw.spec, endsAt), "a failed upload frees the round");
-    spendRound(roundId, ids);
-    assert.throws(() => checkEpisode(raw, raw.spec, endsAt), /not issued by this server|not from one round/);
+    await round.check(round.endsAt);
+    assert.equal(reserveRound(round.roundId), true);
+    assert.equal(reserveRound(round.roundId), false, "racing upload");
+    releaseRound(round.roundId);
+    assert.equal(reserveRound(round.roundId), true, "a failed upload frees the round");
+    assert.equal(spendRound(round.roundId, "0xroot"), null, "Arkiv is off in tests");
+    await assert.rejects(round.check(round.endsAt), /already stored/);
+    assert.notEqual(roundIdFor(round.roundId), round.roundId, "a stored round's ID is not reused");
+  });
+
+  it("the browser keeps the round ID it was given, and junk gets a fresh one", () => {
+    const id = roundIdFor(null);
+    assert.match(id, /^[0-9a-f-]{36}$/);
+    assert.equal(roundIdFor(id), id);
+    assert.notEqual(roundIdFor("x'; drop"), "x'; drop");
   });
 });

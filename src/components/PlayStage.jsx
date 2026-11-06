@@ -126,7 +126,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
         playCue("end");
         rivalBrain?.stop();
         // A 0G-rival round carries its whole episode, so the result screen can store it on 0G.
-        const episode = rivalBrain && { spec, options: session.options, ...session.recording, decisions: rivalBrain.decisions };
+        const episode = rivalBrain && { spec, options: session.options, roundId: rivalBrain.roundId, ...session.recording, decisions: rivalBrain.decisions };
         setTimeout(() => onEnd({ ...session.result(), ...(episode && { episode }) }), 1100);
       }
       raf = requestAnimationFrame(frame);

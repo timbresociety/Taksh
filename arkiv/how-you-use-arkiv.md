@@ -1,6 +1,6 @@
 # How Taksh uses Arkiv
 
-Arkiv holds the two things in Taksh that outlive one browser tab: the scores people post and the games they share. The app keeps no other database. The schemas are in `arkiv/schema.md`.
+Arkiv holds what in Taksh has to outlive one browser tab or one server instance: the scores people post, the games they share, and the 0G rival's ledger. The app keeps no other database. The schemas are in `arkiv/schema.md`.
 
 ## Writes
 
@@ -10,6 +10,16 @@ Both writes go through a route on the server, signed by one writer wallet whose 
 - `POST /api/arkiv/games` validates the spec and looks for an entity with the same `specHash`. If none exists, it calls `createEntity(Games, …)` with the spec as `bytes` and the maximum lifetime. Publishing the same game twice returns the first entity.
 
 Each client gets one write every four seconds, because each write costs the writer wallet gas.
+
+## The 0G rival's ledger
+
+When you fight the 0G rival, the round can be stored on 0G Storage. The server only stores a round whose plans are ones 0G really returned to it, so it needs a record of every decision it served. On Vercel the upload can land on a different instance from the one that served the plans, and instances share no memory. So the record lives on Arkiv:
+
+- `POST /api/rival/decide` writes one `taksh.rival.decisions.v1` entity per 0G decision, with a one-hour lifetime. The write takes about 8 s, so it runs in `after()`, once the plan is already back in the browser.
+- `POST /api/rival/episode` reads every decision for the round with `eq("roundId", …)` and checks the round against them. If a decision the browser sent isn't readable yet, it waits 9 s once and reads again.
+- Once the round is on 0G Storage, a `taksh.rival.spent.v1` entity marks it stored, so a second upload of the same round is refused on any instance.
+
+Memory on each instance is a cache in front of this. Two instances racing on one round can both store it, seconds apart, with the same score. A compare-and-set store would close that.
 
 ## Reads the player sees
 
@@ -31,6 +41,7 @@ Arkiv is public, so every read filters on `$owner`. A shared spec is validated a
 
 - `src/lib/arkiv/schema.js`: schemas, encoding, spec hash. Pure, shared by the server and browser.
 - `src/lib/arkiv/store.js`: clients, queries, writes. Server only.
+- `src/lib/arkiv/ledger.js`: the rival ledger schemas, writes and the round read. Server only.
 - `src/app/api/arkiv/`: the routes.
 - `src/components/ArkivBoard.jsx`: the leaderboard and publish panel.
 - `src/app/games/`: the gallery and shared game pages.

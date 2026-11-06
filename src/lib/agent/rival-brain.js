@@ -45,6 +45,9 @@ export function startRivalBrain(session, { onChange = () => {}, fetch = globalTh
 
   return {
     decisions,
+    get roundId() {
+      return roundId;
+    },
     // Called every frame. Asks again while one planned shot is still left, so the next plan lands in time.
     tick() {
       if (stopped || busy || session.phase === "ended" || Date.now() < waitUntil) return;

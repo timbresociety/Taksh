@@ -1,15 +1,15 @@
-// Checks a round sent by the browser and rebuilds the only object that gets stored. The score stored
+// Checks a round sent by the browser against what the server issued for it (loadRound in
+// ledger.js), and rebuilds the only object that gets stored. The score stored
 // is the server's own replay, never the browser's number. To get stored, a round must also:
-//   - use only plans 0G really returned to this server, all from one round, each once
+//   - use only plans 0G really returned to this server for this round, each once
 //   - use every plan 0G returned in time to be played, so a plan that hurt can't be left out
 //   - have run no faster than real time, and be sent within 5 minutes of ending
+//   - have human dodges: a correct dodge faster than a person can react is a script
 // There's no floor on game time: the countdown and every pause for a lost body stop the game clock
 // but not the server's. A plan held back to work out the dodges is caught by the reaction check instead.
-//   - have human dodges: a correct dodge faster than a person can react is a script
 // A bot that plays live with human timing still gets through. Nothing in a browser game stops that.
 import { replayEpisode } from "../game/session.js";
 import { templateInfo } from "../templates/index.js";
-import { issuedDecision, openRoundInfo, reserveRound } from "./ledger.js";
 
 export const MAX_EPISODE_BYTES = 512 * 1024;
 const MAX_STEPS = 30000; // 120 s at 250 fps
@@ -25,7 +25,8 @@ const FAST_DODGES_ALLOWED = 2; // a lucky early lean happens, a run of them does
 
 const refuse = (message) => Object.assign(new Error(message), { status: 400, expose: true });
 
-export function checkEpisode(raw, spec, now = Date.now()) {
+// Pure: round comes from loadRound, so this runs the same in tests and on any server instance.
+export function checkEpisode(raw, spec, round, now = Date.now()) {
   const { dts, log, decisions } = raw ?? {};
   if (!Array.isArray(dts) || dts.length > MAX_STEPS || !dts.every((dt) => Number.isFinite(dt) && dt > 0 && dt <= MAX_DT_MS)) throw refuse("The step times are not valid.");
   if (!Array.isArray(log) || log.length > MAX_LOG) throw refuse("The move log is not valid.");
@@ -39,22 +40,20 @@ export function checkEpisode(raw, spec, now = Date.now()) {
   }
   if (!Array.isArray(decisions) || decisions.length > MAX_LOG) throw refuse("The decisions are not valid.");
 
-  // Every plan in the log, in order, has to be a decision 0G really made for this server.
+  if (!round || round.spent) throw refuse("This round is already stored.");
+  const known = new Map(round.records.map((record) => [record.requestId, record]));
+
+  // Every plan in the log, in order, has to be a decision 0G really made for this round.
   const plans = log.filter(([, kind]) => kind === "plan");
   const claimed = decisions.filter((decision) => decision?.requestId);
   if (claimed.length === 0) throw refuse("A round needs at least one 0G decision.");
   if (claimed.length !== plans.length) throw refuse("The plans and the 0G decisions do not line up.");
   if (new Set(claimed.map((decision) => decision.requestId)).size !== claimed.length) throw refuse("A 0G decision appears twice in this round.");
   const issued = claimed.map((decision, index) => {
-    const record = issuedDecision(decision.requestId);
+    const record = known.get(decision.requestId);
     if (!record || JSON.stringify(record.plan) !== JSON.stringify(plans[index][2])) throw refuse("A 0G decision in this round was not issued by this server.");
     return record;
   });
-
-  // All from one round, and that round not stored before.
-  const roundId = issued[0].roundId;
-  const round = openRoundInfo(roundId);
-  if (!round || issued.some((record) => record.roundId !== roundId)) throw refuse("These 0G decisions are not from one round.");
 
   // Real time. Game time at each plan is the sum of the steps before it, which the browser can't
   // shrink without also changing the score. It can't be more than the server time since the round opened.
@@ -71,13 +70,12 @@ export function checkEpisode(raw, spec, now = Date.now()) {
   // Every plan 0G served in time to be played has to be in the round. Only two kinds may be missing:
   // late ones (the browser gave up) and ones served just before the first upload, still in the air at
   // the bell. Both are judged on the server clock. Game time can't be used here: pauses put it behind.
-  const endedAt = round.endedAt ?? now;
+  // ponytail: judged against this upload, so a retry long after a failed one can refuse a plan that
+  // was in the air at the bell. Keep the first upload's time on the round if retries matter.
   const sent = new Set(claimed.map((decision) => decision.requestId));
-  for (const id of round.requestIds) {
-    if (sent.has(id)) continue;
-    const record = issuedDecision(id);
-    if (!record) throw refuse("A 0G decision in this round has expired.");
-    if (record.issuedAt - record.askedAt <= IN_TIME_MS && record.issuedAt <= endedAt - LAST_PLAN_MS) throw refuse("This round leaves out a 0G decision that was played.");
+  for (const record of round.records) {
+    if (sent.has(record.requestId)) continue;
+    if (record.issuedAt - record.askedAt <= IN_TIME_MS && record.issuedAt <= now - LAST_PLAN_MS) throw refuse("This round leaves out a 0G decision that was played.");
   }
 
   // Human dodges, and the server's own score.
@@ -100,8 +98,5 @@ export function checkEpisode(raw, spec, now = Date.now()) {
   const verified = issued.map((record, index) => ({ t: gameMsAt(plans[index][0]), plan: record.plan, read: record.read, observation: record.observation, ...record.trace }));
   const safeStops = decisions.filter((decision) => decision?.safeStop).length;
 
-  // No await between the checks above and this line, so nothing else can claim this round first.
-  round.endedAt ??= now; // a retry after a failed upload is judged against the first upload
-  reserveRound(roundId, verified.map((decision) => decision.requestId));
-  return { version: 1, roundId, spec, options: { rival: "0g" }, dts, log, decisions: verified, safeStops, replayed };
+  return { version: 1, roundId: round.roundId, spec, options: { rival: "0g" }, dts, log, decisions: verified, safeStops, replayed };
 }

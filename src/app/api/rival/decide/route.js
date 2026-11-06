@@ -1,7 +1,8 @@
+import { after } from "next/server";
 import { getProvider } from "@/lib/pipeline/provider";
 import { RIVAL_SCHEMA, RIVAL_SYSTEM, cleanObservation, rivalMessage } from "@/lib/agent/rival";
 import { createBudget } from "@/lib/agent/budget";
-import { openRound, recordDecision } from "@/lib/agent/ledger";
+import { recordDecision, roundIdFor } from "@/lib/agent/ledger";
 import { badRequest, readText } from "../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +23,16 @@ export async function POST(request) {
     const observation = cleanObservation(raw);
     if (!observation) throw badRequest("Send the fight as JSON.");
     spend();
-    const roundId = openRound(typeof raw.roundId === "string" ? raw.roundId : null);
+    const roundId = roundIdFor(raw.roundId);
     const askedAt = Date.now();
     const reply = await provider.complete({ stage: "rival", system: RIVAL_SYSTEM, user: rivalMessage(observation), schema: RIVAL_SCHEMA });
     const plan = reply.data.plan.filter((side) => ["left", "right", "high"].includes(side)).slice(0, 4);
     // issuedAt is when the plan left this server. The game can't have used it any earlier than that.
-    if (reply.trace?.requestId) recordDecision(reply.trace.requestId, { roundId, askedAt, issuedAt: Date.now(), plan, read: reply.data.read, observation, trace: reply.trace });
+    if (reply.trace?.requestId) {
+      // The Arkiv write takes about 8 s, longer than the browser waits, so it runs after the reply.
+      const write = recordDecision(reply.trace.requestId, { roundId, askedAt, issuedAt: Date.now(), plan, read: reply.data.read, observation, trace: reply.trace });
+      if (write) after(() => write.catch((error) => console.error("rival ledger write failed:", error.shortMessage ?? error.message)));
+    }
     return Response.json({ ...reply.data, plan, roundId, ms: reply.ms, trace: reply.trace });
   } catch (error) {
     return Response.json({ error: error.expose ? error.message : "The 0G rival did not answer." }, { status: error.status ?? 502 });
