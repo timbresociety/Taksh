@@ -1607,3 +1607,213 @@ kbd {
 .rival-episode__error {
   color: var(--volt);
 }
+
+/* Sign in with 0G (iAI credits), top right. The model note moves below it. */
+.og-account {
+  position: fixed;
+  z-index: 6;
+  top: 14px;
+  right: var(--gutter);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+/* Narrow enough to wrap clear of the idea screen's headline. */
+.studio:has(.og-account) .source-note {
+  top: 104px;
+  max-width: 26ch;
+}
+
+.og-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--volt);
+  color: var(--rubber);
+  font-family: var(--display);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.og-signin,
+.og-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 6px;
+  border: 2px solid rgb(247 246 240 / 0.35);
+  border-radius: 999px;
+  background: rgb(14 37 150 / 0.82);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.25);
+  color: var(--line);
+}
+
+.og-signin {
+  padding-right: 18px;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.og-signin:hover {
+  border-color: var(--volt);
+  transform: translateY(-1px);
+}
+
+.og-signin small {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.og-chip__body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.og-chip__label {
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.og-chip__amount {
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  animation: og-tick 0.9s ease-out;
+}
+
+@keyframes og-tick {
+  from {
+    color: var(--volt);
+    transform: translateY(-3px);
+  }
+}
+
+.og-chip__spent {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--tape);
+  color: var(--rubber);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.og-chip__divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 0;
+  background: rgb(247 246 240 / 0.25);
+}
+
+.og-chip__who {
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+.og-chip__out {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(247 246 240 / 0.12);
+  color: var(--line);
+  cursor: pointer;
+}
+
+.og-chip__out:hover {
+  background: var(--line);
+  color: var(--court-deep);
+}
+
+.og-account__error {
+  max-width: 36ch;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--tape);
+  color: var(--rubber);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .og-chip__amount {
+    animation: none;
+  }
+}
+
+.og-account__today {
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(14 37 150 / 0.82);
+  font-size: 0.72rem;
+}
+
+.og-account__today strong {
+  color: var(--volt);
+}
+
+/* What a game cost on 0G, on the result screen */
+.receipt {
+  max-width: 34rem;
+  margin: 18px 0;
+  padding: 12px 16px;
+  border: 2px dashed rgb(247 246 240 / 0.4);
+  border-radius: 12px;
+  font-size: 0.85rem;
+}
+
+.receipt__title {
+  margin: 0 0 6px;
+  font-family: var(--display);
+  font-weight: 800;
+  color: var(--volt);
+}
+
+.receipt dl {
+  margin: 0;
+}
+
+.receipt dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.receipt dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt__total {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgb(247 246 240 / 0.25);
+  font-weight: 700;
+}
+
+.receipt__ids {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  opacity: 0.7;
+}

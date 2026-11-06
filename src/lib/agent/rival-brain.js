@@ -1,6 +1,8 @@
 // The browser half of the 0G rival. While a round runs it keeps the rival's plan topped up from
 // /api/rival/decide, and logs every decision with its 0G request ID. A call that fails or runs past
 // the timeout is logged as a safe stop: no plan arrives, so the rival holds its guard.
+import { ogHeaders } from "../og/session.js";
+
 const TIMEOUT_MS = 6000;
 const RETRY_MS = 1500;
 
@@ -20,7 +22,7 @@ export function startRivalBrain(session, { onChange = () => {}, fetch = globalTh
     try {
       const response = await fetch("/api/rival/decide", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...ogHeaders() },
         body: JSON.stringify(observation),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
