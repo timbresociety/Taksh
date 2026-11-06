@@ -134,16 +134,23 @@ async function create(schema, values, expiration) {
 }
 
 // Rank is one more than the scores that beat it: on the same template, or on the same day's challenge.
+// The score is on chain once create returns. If the count then fails (a 429 hits queries, not
+// transactions), say so instead of failing the post, or a retry would post it twice.
 export async function postScore(input) {
   const { reader, owner } = connect();
   const values = scoreValues(input);
   const { entityKey, txHash } = await create(Scores, values, SCORE_LIFETIME());
+  const posted = { key: entityKey, txHash, daily: values.daily ?? null };
   const scope = values.daily ? eq("daily", values.daily) : eq("template", values.template);
-  const [better, total] = await Promise.all([
-    read(reader.count().from(Scores).ownedBy(owner).where(scope).where(gt("score", i32(values.score))), "count the board"),
-    read(reader.count().from(Scores).ownedBy(owner).where(scope), "count the board"),
-  ]);
-  return { key: entityKey, txHash, rank: Number(better) + 1, total: Number(total), daily: values.daily ?? null };
+  try {
+    const [better, total] = await Promise.all([
+      read(reader.count().from(Scores).ownedBy(owner).where(scope).where(gt("score", i32(values.score))), "count the board"),
+      read(reader.count().from(Scores).ownedBy(owner).where(scope), "count the board"),
+    ]);
+    return { ...posted, rank: Number(better) + 1, total: Number(total) };
+  } catch (error) {
+    return { ...posted, rank: null, total: null, rankError: arkivMessage(error, "your rank can't be counted right now") };
+  }
 }
 
 // Every challenge our writer stored for a date. Usually one; two if instances raced.

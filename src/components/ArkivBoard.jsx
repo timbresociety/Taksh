@@ -145,7 +145,7 @@ export default function ArkivBoard({ spec, result, mode, source, cover, daily })
         </form>
       ) : (
         <p data-testid="posted">
-          Posted. You are #{posted.rank} of {posted.total} on {posted.daily ? `the ${posted.daily} challenge` : templateName}.{" "}
+          {posted.rank ? `Posted. You are #${posted.rank} of ${posted.total} on ${posted.daily ? `the ${posted.daily} challenge` : templateName}.` : `Posted. ${posted.rankError}`}{" "}
           <a href={`${EXPLORER}/tx/${posted.txHash}`} target="_blank" rel="noreferrer">See the transaction</a>
         </p>
       )}
