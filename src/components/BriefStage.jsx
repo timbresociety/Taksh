@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { BODIES, CLOTH_COLOURS, HAIR, HAIR_COLOURS, SKIN_TONES, STYLES, WORLDS } from "@/lib/spec/contract";
 import { createStage } from "@/lib/stage/stage";
 import { templateInfo } from "@/lib/templates";
+import RequestDesk, { readLibrary } from "./RequestDesk";
 
 const HAIR_LABELS = { "simple-parted": "Parted", long: "Long", buns: "Buns", buzzed: "Buzzed", "buzzed-female": "Cropped", none: "None" };
 
@@ -104,14 +105,35 @@ function Swatches({ legend, colours, value, onChange }) {
   );
 }
 
-export default function BriefStage({ game, onChangeSkin, onPlay, onBack }) {
+// A world or style the player asked for sits beside the built-in ones, shown with its base's picture.
+function withMade(builtIn, made) {
+  const seen = new Set(builtIn.map((item) => item.id));
+  const extra = made.filter((item) => item && !seen.has(item.id) && seen.add(item.id));
+  return [...builtIn, ...extra.map((item) => ({ id: item.id, label: item.label, base: item.base, made: item }))];
+}
+
+export default function BriefStage({ game, onChangeSkin, onUseMade, onStandIn, onPlay, onBack }) {
   const { spec } = game;
   const template = templateInfo(spec.template);
   const [who, setWho] = useState("hero");
+  const [library, setLibrary] = useState({ world: [], style: [], character: [] });
+  useEffect(() => setLibrary(readLibrary()), []);
   const { skin } = spec;
   const person = skin[who];
   const clothed = BODIES.find((body) => body.id === person.body).clothed;
   const setPerson = (change) => onChangeSkin({ [who]: { ...person, ...change } });
+  const worlds = withMade(WORLDS, [spec.made?.world, ...library.world]);
+  const styles = withMade(STYLES, [spec.made?.style, ...library.style]);
+  const pick = (items, kind) => (id) => {
+    const item = items.find((entry) => entry.id === id);
+    if (item?.made) onUseMade({ kind, item: item.made });
+    else onChangeSkin({ [kind]: id });
+  };
+  const takeRequest = (result) => {
+    setLibrary(readLibrary());
+    if (result.kind === "character") setPerson(result.item.skin);
+    else onUseMade(result);
+  };
 
   return (
     <main className="look">
@@ -131,13 +153,20 @@ export default function BriefStage({ game, onChangeSkin, onPlay, onBack }) {
           </button>
         </div>
 
-        <Choices legend="World" items={WORLDS} value={skin.world} onChange={(world) => onChangeSkin({ world })} thumb={(id) => `/previews/world-${id}.webp`} />
-        <Choices legend="Art style" items={STYLES} value={skin.style} onChange={(style) => onChangeSkin({ style })} thumb={(id) => `/previews/style-${id}.webp`} />
+        <Choices legend="World" items={worlds} value={skin.world} onChange={pick(worlds, "world")} thumb={(id) => `/previews/world-${worlds.find((item) => item.id === id)?.base ?? id}.webp`} />
+        <Choices legend="Art style" items={styles} value={skin.style} onChange={pick(styles, "style")} thumb={(id) => `/previews/style-${styles.find((item) => item.id === id)?.base ?? id}.webp`} />
 
         {template.rival && (
           <div className="who" role="group" aria-label="Who to dress">
             <button type="button" className="chip" aria-pressed={who === "hero"} onClick={() => setWho("hero")}>You</button>
             <button type="button" className="chip" aria-pressed={who === "rival"} onClick={() => setWho("rival")}>Your rival</button>
+          </div>
+        )}
+        {library.character.length > 0 && (
+          <div className="who" role="group" aria-label="Characters you asked for">
+            {library.character.map((item) => (
+              <button key={item.name} type="button" className="chip" onClick={() => setPerson(item.skin)}>{item.name}</button>
+            ))}
           </div>
         )}
         <Choices legend="Character" items={BODIES} value={person.body} onChange={(body) => setPerson({ body })} />
@@ -155,6 +184,7 @@ export default function BriefStage({ game, onChangeSkin, onPlay, onBack }) {
         </div>
 
         <Controls spec={spec} />
+        <RequestDesk onUse={takeRequest} onStandIn={onStandIn} />
         <button type="button" className="text-button" onClick={onBack}>
           Back to all games
         </button>

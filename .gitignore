@@ -10,3 +10,4 @@ camera-shots/
 taksh-trace-*.json
 taksh-drill-*.json
 .vercel
+/.swc

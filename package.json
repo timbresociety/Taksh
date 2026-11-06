@@ -23,7 +23,8 @@
     "next": "^16.4.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "workflow": "^5.4.0"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.1",

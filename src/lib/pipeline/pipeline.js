@@ -8,8 +8,9 @@ import { INTENT_SCHEMA, PROMPT_VERSIONS, REVISION_SCHEMA, loadPrompt } from "./p
 
 const tag = (name, value) => `<${name}>\n${value}\n</${name}>`;
 
-// A saved spec keeps tuning as an object, but a model reads and writes the { key, value } list.
-const forModel = (spec) => ({ ...spec, tuning: Object.entries(spec.tuning).map(([key, value]) => ({ key, value })) });
+// A saved spec keeps tuning as an object, but a model reads and writes the { key, value } list. A world
+// or style the player asked for stays out of the model's way and goes back on afterwards.
+const forModel = ({ made, ...spec }) => ({ ...spec, tuning: Object.entries(spec.tuning).map(([key, value]) => ({ key, value })) });
 
 function meta(provider, startedAt, attempts) {
   return {
@@ -86,7 +87,7 @@ export async function reviseGame({ spec, request }, provider) {
   const input = { spec, request };
 
   const review = (data) => {
-    const check = validateSpec(data.spec);
+    const check = validateSpec(spec.made && data.spec ? { ...data.spec, made: spec.made } : data.spec);
     if (!check.ok) return { check, comparison: null, errors: check.errors };
     const comparison = compareSpecs(spec, check.spec);
     return { check, comparison, errors: claimErrors(data.changeKind, comparison) };

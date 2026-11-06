@@ -3,6 +3,7 @@
 // a real model reads intent, and every response is labelled source: "fixture" all the way to the UI.
 import { DEFAULT_HERO, DEFAULT_RIVAL, SPEC_VERSION, WORLDS } from "../spec/contract.js";
 import { TEMPLATES, templateInfo } from "../templates/index.js";
+import { fixtureDraft, fixtureTriage } from "../requests/fixtures.js";
 
 export const FIXTURE_MODEL = "fixture-v2";
 
@@ -187,12 +188,14 @@ function fixtureRevision({ spec, request }) {
   return { changeKind, changeSummary, spec: { ...next, tuning: Object.entries(next.tuning).map(([key, value]) => ({ key, value })) } };
 }
 
-export function createFixtureProvider() {
+// TAKSH_FIXTURE_DELAY_MS stands in for a slow, thinking model, to exercise waiting in the UI.
+export function createFixtureProvider({ delayMs = Number(process.env.TAKSH_FIXTURE_DELAY_MS) || 0 } = {}) {
   return {
     source: "fixture",
     model: FIXTURE_MODEL,
     async complete({ stage, input }) {
-      const data = { intent: fixtureIntent, generate: fixtureSpec, revise: fixtureRevision }[stage](input);
+      if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+      const data = { intent: fixtureIntent, generate: fixtureSpec, revise: fixtureRevision, triage: fixtureTriage, draft: fixtureDraft, repair: fixtureDraft }[stage](input);
       return { data: structuredClone(data), ms: 0, usage: null };
     },
   };

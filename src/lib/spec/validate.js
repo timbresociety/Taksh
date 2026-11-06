@@ -2,6 +2,7 @@
 // object with every key present. A failure lists every problem, so one repair can fix them all.
 import { BODIES, GAME_SPEC_SCHEMA, HAIR, SPEC_VERSION, STYLES, WORLDS } from "./contract.js";
 import { defaultTuning, simulate, templateInfo } from "../templates/index.js";
+import { checkMade } from "../requests/made.js";
 
 const COLOUR = /^#[0-9a-f]{6}$/i;
 
@@ -45,15 +46,20 @@ export function validateSpec(input) {
   const errors = [];
   const template = templateInfo(input?.template);
   if (!input || typeof input !== "object") return { ok: false, errors: ["The spec is not an object."], spec: null };
-  checkKnownKeys(input, GAME_SPEC_SCHEMA, "", errors);
+  // A spec may also carry a world or style a player asked for; it is checked as data, never trusted.
+  const { made, ...rest } = input;
+  checkKnownKeys(rest, GAME_SPEC_SCHEMA, "", errors);
+  errors.push(...checkMade(made));
   if (input.specVersion !== SPEC_VERSION) errors.push(`specVersion must be ${SPEC_VERSION}.`);
   if (!template) errors.push(`template "${input.template}" does not exist.`);
   for (const key of ["title", "objective"]) {
     if (typeof input[key] !== "string" || !input[key].trim()) errors.push(`${key} must be text.`);
   }
   if (!Number.isInteger(input.seed)) errors.push("seed must be a whole number.");
-  if (!WORLDS.some((world) => world.id === input.skin?.world)) errors.push(`skin.world "${input.skin?.world}" is not a known world.`);
-  if (!STYLES.some((style) => style.id === input.skin?.style)) errors.push(`skin.style "${input.skin?.style}" is not a known style.`);
+  const worldKnown = WORLDS.some((world) => world.id === input.skin?.world) || (made?.world && made.world.id === input.skin?.world);
+  const styleKnown = STYLES.some((style) => style.id === input.skin?.style) || (made?.style && made.style.id === input.skin?.style);
+  if (!worldKnown) errors.push(`skin.world "${input.skin?.world}" is not a known world.`);
+  if (!styleKnown) errors.push(`skin.style "${input.skin?.style}" is not a known style.`);
   checkCharacter(input.skin?.hero, "skin.hero", errors);
   checkCharacter(input.skin?.rival, "skin.rival", errors);
   const tuning = template ? readTuning(input, template, errors) : {};

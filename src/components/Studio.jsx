@@ -86,6 +86,20 @@ export default function Studio() {
 
   const changeSkin = (change) => setGame((current) => ({ ...current, spec: { ...current.spec, skin: { ...current.spec.skin, ...change } } }));
 
+  // A world or style the player asked for travels with the spec, so the stage can build it.
+  const applyMade = ({ kind, item }) => setGame((current) => {
+    const { spec } = current;
+    return { ...current, spec: { ...spec, made: { ...spec.made, [kind]: item }, skin: { ...spec.skin, [kind]: item.id } } };
+  });
+
+  // The closest game to a boss or game that still has to be built.
+  const playStandIn = ({ template, tuning }) => {
+    const spec = starterSpec(template);
+    setGame({ spec: { ...spec, tuning: { ...spec.tuning, ...tuning } }, source: "template" });
+    setRevision(null);
+    setStage("brief");
+  };
+
   // A calibration taken for an arms-only game has not seen the legs, so a full-body game needs its own.
   function startPlay(nextMode) {
     unlockSound();
@@ -132,7 +146,7 @@ export default function Studio() {
       {stage === "idea" && (
         <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
       )}
-      {stage === "brief" && <BriefStage game={game} onChangeSkin={changeSkin} onPlay={startPlay} onBack={restart} />}
+      {stage === "brief" && <BriefStage game={game} onChangeSkin={changeSkin} onUseMade={applyMade} onStandIn={playStandIn} onPlay={startPlay} onBack={restart} />}
       {stage === "calibrate" && (
         <CalibrateStage
           feed={feed}
