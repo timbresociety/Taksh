@@ -1,7 +1,11 @@
 import { getProvider } from "@/lib/pipeline/provider";
+import { createOgProvider } from "@/lib/pipeline/provider-0g";
 import { readBytes, readText } from "@/lib/read-body";
 
 export { readBytes, readText };
+
+// Carries a signed-in player's 0G session token from the browser. See src/lib/og/account.js.
+export const OG_SESSION_HEADER = "x-0g-session";
 
 // Errors reach the creator, so they say what happened without leaking provider internals.
 export function route(handler) {
@@ -13,13 +17,19 @@ export function route(handler) {
       } catch (error) {
         throw error.status ? error : badRequest("The request body is not JSON.");
       }
-      const { provider } = await getProvider();
+      const provider = await providerFor(request);
       return Response.json(await handler(body, provider));
     } catch (error) {
       const status = error.status ?? 502;
       return Response.json({ error: error.expose ? error.message : "The game generator did not respond. Try again." }, { status });
     }
   };
+}
+
+// A player signed in with their 0G account pays from their own iAI credits; everyone else uses the app's provider.
+export async function providerFor(request) {
+  const session = request.headers.get(OG_SESSION_HEADER);
+  return session ? createOgProvider({ apiKey: session, payer: "user" }) : (await getProvider()).provider;
 }
 
 export function badRequest(message) {

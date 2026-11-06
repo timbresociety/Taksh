@@ -17,6 +17,7 @@ function meta(provider, startedAt, attempts, replies = []) {
   return {
     source: provider.source,
     model: provider.model,
+    ...(provider.payer && { payer: provider.payer }),
     ms: Date.now() - startedAt,
     attempts,
     promptVersions: PROMPT_VERSIONS,

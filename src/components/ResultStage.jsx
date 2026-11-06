@@ -4,6 +4,7 @@ import { useState } from "react";
 import RivalEpisode from "./RivalEpisode";
 import ArkivBoard from "./ArkivBoard";
 import PublishGame from "./PublishGame";
+import CreditReceipt from "./CreditReceipt";
 
 const SUGGESTIONS = ["Give me more time", "Make it harder", "Switch it to neon"];
 
@@ -15,7 +16,7 @@ function formatValue(value, unit) {
   return `${Number(value.toFixed(2))}${unit ? ` ${unit}` : ""}`;
 }
 
-export default function ResultStage({ game, result, revision, busy, error, mode, onRevise, onPlay, onNew }) {
+export default function ResultStage({ game, result, revision, busy, error, mode, paidByYou, onRevise, onPlay, onNew }) {
   const [request, setRequest] = useState("");
   const { spec } = game;
 
@@ -32,6 +33,7 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
             </div>
           ))}
         </dl>
+        <CreditReceipt traces={game.traces} decisions={result.episode?.decisions} paidByYou={paidByYou} />
         {result.episode && <RivalEpisode episode={result.episode} />}
       </section>
 
