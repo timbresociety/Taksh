@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 
 // Each upload is a testnet transaction from the storage wallet.
 const spend = createBudget(10);
-// Each check reads Arkiv and can hold the request 9 s, so checks get their own cap.
-const check = createBudget(30);
+// A wait for a late decision holds the request 9 s, so waits get their own cap.
+const wait = createBudget(30);
 
 // Stores a finished 0G-rival round on 0G Storage, after checkEpisode has checked and replayed it.
 export async function POST(request) {
@@ -24,7 +24,6 @@ export async function POST(request) {
     const checked = validateSpec(raw?.spec);
     if (!checked.ok) return Response.json({ error: "That is not a Taksh episode." }, { status: 400 });
     if (!ROUND_ID.test(raw.roundId ?? "")) return Response.json({ error: "This episode has no round ID." }, { status: 400 });
-    check();
 
     // A decision reaches Arkiv about 8 s after it was served, so the last one of a round may not be
     // readable yet. Wait once for it rather than refuse an honest round. Only a round the server knows,
@@ -33,6 +32,7 @@ export async function POST(request) {
     const known = new Set(round.records.map((record) => record.requestId));
     const unknown = (Array.isArray(raw.decisions) ? raw.decisions : []).filter((decision) => decision?.requestId && !known.has(decision.requestId));
     if (round.records.length && unknown.length && unknown.length <= 2) {
+      wait();
       await new Promise((done) => setTimeout(done, 9000));
       round = await loadRound(raw.roundId);
     }
