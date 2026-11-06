@@ -11,9 +11,9 @@ export const THRESHOLDS = {
   hand: { enter: 0.85, exit: 0.5 },
   kick: { enter: 0.8, exit: 0.5, lift: 0.22 },
   knee: { enter: 0.55, exit: 0.3, otherMax: 0.35 },
-  jump: { enter: 0.24, exit: 0.1, feet: 0.14 },
+  jump: { enter: 0.2, exit: 0.1, feet: 0.1 }, // in a real session two clear jumps lifted the feet just 0.14
   burpee: { enter: 0.95, exit: 0.35 },
-  squat: { enter: 0.36, exit: 0.18 },
+  squat: { enter: 0.3, exit: 0.16 }, // real squats read 0.35 to 0.48, and landing from a jump up to 0.24
   lean: { enter: 0.3, exit: 0.14 },
   punch: { enter: 0.55, exit: 0.3 }, // the fist out from guard, or the arm pointing at the camera; see measure
   hook: { enter: 0.3, exit: 0.08 }, // wrist past the chest centre at shoulder height
@@ -21,7 +21,7 @@ export const THRESHOLDS = {
   swing: { enter: 2.8, exit: 1 }, // torso lengths per second, sideways
   reach: { enter: 0.55, exit: 0.25 },
   lift: { enter: 0.5, exit: 0.25, otherMax: 0.2 }, // one leg up, the other foot on the floor
-  slash: { speed: 2.6, travel: 0.7, settle: 1, coolMs: 240, reverseMs: 400 }, // torso lengths, and per second
+  slash: { speed: 2.6, travel: 0.7, settle: 1, coolMs: 240, reverseMs: 1000, across: 0.1 }, // torso lengths, and per second
   run: { swing: 0.16 }, // how far one foot must pass the other to count as a stride
   pump: { swing: 0.35 }, // how far one hand must pass the other to count as a beat
   bounce: { enter: 0.07, exit: 0.05 }, // both feet up from their low point and back down, as over a rope
@@ -55,7 +55,9 @@ const BASELINE_RATE = 0.02;
 
 const BOTH_HANDS_MS = 200; // one hand arrives first, so a single lift waits this long for the other
 const SPEED_WINDOW_MS = 1500;
-const JAB_ARMED_MS = 700; // how long after leaving guard a fist going out still counts as a jab
+const JAB_ARMED_MS = 1000; // how long after being up and inside the shoulder a fist going out still counts as a jab
+const JAB_INSIDE = 0.25; // torso lengths outside the shoulder; a fist nearer the middle than this is loaded
+const REST_DEPTH_MS = 600; // how quickly an arm's resting depth catches up with wherever it is held
 const GUARD_ZONE = 0.6; // torso lengths from the nose
 const SQUAT_JUMP_MS = 900; // a jump this soon after a squat grew out of it
 const PAIRED_SLASH_MS = 120; // two hands arriving this close together moved as one
@@ -124,21 +126,24 @@ export class Gate {
 }
 
 // A hand stroke across the body. It fires as soon as the hand has travelled far enough, so a slash
-// lands while the arm is still moving. The way back is ignored, or every slash would count twice.
+// lands while the arm is still moving. The way back is ignored, or every slash would count twice, and so
+// is the wind-up: a hand swinging out to its own side counts only if it started across the body. In a
+// real session the wind-up fired before half the slashes, and the way back came up to a second later.
 class Stroke {
-  constructor() {
+  constructor(side) {
+    this.sign = side === "left" ? -1 : 1;
     this.path = null;
     this.quietUntil = 0;
     this.last = null;
   }
 
-  update(vx, vy, seconds, t) {
-    const { speed, travel, settle, coolMs, reverseMs } = THRESHOLDS.slash;
+  update(vx, vy, seconds, t, at) {
+    const { speed, travel, settle, coolMs, reverseMs, across } = THRESHOLDS.slash;
     const pace = Math.hypot(vx, vy);
     if (t < this.quietUntil) return null;
     if (!this.path) {
       if (pace < speed) return null;
-      this.path = { x: 0, y: 0 };
+      this.path = { x: 0, y: 0, from: at };
     }
     if (pace < settle) {
       this.path = null;
@@ -150,7 +155,10 @@ class Stroke {
 
     const horizontal = Math.abs(this.path.x) >= Math.abs(this.path.y);
     const direction = horizontal ? (this.path.x < 0 ? "left" : "right") : this.path.y < 0 ? "up" : "down";
+    const outward = horizontal && Math.sign(this.path.x) === this.sign;
+    const windUp = outward && this.sign * this.path.from > -across;
     this.path = null;
+    if (windUp) return null;
     this.quietUntil = t + coolMs;
     const reversed = this.last && t - this.last.t < reverseMs && this.last.direction === OPPOSITE[direction];
     this.last = reversed ? null : { direction, t };
@@ -296,11 +304,12 @@ export class GestureEngine {
       curl_right: new Gate(THRESHOLDS.curl),
     };
     this.personalise(personal);
-    this.strokes = { left: new Stroke(), right: new Stroke() };
+    this.strokes = { left: new Stroke("left"), right: new Stroke("right") };
     this.waitingLift = null;
     this.leading = { run: null, pump: null };
     this.beats = { legs: [], flap: [], arms: [] };
     this.guardedAt = { left: -Infinity, right: -Infinity };
+    this.restDepth = { left: null, right: null, t: null };
     this.squatAt = -Infinity;
     this.lastSlash = null;
     this.hop = { up: false, low: 0, high: 0 };
@@ -462,8 +471,8 @@ export class GestureEngine {
     for (const side of ["left", "right"]) {
       const seen = side === "left" ? f.leftHandVisibility : f.rightHandVisibility;
       if (seen < MIN_CONFIDENCE || !f.handSpeed) continue;
-      const { x, y, seconds } = f.handSpeed[side];
-      const direction = this.strokes[side].update(x, y, seconds, t);
+      const { x, y, seconds, at } = f.handSpeed[side];
+      const direction = this.strokes[side].update(x, y, seconds, t, at);
       if (!direction) continue;
       // Both hands going the same way at once is one slash, and held together going down it is a chop.
       const first = this.lastSlash;
@@ -634,21 +643,28 @@ export class GestureEngine {
     const nose = points[LM.nose];
     const elbowUp = (elbow) => elbow.y < shoulder.y + 0.4 * u;
     const nearShoulderHeight = (wrist) => Math.abs(wrist.y - shoulder.y) < 0.6 * u;
-    // Depth is the weakest thing the tracker reports, so a punch has a second witness: an arm aimed at
-    // the camera looks short in the image. The elbow tells it from a guard, where the fist is close but
-    // the upper arm still hangs at full length.
-    const upperArm = cal.upperArm ?? 0.6 * u;
     const armLength = cal.armLength ?? 1.15 * u;
-    const depth = (from, wrist) => (from.w === undefined ? ((from.z ?? 0) - (wrist.z ?? 0)) / u : (from.w - wrist.w) / WORLD_TORSO_M);
-    const shortening = (from, elbow, wrist) => Math.min(1 - distance(from, elbow) / upperArm, 1 - distance(from, wrist) / armLength);
-    const forward = (from, elbow, wrist) => {
-      if (!nearShoulderHeight(wrist) || from.y - wrist.y > PUNCH_MAX_RISE * u || Math.abs(wrist.x - from.x) >= 0.7 * u) return 0;
-      return Math.max(depth(from, wrist), shortening(from, elbow, wrist));
+    // Depth counts from where the arm has been resting, not from the shoulder: fists held at the chin are
+    // already a forearm ahead of it, and in a real session that alone read past the punch threshold for
+    // both arms. A punch gets there far faster than the rest can follow; raising a guard does not.
+    const follow = this.restDepth.t === null ? 1 : 1 - Math.exp(-(this.frameT - this.restDepth.t) / REST_DEPTH_MS);
+    this.restDepth.t = this.frameT;
+    const depth = (side, from, wrist) => {
+      const ahead = from.w === undefined ? ((from.z ?? 0) - (wrist.z ?? 0)) / u : (from.w - wrist.w) / WORLD_TORSO_M;
+      const rest = this.restDepth[side] ?? ahead;
+      this.restDepth[side] = rest + (ahead - rest) * follow;
+      return ahead - rest;
     };
-    // A jab thrown slightly to the side crosses the image, which the camera reads far better than depth.
-    // It has to leave from guard, or an arm simply held out would count.
-    for (const [side, wrist] of [["left", leftWrist], ["right", rightWrist]]) {
-      if (distance(wrist, nose) < GUARD_ZONE * u) this.guardedAt[side] = this.frameT;
+    // An arm that looks short in the image is no witness: a fist at the chin looks just as short.
+    const forward = (side, from, wrist) => {
+      const ahead = depth(side, from, wrist);
+      return !nearShoulderHeight(wrist) || from.y - wrist.y > PUNCH_MAX_RISE * u || Math.abs(wrist.x - from.x) >= 0.7 * u ? 0 : ahead;
+    };
+    // A fist coming at the camera spreads outward in the image, which the camera reads far better than
+    // depth. It has to start up and inside the shoulder, as from a guard, or an arm simply held out would count.
+    for (const [side, wrist, from, dir] of [["left", leftWrist, leftShoulder, -1], ["right", rightWrist, rightShoulder, 1]]) {
+      const inside = nearShoulderHeight(wrist) && (dir * (wrist.x - from.x)) / u < JAB_INSIDE;
+      if (inside || distance(wrist, nose) < GUARD_ZONE * u) this.guardedAt[side] = this.frameT;
     }
     const jab = (side, from, wrist, dir) => {
       const armed = this.frameT - this.guardedAt[side] <= JAB_ARMED_MS;
@@ -665,7 +681,11 @@ export class GestureEngine {
     const fastest = (a, b) => (Math.abs(a) > Math.abs(b) ? a : b);
     // A punch goes forward. Arms swinging through shoulder height read as depth, and swing fast up or down.
     const straight = (side) => Math.abs(velocity(side, "y")) < PUNCH_MAX_DROP;
-    const handSpeed = seconds && { left: { x: velocity("left", "x"), y: velocity("left", "y"), seconds }, right: { x: velocity("right", "x"), y: velocity("right", "y"), seconds } };
+    const handAt = (wrist) => (wrist.x - shoulder.x) / u; // across the body from its middle
+    const handSpeed = seconds && {
+      left: { x: velocity("left", "x"), y: velocity("left", "y"), seconds, at: handAt(leftWrist) },
+      right: { x: velocity("right", "x"), y: velocity("right", "y"), seconds, at: handAt(rightWrist) },
+    };
     const aimAt = (wrist) => ({ x: clampUnit((wrist.x - shoulder.x) / (armLength * 1.2)), y: clampUnit((shoulder.y + 0.3 * u - wrist.y) / (armLength * 1.2)) });
     const legLift = (knee, foot, otherFoot) => (otherFoot < THRESHOLDS.lift.otherMax ? Math.max(knee, foot) : 0);
     const rising = (side, other, wrist) => (Math.abs(wrist.x - shoulder.x) < 0.9 * u && wrist.y < shoulder.y + 0.5 * u && -velocity(other, "y") < BOTH_HANDS_RISING ? -velocity(side, "y") : 0);
@@ -691,9 +711,13 @@ export class GestureEngine {
 
     // Both arms reading forward at once is arms going up together, not a punch. In a real session four
     // in five depth readings were this.
-    const forwardLeft = straight("left") ? Math.max(forward(leftShoulder, points[LM.leftElbow], leftWrist), jab("left", leftShoulder, leftWrist, -1)) : 0;
-    const forwardRight = straight("right") ? Math.max(forward(rightShoulder, points[LM.rightElbow], rightWrist), jab("right", rightShoulder, rightWrist, 1)) : 0;
-    const together = Math.min(forwardLeft, forwardRight) >= THRESHOLDS.punch.exit;
+    const jabLeft = jab("left", leftShoulder, leftWrist, -1);
+    const jabRight = jab("right", rightShoulder, rightWrist, 1);
+    const forwardLeft = straight("left") ? Math.max(forward("left", leftShoulder, leftWrist), jabLeft) : 0;
+    const forwardRight = straight("right") ? Math.max(forward("right", rightShoulder, rightWrist), jabRight) : 0;
+    // One fist clearly out while the other stays in is a punch, whatever the depth of the other says.
+    const oneJab = Math.max(jabLeft, jabRight) >= THRESHOLDS.punch.enter && Math.min(jabLeft, jabRight) < THRESHOLDS.punch.exit;
+    const together = !oneJab && Math.min(forwardLeft, forwardRight) >= THRESHOLDS.punch.exit;
 
     return {
       squat: upper ? shoulderDrop : Math.max(leftWrist.y, rightWrist.y) > cal.kneeY + 0.5 * u ? 0 : (hip.y - cal.hipY) / u,

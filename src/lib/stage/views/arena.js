@@ -183,17 +183,35 @@ function fightingStance(character, facing, weight) {
   }
 }
 
+// The trainer holds each pad out at arm's length, on the side the punch goes to, so it sits in the open
+// beside the player rather than behind their own head. The player's left is the trainer's right.
+const TRAINER_X = 0.2;
+const PAD_Z = -1.05;
+const PAD_OUT = 0.42;
+const padSpot = (pad) => new THREE.Vector3(TRAINER_X + pad.side * PAD_OUT, pad.height, PAD_Z);
+const shoulderTo = new THREE.Vector3();
+
+function holdPad(trainer, pad) {
+  const side = pad.side < 0 ? "r" : "l";
+  const upper = trainer.bones.get(`upperarm_${side}`);
+  if (!upper) return;
+  const reach = padSpot(pad).sub(upper.getWorldPosition(shoulderTo));
+  aimBone(upper, reach, 0.9);
+  aimBone(trainer.bones.get(`lowerarm_${side}`), reach.clone().add(new THREE.Vector3(0, 0.15, 0)), 0.9);
+}
+
 export const pads = {
   usesRival: true,
   mirrorsArms: true,
   async build({ scene, camera, world, hero, rival, fx, focusShadow }) {
     scene.add(ringPlatform(world), world.ring({ inner: 10 }));
     gloves(hero, "#ff3b4e", world);
+    gloves(rival, "#f1ece0", world);
     hero.root.rotation.y = Math.PI;
     hero.root.position.set(-0.3, 0, 1);
-    rival.root.position.set(0.2, 0, -1.5);
+    rival.root.position.set(TRAINER_X, 0, -1.5);
     hero.play("Idle_Loop");
-    rival.play("Idle_FoldArms_Loop");
+    rival.play("Idle_Loop");
 
     const group = new THREE.Group();
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.09, 30), world.material("#ffffff"));
@@ -204,7 +222,7 @@ export const pads = {
     group.add(disc, timer);
     const cards = Object.fromEntries(Object.entries(PUNCH_COLOURS).map(([punch, colour]) => {
       const card = wordCard(punch.toUpperCase(), colour);
-      card.position.set(0, 0.62, 0);
+      card.position.set(0, 0.86, 0); // above the timer ring at its widest
       card.visible = false;
       group.add(card);
       return [punch, card];
@@ -221,7 +239,7 @@ export const pads = {
         group.visible = Boolean(state.pad);
         if (state.pad) {
           const { pad } = state;
-          group.position.set(-0.2 + pad.side * 0.5, pad.height, -0.2);
+          group.position.copy(padSpot(pad));
           timer.scale.setScalar(1.7 - (pad.ms / pad.lifeMs) * 0.7 + 0.0001);
           timer.material.opacity = 0.9;
           if (shownId !== pad.id) {
@@ -233,6 +251,8 @@ export const pads = {
           }
         }
         if (swingMs <= 0) fightingStance(hero, -1, 0.85);
+        fightingStance(rival, 1, 0.6);
+        if (state.pad) holdPad(rival, state.pad);
         // The library has no uppercut, so it is posed over the idle clip.
         uppercutMs = Math.max(0, uppercutMs - dt * 1000);
         if (uppercutMs > 0) applyPose(hero, MOVE_POSES.uppercut_right(0.12 + 0.7 * (1 - uppercutMs / UPPERCUT_MS)), { flip: true });

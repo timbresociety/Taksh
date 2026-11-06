@@ -473,9 +473,20 @@ describe("locked moves", () => {
     return { rightArm: { wrist: [x * share + -0.08 * (1 - share), 1.15 + (0.3 - 1.15) * share] } };
   }]];
 
-  it("reads a punch with no depth at all, from the arm looking short", () => {
-    const arm = { leftArm: { wrist: [0.05, 0.1, 0], elbow: [0.02, 0.1] } };
-    assert.ok(moved([[200, (p) => ({ leftArm: { wrist: [0.08, 1.1 - p], elbow: [0.05, 0.6 - 0.5 * p] } })], [300, arm]]).includes("punch_left"));
+  // Fists at the chin, a forearm nearer the camera than the shoulders, as a real guard reads.
+  const guardUp = (left, right = [-0.35, 0.1, -0.6]) => ({ leftArm: { wrist: left, elbow: [0.1, 0.5] }, rightArm: { wrist: right, elbow: [-0.1, 0.5] } });
+  const CHIN = [0.35, 0.1, -0.6];
+
+  it("a fist raised to the chin and held there is not a punch, though it sits ahead of the shoulder", () => {
+    const raise = [[500, (p) => ({ leftArm: { wrist: [-0.08 + 0.43 * p, 1.15 - 1.05 * p, -0.6 * p], elbow: [0.1, 0.5] } })], [1500, { leftArm: { wrist: CHIN, elbow: [0.1, 0.5] } }]];
+    assert.equal(run(body, raise, { moves: ALL, metric: true }).names.includes("punch_left"), false);
+  });
+
+  it("one fist out from guard is a punch, with the other fist still at the chin", () => {
+    const jab = [[900, guardUp(CHIN)], [150, (p) => guardUp([0.35 - 1.1 * p, 0.1 - 0.05 * p, -0.6 - 0.3 * p])], [200, guardUp([-0.75, 0.05, -0.9])]];
+    const names = run(body, jab, { moves: ALL, metric: true }).names;
+    assert.ok(names.includes("punch_left"));
+    assert.equal(names.includes("punch_right"), false);
   });
 
   it("does not read a guard as a punch, because the upper arm still hangs", () => {
@@ -512,6 +523,29 @@ describe("locked moves", () => {
     const across = (from, to, ms) => [ms, (p) => ({ rightArm: { wrist: [from + (to - from) * p, 0.3] } })];
     const names = moved([...slowly(0.9), across(0.9, -0.9, 170), [100, { rightArm: { wrist: [-0.9, 0.3] } }], across(-0.9, 0.9, 170), ...slowly(0.9, true)]);
     assert.deepEqual(names.filter((name) => name.startsWith("slash")), ["slash_left"]);
+  });
+
+  it("swinging a hand out to its own side to wind up is not a slash", () => {
+    const across = (from, to, ms) => [ms, (p) => ({ rightArm: { wrist: [from + (to - from) * p, 0.3] } })];
+    const names = moved([...slowly(0.3), across(0.3, 0.9, 170), [100, { rightArm: { wrist: [0.9, 0.3] } }], across(0.9, -0.9, 170), [1200, { rightArm: { wrist: [-0.9, 0.3] } }]]);
+    assert.deepEqual(names.filter((name) => name.startsWith("slash")), ["slash_left"]);
+  });
+
+  it("a backhand from across the body counts, and so does the way back after a long pause", () => {
+    const across = (from, to, ms) => [ms, (p) => ({ rightArm: { wrist: [from + (to - from) * p, 0.3] } })];
+    const names = moved([...slowly(-0.9), across(-0.9, 0.9, 170), [1200, { rightArm: { wrist: [0.9, 0.3] } }], across(0.9, -0.9, 170), ...slowly(-0.9, true)]);
+    assert.deepEqual(names.filter((name) => name.startsWith("slash")), ["slash_right", "slash_left"]);
+  });
+
+  it("the hand coming back most of a second later is still the way back", () => {
+    const across = (from, to, ms) => [ms, (p) => ({ rightArm: { wrist: [from + (to - from) * p, 0.3] } })];
+    const names = moved([...slowly(0.9), across(0.9, -0.9, 170), [700, { rightArm: { wrist: [-0.9, 0.3] } }], across(-0.9, 0.9, 170), ...slowly(0.9, true)]);
+    assert.deepEqual(names.filter((name) => name.startsWith("slash")), ["slash_left"]);
+  });
+
+  it("a small hop that barely lifts the feet is still a jump", () => {
+    const hop = [[250, (p) => ({ rise: 0.27 * p, feetRise: 0.13 * p })], [250, (p) => ({ rise: 0.27 * (1 - p), feetRise: 0.13 * (1 - p) })], [400, {}]];
+    assert.ok(moved(hop).includes("jump"));
   });
 
   it("both hands slashing the same way at once are one slash", () => {

@@ -20,7 +20,11 @@ export function practiceMoves(template, usesCamera) {
     const info = gestureInfo(gesture);
     if (seen.has(gesture) || !info || info.hidden || (reaching && gesture.startsWith("slash_"))) return [];
     seen.add(gesture);
-    return [{ gesture, label: info.label, cue: info.cue, demo, action: template.actions.find((item) => item.id === action) }];
+    // The game's own name for the move, as its key legend says it, when only this move does it: "Duck",
+    // taught as a squat. Two moves sharing an action, like a hook from either hand, keep their own names.
+    const only = template.bindings.filter((binding) => binding.action === action).length === 1;
+    const found = template.actions.find((item) => item.id === action);
+    return [{ gesture, label: only && found ? found.label : info.label, cue: info.cue, demo, action: found }];
   });
   // A game that gives each hand its own half says so here, since that is the rule to learn first.
   return reaching ? [{ ...AIM_STEP, cue: template.aimCue ?? AIM_STEP.cue }, ...moves] : moves;

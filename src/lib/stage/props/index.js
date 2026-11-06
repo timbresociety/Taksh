@@ -32,6 +32,8 @@ const PROPS = {
   cones: mumbai.cones,
   barricade: mumbai.barricade,
   board: mumbai.board,
+  metrobar: (b) => mumbai.workBar(b, "metro"),
+  bmcbar: (b) => mumbai.workBar(b, "bmc"),
   pothole: mumbai.pothole,
   puddle: mumbai.puddle,
   cow: mumbai.cowStanding,

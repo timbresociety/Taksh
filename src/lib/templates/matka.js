@@ -1,10 +1,13 @@
-// Matka Beats: painted clay pots swing in on a dhol beat. Slash the way each arrow points, on the beat.
-import { REACTION_MS, createRandom } from "./shared.js";
+// Matka Beats: painted clay pots swing in on a dhol beat. Slash the side pots, jump for the high ones and
+// duck for the low ones, on the beat.
+import { REACTION_MS, STRIKE_CALLS, createRandom, strikeActions, strikeBindings } from "./shared.js";
 
 export const DIRS = ["left", "right", "up", "down"];
 const MIRROR = { left: "right", right: "left", up: "down", down: "up" };
 const MIN_GAP_MS = 460; // a slash and its way back are one movement, so the next pot waits
 const SAME_GAP_MS = 640; // the same slash twice needs the hand to come all the way back
+const BODY_GAP_MS = 900; // a jump or a duck needs time to land or stand back up
+const BODY_LATE_MS = 200; // the body is read once the hips have moved, a little after the beat was meant
 const PERFECT_SHARE = 0.45;
 const SLOTS_PER_BAR = 8; // half beats
 
@@ -14,6 +17,8 @@ const FULL_CELLS = ["x.x.x.x.", "x..x..x.", "x.x...x.", "x..x.x.."];
 const MOTIFS = [["left", "right"], ["up", "down"], ["left", "up", "right", "down"], ["right", "left", "up"], ["left", "left", "right", "right"], ["up", "left", "up", "right"]];
 
 const barMs = (bpm) => (60000 / bpm) * 4;
+const BODY = new Set(["up", "down"]);
+const lateBy = (pot, windowMs) => windowMs + (BODY.has(pot.dir) ? BODY_LATE_MS : 0);
 
 // Each phrase is four bars: a statement, its mirror, the statement again, and a sparser answer. A
 // player learns the pattern in the first bar and is rewarded for it, which random pots never allow.
@@ -39,6 +44,7 @@ export function buildChart(rng, { bpm, durationMs, leadMs }) {
         step += 1;
         if (before && at - before.at < MIN_GAP_MS) continue;
         if (before?.dir === dir && at - before.at < SAME_GAP_MS) dir = MIRROR[dir];
+        if (before && (BODY.has(dir) || BODY.has(before.dir)) && at - before.at < BODY_GAP_MS) continue;
         pots.push({ id: pots.length + 1, at, dir, kind: dir });
       }
       bar += 1;
@@ -51,24 +57,14 @@ export function buildChart(rng, { bpm, durationMs, leadMs }) {
 export default {
   id: "matka",
   name: "Matka Beats",
-  pitch: "Slash each swinging clay pot the way its arrow points, right on the dhol beat.",
+  pitch: "Slash the clay pots at your sides, jump for the high ones and duck for the low ones, right on the dhol beat.",
   kind: "Arms",
   space: "Stand up",
   length: "60 s",
-  framing: "upper",
+  framing: "full", // a jump needs the feet in view
   score: "pots",
-  actions: [
-    { id: "slash_left", label: "Slash left", key: "ArrowLeft", keyLabel: "←" },
-    { id: "slash_right", label: "Slash right", key: "ArrowRight", keyLabel: "→" },
-    { id: "slash_up", label: "Slash up", key: "ArrowUp", keyLabel: "↑" },
-    { id: "slash_down", label: "Slash down", key: "ArrowDown", keyLabel: "↓" },
-  ],
-  bindings: [
-    { gesture: "slash_left", action: "slash_left", exercise: "Slash left" },
-    { gesture: "slash_right", action: "slash_right", exercise: "Slash right" },
-    { gesture: "slash_up", action: "slash_up", exercise: "Slash up" },
-    { gesture: "slash_down", action: "slash_down", exercise: "Slash down" },
-  ],
+  actions: strikeActions(),
+  bindings: strikeBindings(),
   tuning: {
     durationS: { label: "Song length", unit: "s", min: 30, max: 150, default: 60, higherIsHarder: false, whole: true },
     bpm: { label: "Beats per minute", unit: "bpm", min: 70, max: 130, default: 92, higherIsHarder: true, whole: true },
@@ -91,7 +87,7 @@ export default {
     const dir = action.replace("slash_", "");
     if (!DIRS.includes(dir)) return [];
     state.swings += 1;
-    const near = state.pots.filter((pot) => Math.abs(pot.at - state.t) <= state.windowMs).sort((a, b) => Math.abs(a.at - state.t) - Math.abs(b.at - state.t));
+    const near = state.pots.filter((pot) => pot.at - state.t <= state.windowMs && state.t - pot.at <= lateBy(pot, state.windowMs)).sort((a, b) => Math.abs(a.at - state.t) - Math.abs(b.at - state.t));
     if (!near.length) return [{ type: "swing", dir }];
     const pot = near.find((item) => item.dir === dir);
     if (!pot) {
@@ -117,12 +113,12 @@ export default {
       state.next += 1;
     }
     for (const pot of state.pots) {
-      if (state.t - pot.at <= state.windowMs) continue;
+      if (state.t - pot.at <= lateBy(pot, state.windowMs)) continue;
       state.missed += 1;
       state.combo = 0;
       events.push({ type: "miss", dir: pot.dir });
     }
-    state.pots = state.pots.filter((pot) => state.t - pot.at <= state.windowMs);
+    state.pots = state.pots.filter((pot) => state.t - pot.at <= lateBy(pot, state.windowMs));
     if (state.t >= state.durationMs) {
       state.status = "ended";
       events.push({ type: "end" });
@@ -130,7 +126,13 @@ export default {
     return events;
   },
 
-  hud: (state) => ({ score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`, extra: state.combo > 1 ? `${state.combo} combo` : null }),
+  // The next pot's move is named as well as drawn, so a new player learns the four arrows in a bar.
+  hud(state) {
+    const next = state.pots.filter((pot) => pot.at - state.t <= state.approachMs * 0.6)[0];
+    const call = next ? STRIKE_CALLS[next.dir] : null;
+    const combo = state.combo > 1 ? `${state.combo} combo` : null;
+    return { score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`, extra: [call, combo].filter(Boolean).join(" · ") || null };
+  },
 
   result(state) {
     const landed = state.perfect + state.good;

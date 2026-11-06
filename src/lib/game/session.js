@@ -42,7 +42,8 @@ export class GameSession {
 
   handleKey(action) {
     if (this.phase !== "playing") return;
-    this.log(`${this.clock}-${action}`, `Key: ${action.replace(/_/g, " ")}`, 1, true);
+    const label = this.template.actions.find((item) => item.id === action)?.label ?? action.replace(/_/g, " ");
+    this.log(`${this.clock}-${action}`, `Key: ${label}`, 1, true);
     this.act(action);
   }
 

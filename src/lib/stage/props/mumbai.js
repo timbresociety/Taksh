@@ -66,6 +66,32 @@ export function board(b) {
   return b;
 }
 
+// The overhead bar a runner rolls under, dressed as the hoarding the city puts up around its roadworks:
+// one for the metro lines going in, one for the corporation digging up the road. Built at a lane's width
+// with the bar where the plain one is, so a world can swap it in without changing what clears it.
+const WORK_SIGNS = {
+  metro: { text: "METRO WORK IN PROGRESS", sub: "मेट्रोचे काम चालू आहे", bg: "#1d4fa8", ink: "#ffffff", border: "#ffd21f" },
+  bmc: { text: "BMC ROAD WORK", sub: "रस्त्याचे काम चालू आहे", bg: "#ffd21f", ink: "#c0141b", border: "#17171b" },
+};
+
+export function workBar(b, kind) {
+  const sign = WORK_SIGNS[kind];
+  const words = signboard({ name: `workbar-${kind}`, ...sign, width: 640, height: 192 });
+  const stripes = hazardStripes(`workbar-${kind}`, "#ffd21f", "#17171b", { slant: 48 });
+  b.box(2.1, 0.62, 0.28, sign.bg, { at: [0, 1.72, 0] });
+  for (const face of [-1, 1]) {
+    const turn = [0, face > 0 ? 0 : Math.PI, 0];
+    b.card(2.04, 0.5, words, { at: [0, 1.76, face * 0.145], turn });
+    b.card(2.1, 0.1, stripes, { at: [0, 1.46, face * 0.145], turn });
+  }
+  for (const x of [-0.95, 0.95]) {
+    b.box(0.16, 2.1, 0.2, "#20232b", { at: [x, 1.05, 0] });
+    b.box(0.2, 0.1, 0.7, "#20232b", { at: [x, 0.05, 0] });
+    b.ball(0.07, "#ff3b1f", { at: [x, 2.16, 0], glow: true });
+  }
+  return b;
+}
+
 const POTHOLE_RIM = [[-0.86, -0.1], [-0.6, -0.56], [-0.05, -0.68], [0.5, -0.6], [0.88, -0.2], [0.8, 0.32], [0.42, 0.66], [-0.2, 0.62], [-0.66, 0.46]];
 
 function lying(b, points, scale, y, colour, options) {
