@@ -104,11 +104,12 @@ With thinking on, 8 of 20 games failed validation on the first try, all because 
 
 ## 0G rival in Counter Bout
 
-With 0G connected, the Counter Bout rival only throws shots its 0G brain planned. Every few seconds the browser sends the fight so far to `/api/rival/decide`: health, time left, and which recent shots the player dodged. `glm-5.3` on the private tier returns the next three shots, a taunt and a read on the player. Each decision costs about $0.0004 and takes 3 to 5 s. The rival asks again while one shot is still queued.
+With 0G connected, the Counter Bout rival only throws shots its 0G brain planned. This is our Physical AI entry, written up against the track's requirements in `docs/physical-ai.md`. Every few seconds the browser sends the fight so far to `/api/rival/decide`: health, time left, and which recent shots the player dodged. `glm-5.3` on the private tier returns the next three shots, a taunt and a read on the player. Each decision costs about $0.0004 and takes 3 to 5 s. The rival asks again while one shot is still queued.
 
 - **Safe stop.** If 0G errors or takes over 6 s, no plan arrives, so the rival holds its guard and throws nothing. It never makes up a shot, and the HUD says "0G signal lost".
 - **Episode log.** `GameSession` records every step's dt, every move and every plan. At the end of a round, `/api/rival/episode` checks each plan against what 0G really returned (by request ID, single use), replays the round, and uploads it to 0G Storage on Galileo testnet. The result screen shows the root hash.
 - **Player moves.** The player's keys come from the browser, so the server doesn't take the score on trust. It stores the score from its own replay. It also refuses a round if its decisions come from more than one round ID, if it stops before the round ended, if it leaves out a plan 0G served in time to be played (judged on the server clock), if the game clock runs ahead of the server clock (a fast-forwarded round), if it arrives more than 5 minutes after ending, or if more than 2 dodges land under 120 ms after the windup shows. While the rival guards for lack of a plan, punches don't land, so a browser that stops asking 0G gains nothing. A bot playing at human speed still gets through. Stopping that needs inputs signed on the server as they happen.
+- **Ledger.** What 0G returned for each round is kept on Arkiv (`taksh.rival.decisions.v1`), so whichever server instance gets the upload can check it. A stored round gets a `taksh.rival.spent.v1` entity and can't be stored twice. Without `ARKIV_PRIVATE_KEY` the ledger stays in memory, which works on one server.
 - **Replay.** `npm run replay-episode -- <rootHash>` downloads the episode with Merkle proof checking, plays it again from the seed, and exits 1 if the score differs.
 
 First stored round (2026-11-06), writer `0x07996A4De073dD64219fb84e05FA048145802aa2`:
@@ -235,7 +236,7 @@ Both were read back through `GET /api/arkiv/scores?template=hop` and `GET /api/a
 
 ## Licence and AI use
 
-MIT, see `LICENSE`. The code and docs were written with Claude Code, with a person choosing the design and reviewing the result. The Arkiv integration was written by a Claude agent working from Arkiv's docs, and `arkiv/friction.md` is its log. In the app, Claude turns a typed idea into a game spec.
+MIT, see `LICENSE`. The code and docs were written with Claude Code, with a person choosing the design and reviewing the result. The Arkiv integration was written by a Claude agent working from Arkiv's docs, and `arkiv/friction.md` is its log. In the app, `glm-5.3` on 0G Private Computer turns a typed or spoken idea into a game spec and plans the Counter Bout rival's shots. Claude is the fallback model when no 0G key is set.
 
 ## Known limits
 
