@@ -47,6 +47,7 @@ export default async function Page({ params }) {
                 <th scope="col">Player</th>
                 <th scope="col">Score</th>
                 <th scope="col">Played with</th>
+                <th scope="col">Expires in</th>
               </tr>
             </thead>
             <tbody>
@@ -56,6 +57,7 @@ export default async function Page({ params }) {
                   <td>{row.player}</td>
                   <td>{row.score}</td>
                   <td>{row.mode}</td>
+                  <td>{row.daysLeft} d</td>
                 </tr>
               ))}
             </tbody>
