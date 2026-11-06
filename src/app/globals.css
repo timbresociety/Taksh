@@ -1604,6 +1604,20 @@ kbd {
 .rival-episode p {
   margin: 0 0 8px;
 }
+.rival-episode__check {
+  margin: 0 0 8px;
+}
+.rival-episode__check summary {
+  cursor: pointer;
+}
+.rival-episode__check p {
+  margin: 6px 0;
+}
+.rival-episode__root {
+  display: block;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
 .rival-episode__error {
   color: var(--volt);
 }

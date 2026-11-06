@@ -238,6 +238,22 @@ function SourceNote({ status, game }) {
       </p>
     );
   }
+  // A game with no receipts on screen wasn't made by this session's model, so the note says where it came from.
+  if (game?.daily?.requestId) {
+    return (
+      <p className="source-note source-note--0g" data-testid="source-note" title={game.daily.requestId}>
+        Today&apos;s game, made on 0G in a private TEE. Request <code>{game.daily.requestId.slice(0, 8)}</code>
+      </p>
+    );
+  }
+  if (game) {
+    const from = { template: "A starter game, built in", ens: "A game shared on ENS", arkiv: "A game shared on Arkiv" }[game.source] ?? (game.model ? `Made with ${game.model}` : "A saved game");
+    return (
+      <p className="source-note" data-testid="source-note">
+        {from}. Changing it {status.source === "0g" ? `runs on 0G with ${status.model} in a private TEE` : `runs on ${status.model}`}.
+      </p>
+    );
+  }
   return (
     <p className="source-note" data-testid="source-note">
       {status.source === "0g" ? `Generating on 0G with ${status.model} in a private TEE` : `Generating with ${status.model}`}
