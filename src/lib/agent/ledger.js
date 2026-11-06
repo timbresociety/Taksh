@@ -17,13 +17,14 @@ export function openRound(roundId, now = Date.now()) {
   const known = rounds.get(roundId);
   if (known && !known.state) return roundId;
   const id = globalThis.crypto.randomUUID();
-  rounds.set(id, { startedAt: now });
+  rounds.set(id, { startedAt: now, requestIds: [] });
   bound(rounds);
   return id;
 }
 
 export function recordDecision(requestId, decision) {
   issued.set(requestId, decision);
+  rounds.get(decision.roundId)?.requestIds.push(requestId);
   bound(issued);
 }
 

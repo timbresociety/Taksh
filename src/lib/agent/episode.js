@@ -1,7 +1,10 @@
 // Checks a round sent by the browser and rebuilds the only object that gets stored. The score stored
 // is the server's own replay, never the browser's number. To get stored, a round must also:
 //   - use only plans 0G really returned to this server, all from one round, each once
-//   - have run in real time: the game clock can't be ahead of the server clock at any plan
+//   - use every plan 0G returned in time to be played, so a plan that hurt can't be left out
+//   - have run no faster than real time, and be sent within 5 minutes of ending
+// There's no floor on game time: the countdown and every pause for a lost body stop the game clock
+// but not the server's. A plan held back to work out the dodges is caught by the reaction check instead.
 //   - have human dodges: a correct dodge faster than a person can react is a script
 // A bot that plays live with human timing still gets through. Nothing in a browser game stops that.
 import { replayEpisode } from "../game/session.js";
@@ -14,6 +17,8 @@ const MAX_LOG = 5000;
 const MAX_DT_MS = 50; // PlayStage never steps further than this
 const SIDES = ["left", "right", "high"];
 const CLOCK_SLACK_MS = 1500; // network and frame jitter between the server clock and the game clock
+const UPLOAD_WINDOW_MS = 5 * 60 * 1000; // a failed upload can be retried, for a while
+const IN_TIME_MS = 5000; // the browser gives up on a decision after 6 s; one served faster was played
 const HUMAN_REACTION_MS = 120; // simple visual reaction is about 200 ms; under 120 is not a person
 const FAST_DODGES_ALLOWED = 2; // a lucky early lean happens, a run of them doesn't
 
@@ -53,10 +58,23 @@ export function checkEpisode(raw, spec, now = Date.now()) {
   // Real time. Game time at each plan is the sum of the steps before it, which the browser can't
   // shrink without also changing the score. It can't be more than the server time since the round opened.
   const gameMsAt = (step) => dts.slice(0, step).reduce((sum, dt) => sum + dt, 0);
+  const endMs = gameMsAt(dts.length);
   plans.forEach(([step], index) => {
-    if (gameMsAt(step) > issued[index].issuedAt - round.startedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
+    const served = issued[index].issuedAt - round.startedAt;
+    if (gameMsAt(step) > served + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
+    if (index > 0 && served < issued[index - 1].issuedAt - round.startedAt) throw refuse("The 0G decisions are out of order.");
   });
-  if (gameMsAt(dts.length) > now - round.startedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
+  if (endMs > now - round.startedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
+  if (now - round.startedAt > endMs + UPLOAD_WINDOW_MS) throw refuse("This round is too old to store.");
+
+  // Every plan 0G served in time to be played has to be in the round. Late ones (the browser gave up)
+  // and ones that arrived as the round ended are the only ones allowed missing.
+  const sent = new Set(claimed.map((decision) => decision.requestId));
+  const missing = round.requestIds.filter((id) => {
+    const record = issuedDecision(id);
+    return record && !sent.has(id) && record.issuedAt - record.askedAt <= IN_TIME_MS && record.issuedAt - round.startedAt < endMs - CLOCK_SLACK_MS;
+  });
+  if (missing.length) throw refuse("This round leaves out a 0G decision that was played.");
 
   // Human dodges, and the server's own score.
   const template = templateInfo(spec.template);

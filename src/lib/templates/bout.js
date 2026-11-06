@@ -57,6 +57,9 @@ export default {
     if (action === "jab" || action === "cross") {
       if (state.punchWaitMs > 0) return [];
       state.punchWaitMs = PUNCH_GAP_MS;
+      // A 0G rival with no plan holds its guard, and punches don't get through. Otherwise a browser
+      // that stops asking 0G would get a rival that never hits back.
+      if (state.guarding) return [{ type: "throw", punch: action }];
       const events = [{ type: "throw", punch: action }];
       const damage = (action === "cross" ? 5 : 4) * (state.openMs > 0 ? 2 : 1);
       state.rivalHealth -= damage;
@@ -140,7 +143,7 @@ export default {
   hud: (state) => ({
     score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`,
     bars: [{ label: "You", value: Math.max(0, state.health) / 100 }, { label: "Rival", value: Math.max(0, state.rivalHealth) / state.rivalMax }],
-    extra: state.attack ? { left: "Lean right", right: "Lean left", high: "Duck" }[state.attack.side] : state.openMs > 0 ? "Double damage" : null,
+    extra: state.attack ? { left: "Lean right", right: "Lean left", high: "Duck" }[state.attack.side] : state.openMs > 0 ? "Double damage" : state.guarding ? "Guard up" : null,
   }),
 
   result: (state) => ({

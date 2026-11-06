@@ -24,10 +24,11 @@ export async function POST(request) {
     if (!observation) throw badRequest("Send the fight as JSON.");
     spend();
     const roundId = openRound(typeof raw.roundId === "string" ? raw.roundId : null);
+    const askedAt = Date.now();
     const reply = await provider.complete({ stage: "rival", system: RIVAL_SYSTEM, user: rivalMessage(observation), schema: RIVAL_SCHEMA });
     const plan = reply.data.plan.filter((side) => ["left", "right", "high"].includes(side)).slice(0, 4);
     // issuedAt is when the plan left this server. The game can't have used it any earlier than that.
-    if (reply.trace?.requestId) recordDecision(reply.trace.requestId, { roundId, issuedAt: Date.now(), plan, read: reply.data.read, observation, trace: reply.trace });
+    if (reply.trace?.requestId) recordDecision(reply.trace.requestId, { roundId, askedAt, issuedAt: Date.now(), plan, read: reply.data.read, observation, trace: reply.trace });
     return Response.json({ ...reply.data, plan, roundId, ms: reply.ms, trace: reply.trace });
   } catch (error) {
     return Response.json({ error: error.expose ? error.message : "The 0G rival did not answer." }, { status: error.status ?? 502 });

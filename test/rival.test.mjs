@@ -87,7 +87,7 @@ describe("0G rival episodes", async () => {
 
   // A round as /api/rival/decide would issue it: one round ID, decisions stamped with server time.
   // The player dodges each shot `reactMs` after it shows, using the template's own answer.
-  function playRound({ reactMs = 300, startedAt = 1_000_000, issueGapMs = 0 } = {}) {
+  function playRound({ reactMs = 300, startedAt = 1_000_000, issueGapMs = 0, serveMs = 3000, jabEvery = 6 } = {}) {
     const roundId = openRound(null, startedAt);
     const session = new GameSession(starterSpec("bout"), { rival: "0g" });
     const decisions = [];
@@ -98,7 +98,8 @@ describe("0G rival episodes", async () => {
       if (session.state.plan.length === 0 && !session.state.attack && decisions.length < 6) {
         const requestId = `req-${next++}`;
         const plan = ["left", "high", "right"];
-        recordDecision(requestId, { roundId, issuedAt: startedAt + gameMs + issueGapMs, plan, read: "r", observation: {}, trace: { requestId } });
+        const issuedAt = startedAt + gameMs + issueGapMs;
+        recordDecision(requestId, { roundId, askedAt: issuedAt - serveMs, issuedAt, plan, read: "r", observation: {}, trace: { requestId } });
         session.plan(plan);
         decisions.push({ requestId, t: gameMs });
       }
@@ -106,7 +107,7 @@ describe("0G rival episodes", async () => {
       if (attack && attack.ms >= reactMs && dodgedThis !== attack) {
         session.handleKey(answer[attack.side]);
         dodgedThis = attack;
-      } else if (session.phase === "playing" && frame % 6 === 0) session.handleKey("jab");
+      } else if (session.phase === "playing" && frame % jabEvery === 0) session.handleKey("jab");
       session.tick(16);
     }
     const gameMs = session.recording.dts.reduce((sum, dt) => sum + dt, 0);
@@ -128,6 +129,55 @@ describe("0G rival episodes", async () => {
     assert.throws(() => checkEpisode(raw, raw.spec, Date.now()), /faster than real time/);
     const live = playRound();
     assert.throws(() => checkEpisode(live.raw, live.raw.spec, live.endsAt - 30000), /faster than real time/, "uploaded before the round could have finished");
+  });
+
+  it("refuses a round sent long after it ended, but not one that paused", () => {
+    const paused = playRound({ issueGapMs: 20000 });
+    assert.doesNotThrow(() => checkEpisode(paused.raw, paused.raw.spec, paused.endsAt + 20000));
+    const live = playRound();
+    assert.throws(() => checkEpisode(live.raw, live.raw.spec, live.endsAt + 10 * 60 * 1000), /too old/);
+  });
+
+  it("refuses a round that leaves out a plan 0G served in time, but not one the browser gave up on", () => {
+    const cut = playRound({ jabEvery: 40 });
+    const dropped = cut.raw.decisions[1].requestId;
+    assert.ok(cut.raw.decisions[1].t < cut.raw.dts.reduce((sum, dt) => sum + dt, 0) - 3000, "a plan from mid-round");
+    let seen = 0;
+    cut.raw.log = cut.raw.log.filter(([, kind]) => kind !== "plan" || seen++ !== 1);
+    cut.raw.decisions = cut.raw.decisions.filter((decision) => decision.requestId !== dropped);
+    assert.throws(() => checkEpisode(cut.raw, cut.raw.spec, cut.endsAt), /leaves out a 0G decision/);
+
+    const late = playRound();
+    recordDecision("req-late", { roundId: late.roundId, askedAt: 1_000_000, issuedAt: 1_007_000, plan: ["high"], read: "r", observation: {}, trace: {} });
+    assert.doesNotThrow(() => checkEpisode(late.raw, late.raw.spec, late.endsAt), "served after the 6 s browser timeout");
+  });
+
+  it("a dodge pressed before the shot shows runs out before the shot lands", () => {
+    const session = new GameSession(starterSpec("bout"), { rival: "0g" });
+    session.spec.tuning.warningMs = 500; // the shortest warning, where it would matter most
+    session.state.warningMs = 500;
+    session.plan(["high"]);
+    let shot = null;
+    for (let i = 0; i < 2000 && !shot; i += 1) {
+      session.handleKey("duck"); // held down every frame until the shot shows, then let go
+      for (const event of session.tick(16)) if (event.type === "windup") shot = event;
+    }
+    const events = [];
+    for (let i = 0; i < 60; i += 1) events.push(...session.tick(16));
+    assert.ok(events.some((event) => event.type === "hurt"));
+    assert.equal(session.state.dodged, 0);
+  });
+
+  it("while the 0G rival guards, punches don't land", () => {
+    const session = new GameSession(starterSpec("bout"), { rival: "0g" });
+    for (let i = 0; i < 2000 && !session.state.guarding; i += 1) session.tick(16);
+    assert.equal(session.state.guarding, true);
+    for (let i = 0; i < 200; i += 1) {
+      session.handleKey("cross");
+      session.tick(16);
+    }
+    assert.equal(session.state.score, 0);
+    assert.equal(session.template.hud(session.state).extra, "Guard up");
   });
 
   it("refuses scripted dodges faster than a person can react", () => {
