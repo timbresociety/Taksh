@@ -1,4 +1,4 @@
-import { badRequest } from "../_shared";
+import { badRequest, readText } from "../_shared";
 
 // Arkiv failures come back as { available: false }, so the game keeps working and the UI says why.
 export function arkivRoute(handler) {
@@ -13,9 +13,11 @@ export function arkivRoute(handler) {
   };
 }
 
-export async function readBody(request) {
+// 512 KB covers a spec and a 200 KB cover as base64.
+export async function readBody(request, max = 512 * 1024) {
+  const text = await readText(request, max);
   try {
-    return await request.json();
+    return JSON.parse(text);
   } catch {
     throw badRequest("The request body is not JSON.");
   }

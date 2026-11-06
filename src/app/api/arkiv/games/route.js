@@ -1,6 +1,7 @@
-import { specHash, stableJson } from "@/lib/arkiv/schema";
+import { cleanName, specHash, stableJson } from "@/lib/arkiv/schema";
 import { listGames, publishGame } from "@/lib/arkiv/store";
 import { validateSpec } from "@/lib/spec/validate";
+import { gameFiles, readCover, swarmOn, swarmUrl, uploadCollection } from "@/lib/swarm/bee";
 import { templateInfo } from "@/lib/templates";
 import { arkivRoute, badRequest, readBody, throttle } from "../_route";
 
@@ -24,6 +25,12 @@ export const POST = arkivRoute(async (request) => {
   if (new TextEncoder().encode(stableJson(checked.spec)).length > MAX_SPEC_BYTES) throw badRequest("That game is too large to publish.");
   throttle(request);
   const hash = await specHash(checked.spec);
-  const published = await publishGame({ spec: checked.spec, hash, author: body.author, source: body.source });
-  return { available: true, hash, url: `/games/${published.key}`, ...published };
+  // A Swarm failure costs the game its cover, not its publish.
+  const cover = readCover(body.cover);
+  const upload = swarmOn() && cover
+    ? () => uploadCollection(gameFiles({ spec: checked.spec, cover, author: cleanName(body.author), playUrl: `${new URL(request.url).origin}/games` }))
+        .catch((error) => (console.error("Swarm upload failed:", error.message), null))
+    : null;
+  const published = await publishGame({ spec: checked.spec, hash, author: body.author, source: body.source, upload });
+  return { available: true, hash, url: `/games/${published.key}`, ...published, swarm: published.swarmRef ? swarmUrl(published.swarmRef) : null };
 });

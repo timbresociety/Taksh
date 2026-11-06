@@ -34,6 +34,9 @@ export const Games = defineSchema("taksh.games.v1", {
   source: str(),
   publishedAt: u64(),
   spec: bytes(),
+  // The game's Swarm collection: cover.webp, spec.json and index.html. Optional, so games
+  // published before Swarm still read under this schema.
+  swarmRef: str().optional(),
 });
 
 // Same JSON for the same spec, whatever order its keys were built in.
@@ -85,7 +88,7 @@ export function scoreValues({ spec, hash, result, mode, player }) {
   };
 }
 
-export function gameValues({ spec, hash, author, source, now = Date.now() }) {
+export function gameValues({ spec, hash, author, source, swarmRef, now = Date.now() }) {
   return {
     template: spec.template,
     world: spec.skin.world,
@@ -96,6 +99,7 @@ export function gameValues({ spec, hash, author, source, now = Date.now() }) {
     source: fitStr(source ?? "template", 32),
     publishedAt: u64(BigInt(Math.floor(now / 1000))), // a bare bigint would be a u256
     spec: new TextEncoder().encode(stableJson(spec)),
+    ...(swarmRef && { swarmRef }),
   };
 }
 

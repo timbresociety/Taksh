@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listGames } from "@/lib/arkiv/store";
 import { TEMPLATES, templateInfo } from "@/lib/templates";
+import { SWARM_REF, swarmUrl } from "@/lib/swarm/bee";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Shared games" };
@@ -36,7 +37,8 @@ export default async function Page({ searchParams }) {
             {listing.games.map((game) => (
               <li key={game.key}>
                 <Link className="game-card" href={`/games/${game.key}`} data-template={game.template}>
-                  <img src={`/previews/game-${game.template}.webp`} alt="" width="640" height="360" loading="lazy" />
+                  {/* A cover captured when the game was published, read from Swarm. Older games show the template's. */}
+                  <img src={SWARM_REF.test(game.swarmRef ?? "") ? swarmUrl(game.swarmRef, "cover.webp") : `/previews/game-${game.template}.webp`} alt="" width="640" height="360" loading="lazy" />
                   <span className="game-card__name">{game.title}</span>
                   <span className="game-card__pitch">by {game.author}</span>
                   <span className="game-card__facts">

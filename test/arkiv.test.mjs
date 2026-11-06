@@ -65,6 +65,14 @@ describe("arkiv encoding", () => {
     await assert.rejects(writer.createEntity(Games, { ...values, publishedAt: 1n }, { expiration: ExpirationTime.fromDays(1) }), SchemaMismatchError);
   });
 
+  it("takes a Swarm reference on a game, and still writes one without", async () => {
+    const swarmRef = "c".repeat(64);
+    const values = gameValues({ spec, hash: "b".repeat(64), author: "Ravi", source: "claude", swarmRef });
+    assert.equal(values.swarmRef, swarmRef);
+    await reachesTransport(Games, values);
+    assert.equal("swarmRef" in gameValues({ spec, hash: "b".repeat(64), author: "Ravi", source: "claude", swarmRef: null }), false);
+  });
+
   it("flattens typed rows for JSON", () => {
     assert.deepEqual(plainRow({ $key: "0x1", score: { type: "i32", value: 5 }, publishedAt: { type: "u64", value: 9n } }), { key: "0x1", score: 5, publishedAt: 9 });
   });

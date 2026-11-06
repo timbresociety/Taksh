@@ -134,7 +134,7 @@ export default function Studio({ initialGame = null }) {
       {stage === "idea" && (
         <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} voice={status?.source === "0g"} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
       )}
-      {stage === "brief" && <BriefStage game={game} onChangeSkin={changeSkin} onPlay={startPlay} onBack={restart} />}
+      {stage === "brief" && <BriefStage game={game} onChangeSkin={changeSkin} onPlay={startPlay} onBack={restart} onCover={(cover) => setGame((current) => ({ ...current, cover }))} />}
       {stage === "calibrate" && (
         <CalibrateStage
           feed={feed}

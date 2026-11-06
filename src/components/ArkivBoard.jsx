@@ -14,7 +14,7 @@ async function call(path, body) {
 }
 
 // The board is read live from Arkiv every time it opens, and again after a post.
-export default function ArkivBoard({ spec, result, mode, source }) {
+export default function ArkivBoard({ spec, result, mode, source, cover }) {
   const [hash, setHash] = useState(null);
   const [scope, setScope] = useState("template");
   const [cameraOnly, setCameraOnly] = useState(false);
@@ -67,7 +67,7 @@ export default function ArkivBoard({ spec, result, mode, source }) {
       setPosted(await call("/api/arkiv/scores", { spec, result, mode, player: name }));
     });
 
-  const publish = () => run("Publishing", async () => setPublished(await call("/api/arkiv/games", { spec, author: name, source })));
+  const publish = () => run("Publishing", async () => setPublished(await call("/api/arkiv/games", { spec, author: name, source, cover })));
 
   const templateName = templateInfo(spec.template)?.name ?? spec.template;
 
@@ -138,6 +138,7 @@ export default function ArkivBoard({ spec, result, mode, source }) {
           <p data-testid="published">
             {published.existing ? "Already shared at " : "Shared at "}
             <a href={published.url}>{published.url.slice(0, 18)}…</a>
+            {published.swarm && <>. Cover and spec on <a href={published.swarm} target="_blank" rel="noreferrer">Swarm</a></>}
           </p>
         ) : (
           <button type="button" className="text-button" disabled={Boolean(busy) || board?.available === false} onClick={publish}>

@@ -49,7 +49,7 @@ export function scoreQuery(reader, owner, scope) {
 
 export function gamesQuery(reader, owner, { template, limit = 30 } = {}) {
   let query = reader
-    .select({ $key: true, title: true, template: true, world: true, style: true, author: true, source: true, specHash: true, publishedAt: true })
+    .select({ $key: true, title: true, template: true, world: true, style: true, author: true, source: true, specHash: true, publishedAt: true, swarmRef: true })
     .from(Games)
     .ownedBy(owner);
   if (template) query = query.where(eq("template", template));
@@ -102,13 +102,15 @@ export async function listGames(options) {
 }
 
 // The same spec published twice points at the first entity instead of paying for a second.
-export async function publishGame(input) {
+// upload, if given, runs only for a new game and returns its Swarm reference, or null.
+export async function publishGame({ upload, ...input }) {
   requireWriter();
   const { reader, owner } = connect();
   const { entities } = await reader.select({ $key: true }).from(Games).ownedBy(owner).where(eq("specHash", input.hash)).limit(1).fetch();
   if (entities[0]) return { key: entities[0].$key, existing: true };
-  const { entityKey, txHash } = await create(Games, gameValues(input), GAME_LIFETIME());
-  return { key: entityKey, txHash, existing: false };
+  const swarmRef = (await upload?.()) ?? null;
+  const { entityKey, txHash } = await create(Games, gameValues({ ...input, swarmRef }), GAME_LIFETIME());
+  return { key: entityKey, txHash, existing: false, swarmRef };
 }
 
 // Returns null for a key that isn't a live game from our writer.
@@ -118,7 +120,7 @@ export async function readGame(key) {
   try {
     const entity = await reader.getEntity(key, Games);
     if (entity.$owner.toLowerCase() !== owner.toLowerCase()) return null;
-    return { key, title: entity.title.value, author: entity.author.value, specHash: entity.specHash.value, spec: readSpecBytes(entity.spec.value) };
+    return { key, title: entity.title.value, author: entity.author.value, specHash: entity.specHash.value, swarmRef: entity.swarmRef?.value ?? null, spec: readSpecBytes(entity.spec.value) };
   } catch (error) {
     if (error instanceof NoEntityFoundError || error instanceof SchemaMismatchError) return null;
     throw error;

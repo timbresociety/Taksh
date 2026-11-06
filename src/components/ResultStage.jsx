@@ -102,7 +102,7 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
         </details>
       </section>
 
-      <ArkivBoard spec={spec} result={result} mode={mode} source={game.source} />
+      <ArkivBoard spec={spec} result={result} mode={mode} source={game.source} cover={game.cover} />
     </main>
   );
 }
