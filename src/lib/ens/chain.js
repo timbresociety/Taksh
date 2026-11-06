@@ -1,7 +1,7 @@
 // ENSv2 on chain: publish a game as a subname, and read a game back from a name. Server only,
 // because publishing signs with the registrar key.
 import {
-  createPublicClient, createWalletClient, encodeFunctionData, http, isAddress, labelhash, parseAbi, parseEventLogs,
+  createPublicClient, createWalletClient, encodeFunctionData, http, isAddress, keccak256, labelhash, parseAbi, parseEventLogs,
   toHex, zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -33,7 +33,12 @@ export const ROLES = {
   canTransferAdmin: admin(1n << 28n),
   // Every resolver role and its admin, as in the Verifiable Factory examples.
   allResolver: 0x1111111111111111111111111111111111111111111111111111111111111111n,
+  setText: 1n << 4n,
 };
+
+// A resolver role scoped to one text key is held on the resource keccak256(key). It's granted with
+// grantSetterRoles, not grantRoles, which refuses argument-scoped resources.
+export const textResource = (key) => BigInt(keccak256(toHex(key)));
 
 // What a game's creator holds on their subname token: the same set the .eth registrar gives a
 // registrant. They can point the name at another resolver, add sub-subnames and transfer it.
@@ -66,6 +71,8 @@ export const ABI = {
     "function initialize((address account, uint256 roleBitmap)[] grants, bytes[] calls)",
     "function setText(bytes name, string key, string value)",
     "function hasRootRoles(uint256 roleBitmap, address account) view returns (bool)",
+    "function hasRoles(uint256 resource, uint256 roleBitmap, address account) view returns (bool)",
+    "function grantSetterRoles(bytes setter, address account) returns (bool)",
   ]),
   userRegistry: parseAbi(["function initialize((address account, uint256 roleBitmap)[] grants)"]),
   mockUsdc: parseAbi(["function mint(address to, uint256 amount)", "function approve(address spender, uint256 amount) returns (bool)"]),
@@ -166,6 +173,26 @@ export async function readGame(config, rawName) {
   const keys = Object.values(KEYS);
   const [resolver, ...values] = await Promise.all([client.getEnsResolver({ name }), ...keys.map((key) => client.getEnsText({ name, key }))]);
   return { name, resolver, texts: Object.fromEntries(keys.map((key, i) => [key, values[i]])) };
+}
+
+// The 0G rival's own name, rival.<parent>. Its owner holds every resolver role. The server's
+// registrar wallet holds ROLE_SET_TEXT on one key, LAST_EPISODE, and nothing else on it.
+export const RIVAL_LABEL = "rival";
+export const LAST_EPISODE = "taksh.rival.last-episode";
+export const rivalName = (config) => `${RIVAL_LABEL}.${config.parent}`;
+
+// After a round is on 0G Storage: point the rival's name at it. One setText, about 60k gas.
+export async function writeRivalEpisode(config, rootHash) {
+  if (config.reason || !config.registrarKey) return null;
+  const client = publicClient(config);
+  const name = rivalName(config);
+  const resolver = await client.getEnsResolver({ name });
+  const hash = await walletClient(config, config.registrarKey).writeContract({
+    address: resolver, abi: ABI.resolver, functionName: "setText", args: [dnsEncode(name), LAST_EPISODE, rootHash],
+  });
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error(`Setting ${LAST_EPISODE} on ${name} failed in ${hash}.`);
+  return hash;
 }
 
 function unavailable(message) {

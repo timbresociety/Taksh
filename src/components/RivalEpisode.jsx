@@ -34,6 +34,11 @@ export default function RivalEpisode({ episode }) {
           <a href={`${EXPLORER}/tx/${stored.txHash}`} target="_blank" rel="noreferrer">See the transaction</a>
         </p>
       )}
+      {stored?.rival && (
+        <p>
+          The rival&apos;s ENS name is <code>{stored.rival}</code>. Its <code>taksh.rival.last-episode</code> record now points at this round.
+        </p>
+      )}
       {stored?.error && <p className="rival-episode__error">{stored.error}{stored.rootHash && <> Root <code>{stored.rootHash.slice(0, 12)}…</code></>}</p>}
     </div>
   );

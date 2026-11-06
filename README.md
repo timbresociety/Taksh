@@ -174,7 +174,7 @@ The creator enters an owner address when publishing. Left blank, the game goes t
 
 Roles, all from ENSv2 Enhanced Access Control:
 
-- The registrar wallet holds `ROLE_REGISTRAR` on the game registry and nothing else. It can issue a new name. It can't change, remove or take back a published game.
+- The registrar wallet holds `ROLE_REGISTRAR` on the game registry and one text key on the rival's name, below. It can issue a new name. It can't change, remove or take back a published game.
 - The parent owner holds only registrar and renew roles and their admins on the game registry, so the registry reports `isEmancipated() == true`. Nobody can unregister a game or swap its resolver except its owner.
 - The parent name's own resolver has an ENSIP-26 `agent-context` record that describes the game generator and the record layout above.
 
@@ -199,6 +199,34 @@ Tested on an anvil fork of Sepolia first: setup, two publishes, `/play/<name>` l
 | Game registry | `0xcA36D4cAbC9A10d3fbeFDBc2D4CA7Fa5ce4ecD43`, `isEmancipated() == true` |
 | First game | `mumbai-monsoon-bout.taksh-games.eth`, registered in [`0x1b70d81a…2b8e`](https://sepolia.etherscan.io/tx/0x1b70d81acfa561a7ffb04de9843e09f25277238e0b8874df7f4260f3fa9e2b8e), resolver `0x8c560120F72ceD142cdf19f67C3Fde5C28Bf0100` |
 | Play | `/play/mumbai-monsoon-bout.taksh-games.eth` loads the game from its text records |
+
+### The rival's own name
+
+The 0G rival in Counter Bout has its own name, `rival.taksh-games.eth`, so the agent has an identity anyone can look up. Its Permissioned Resolver holds:
+
+| Key | Holds |
+| --- | --- |
+| `agent-context` | ENSIP-26. What the rival is, how it decides on 0G, and where its rounds go |
+| `agent-endpoint[web]`, `url` | Where to play it |
+| `taksh.rival.model`, `taksh.rival.trust`, `taksh.rival.provider` | `glm-5.3`, `private`, and the 0G TEE provider's address |
+| `taksh.rival.last-episode` | The 0G Storage root hash of the latest stored round |
+
+The owner key holds every role on that resolver. The server's registrar wallet holds `ROLE_SET_TEXT` on one resource, `keccak256("taksh.rival.last-episode")`, granted with `grantSetterRoles`. After each stored round, the episode route writes the new root hash there. A `setText` from the same wallet on `agent-context` or any other key reverts with `EACUnauthorizedAccountRoles`. The resolver serves only this name, so the grant reaches no other name.
+
+Set it up after `ens:setup`, and run it again with `TAKSH_URL=<live url>` to point `agent-endpoint[web]` at the deploy:
+
+```bash
+npm run ens:rival
+```
+
+Live on Sepolia (2026-11-06), tested on an anvil fork first:
+
+| | |
+| --- | --- |
+| Name | `rival.taksh-games.eth`, registered in [`0x50f56a05…175946`](https://sepolia.etherscan.io/tx/0x50f56a05616630fe272d2af00ae0a4787f9e2cc89b862d7c46289f8a36175946) |
+| Resolver | `0xCaea9600A51CE2796816A04262A8ACBc8ECA059B` |
+| One-key grant | [`0x7f1ff9e9…1edaa6`](https://sepolia.etherscan.io/tx/0x7f1ff9e928e3825f205e76dd73b2db8288696b438f7d804f8f314d6c7d1edaa6). `hasRoles` reads true for `last-episode`, false for `agent-context` |
+| First pointer | [`0xf9413c69…f370a0`](https://sepolia.etherscan.io/tx/0xf9413c69e8527c64bd1283ca9b6c2c0d5afc0a77e9ca2117a99e65e91ef370a0), set to round `0x9ef7bb08…60b32c`, which `npm run replay-episode` plays back to the same score |
 
 ## How it fits together
 

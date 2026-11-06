@@ -60,6 +60,10 @@ The player's moves come from a browser, so the server takes nothing on trust bef
 
 A bot that plays live at human speed still gets through. Closing that needs inputs signed on the server as they happen.
 
+## Its identity on ENS
+
+The rival has its own ENSv2 name on Sepolia, `rival.taksh-games.eth`. Its ENSIP-26 `agent-context` record says what it is and how it decides, and `taksh.rival.provider` names the 0G TEE provider. After each stored round the server writes the root hash to `taksh.rival.last-episode`. That's the only record the server's wallet can write on the name, a one-key grant from ENSv2 Enhanced Access Control. So anyone can go from the name to the latest round and replay it. The README's ENS section has the transactions.
+
 ## What breaks without 0G
 
 The rival can't move. With no 0G, Counter Bout's rival has no plans, so it guards for the whole round. Nothing in the code picks a shot for it. Game generation goes too: without 0G an idea can't become a game, and you're left with the 13 starter games.
