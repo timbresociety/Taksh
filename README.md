@@ -102,6 +102,36 @@ Also confirmed on the production build:
 - `src/lib/pipeline`: clarify, generate and revise, with validation and one repair attempt. Credentials stay on the server.
 - `src/lib/stage`: the three.js renderer. `worlds.js` and `styles.js` are data plus one post-processing pass, `views/` draws each template, and `character.js` builds a rigged human whose 65-bone skeleton plays every clip in the animation library.
 
+## Arkiv
+
+Scores and shared games are stored on Arkiv's Rabdi testnet (chain ID 7794095). When a round ends, the result screen reads the leaderboard live from Arkiv. You can narrow it to the same world and style, to this exact game (by spec hash), or to camera play only. Post your score and it becomes an entity, and the board reads again with your row in bold and your rank. "Publish this game" stores the whole spec as an entity. `/games` lists published games straight from Arkiv, and `/games/<entity key>` opens one to play.
+
+Writes go through `/api/arkiv/scores` and `/api/arkiv/games`, signed on the server with `ARKIV_PRIVATE_KEY`. The key never reaches the browser. Reads keep only entities that wallet owns, because anyone can write entities with our schema tag. With no key the board still reads, and with the RPC down the game still plays and the board says it is unavailable. Details are in `arkiv/`, starting with `arkiv/schema.md`.
+
+Writer wallet: `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30` (testnet dev wallet, fund it at https://hub.arkiv.network/faucet).
+
+A query to run against testnet, the top ten scores across every game:
+
+```bash
+curl -s https://rpc.rabdi.db-chain.testnet.arkiv.network -H "content-type: application/json" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"arkiv_query\",\"params\":[\"arkiv.schema = str('taksh.scores.v1') AND \$owner = addr(0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30) ORDER BY score:i32 DESC\",{\"select\":{\"key\":true,\"attributes\":true,\"count\":true},\"limit\":\"0xa\"}]}"
+```
+
+The same board through the app: `curl 'http://localhost:3000/api/arkiv/scores?template=poses'`. The response includes the exact query text sent to the node.
+
+Live on Rabdi testnet (2026-11-06), written by `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30`:
+
+| What | Entity key | Tx |
+| --- | --- | --- |
+| Score, Sky Hop, 4210 | `0xa101e1a7b4a827df18d1fff911bc75d240c836080b490decd7ab78a9b87282a8` | [`0xccc8fc34…1b507`](https://rabdi.explorer.arkiv.network/tx/0xccc8fc34c2d2b937d1fdaf5e10f61c8ffe59f2922b12db4eba0bd4fd5251b507) |
+| Published game, Chop Shop | `0xf596b5687d9e58f37928e08ed49096cec6f1594559720ec591b842b31c66485a` | [`0x2d4baa27…de8c4`](https://rabdi.explorer.arkiv.network/tx/0x2d4baa2784ec63feb0e374cc9f5fef560dc294a8d53d22e40348c9f6aa1de8c4) |
+
+Both were read back through `GET /api/arkiv/scores?template=hop` and `GET /api/arkiv/games`.
+
+## Licence and AI use
+
+MIT, see `LICENSE`. The code and docs were written with Claude Code, with a person choosing the design and reviewing the result. The Arkiv integration was written by a Claude agent working from Arkiv's docs, and `arkiv/friction.md` is its log. In the app, Claude turns a typed idea into a game spec.
+
 ## Known limits
 
 - A punch at the camera is read from MediaPipe's depth estimate and has not been tried on a real person.
@@ -110,4 +140,5 @@ Also confirmed on the production build:
 - GPT and Google Flow image generation are not wired in. Art comes from the CC0 kits, and only 11 of the 82 CC0 Quaternius packs are in. See `assets/README.md`.
 - The game rendering moved from Canvas 2D to three.js, because a human rig needs WebGL. The first load of a game fetches 12 to 15 MB of models.
 - Pose inference runs on the main thread.
-- The API routes have no rate limit, so add one before any public deployment.
+- The API routes have no rate limit, so add one before any public deployment. The Arkiv write routes allow one post every 4 seconds per client, held in memory on one server.
+- Scores are what the browser reports. The server checks the spec is a real game, but it can't replay the round.

@@ -97,6 +97,6 @@ export class GameSession {
   }
 
   result() {
-    return { ...this.template.result(this.state), actions: this.actionCount };
+    return { ...this.template.result(this.state), actions: this.actionCount, ms: this.state.t };
   }
 }

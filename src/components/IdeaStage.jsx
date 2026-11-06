@@ -65,6 +65,7 @@ export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmi
 
           <section className="shelf" aria-labelledby="shelf-title">
             <h2 id="shelf-title">Or start from a game</h2>
+            <a className="text-button" href="/games">Or play one someone shared</a>
             <ul data-testid="shelf">
               {TEMPLATES.map((template) => (
                 <li key={template.id}>

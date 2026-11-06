@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import ArkivBoard from "./ArkivBoard";
 
 const SUGGESTIONS = ["Give me more time", "Make it harder", "Switch it to neon"];
 
@@ -96,6 +97,8 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
           <pre>{JSON.stringify(spec, null, 2)}</pre>
         </details>
       </section>
+
+      <ArkivBoard spec={spec} result={result} mode={mode} source={game.source} />
     </main>
   );
 }

@@ -18,14 +18,15 @@ async function post(path, body) {
   return data;
 }
 
-export default function Studio() {
-  const [stage, setStage] = useState("idea");
+// initialGame opens straight on the brief, as a shared game from Arkiv does.
+export default function Studio({ initialGame = null }) {
+  const [stage, setStage] = useState(initialGame ? "brief" : "idea");
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [draft, setDraft] = useState({ idea: "", clarification: "" });
   const [intent, setIntent] = useState(null);
-  const [game, setGame] = useState(null);
+  const [game, setGame] = useState(initialGame);
   const [mode, setMode] = useState("keyboard");
   const [calibration, setCalibration] = useState(null);
   const [practised, setPractised] = useState({});
