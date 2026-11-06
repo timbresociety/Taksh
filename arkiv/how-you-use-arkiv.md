@@ -21,6 +21,14 @@ Live on Rabdi at 22:24 UTC on 2026-11-06, from `npm run arkiv:probe`: 4 scores, 
 | `toString()` on a query | board, daily board | "Query sent to Arkiv" shows the exact query text. |
 | The transaction hash | `create` | "See the transaction" links to the Rabdi explorer after a post. |
 
+The board on a result screen, read live at block 309432. Each row's "Expires in" comes from `$expiresAt`:
+
+![The leaderboard with chips, an Expires in column, and the 30-day note](img/board.webp)
+
+The gallery filtered to the Downtown world, one `eq("world", "downtown")`, each card with its days left:
+
+![The shared games gallery with game and world filter rows](img/gallery.webp)
+
 ## The filters, and whether they fit
 
 An index costs gas on every write, so a column is indexed only if a control filters on it. We dropped the two indexes nothing used, `style` on games and `requestId` on rival decisions. The same 569-byte game cost 529,291 gas to publish with the `style` index and 513,942 without it.
