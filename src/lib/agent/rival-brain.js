@@ -15,7 +15,7 @@ export function startRivalBrain(session, { onChange = () => {}, fetch = globalTh
 
   async function decide() {
     busy = true;
-    const observation = { ...session.template.observe(session.state), roundId };
+    const observation = { ...session.template.observe(session.state), roundId, template: session.spec.template };
     const askedAt = session.state.t;
     try {
       const response = await fetch("/api/rival/decide", {
@@ -48,10 +48,10 @@ export function startRivalBrain(session, { onChange = () => {}, fetch = globalTh
     get roundId() {
       return roundId;
     },
-    // Called every frame. Asks again while one planned shot is still left, so the next plan lands in time.
+    // Called every frame. The template says when its plan is running low.
     tick() {
       if (stopped || busy || session.phase === "ended" || Date.now() < waitUntil) return;
-      if (session.state.plan.length <= 1 && !session.state.attack) decide();
+      if (session.template.needsPlan(session.state)) decide();
     },
     stop() {
       stopped = true;

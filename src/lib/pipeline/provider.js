@@ -5,9 +5,17 @@ import { createFixtureProvider } from "./provider-fixture.js";
 import { check0g, createOgProvider } from "./provider-0g.js";
 
 let cached = null;
+let cachedAt = 0;
+const RETRY_FALLBACK_MS = 60000;
 
+// A fallback is checked again after a minute, so one slow 0G /models answer doesn't leave the
+// whole process on fixtures.
 export async function getProvider() {
-  cached ??= resolveProvider();
+  if (cached && Date.now() - cachedAt > RETRY_FALLBACK_MS && (await cached).reason) cached = null;
+  if (!cached) {
+    cached = resolveProvider();
+    cachedAt = Date.now();
+  }
   return cached;
 }
 
