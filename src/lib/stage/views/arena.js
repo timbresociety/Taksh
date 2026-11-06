@@ -276,51 +276,265 @@ export const pads = {
   },
 };
 
+// Counter Bout. The rival's shots are posed by hand, not played from clips, so each one comes from the
+// hand on its side and lands exactly when the game says it does. A shot at the player's left comes from
+// the rival's right hand, which is on the left of the screen, and is dodged by stepping right.
+const HERO_X = -0.3;
+const RIVAL_Z = -0.75;
+const STEP_X = 0.75;
+const CHAMBER = 0.72; // the share of the warning spent winding up; the rest is the swing
+const SAFE = { left: 1, right: -1 };
+const HAND = { left: "r", right: "l" };
+const OPEN_GOLD = "#ffae00";
+const DANGER_RED = "#ff2a3d";
+const ease = (value) => value * value * (3 - 2 * value);
+
+// A sign with an arrow, for the call to dodge and the call to hit back. Drawn once, outlined so it
+// reads over any world.
+function signCard(text, colour, arrow = null, size = 1) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  const pen = canvas.getContext("2d");
+  pen.translate(256, 0);
+  pen.fillStyle = colour;
+  pen.strokeStyle = "rgba(0, 0, 0, 0.8)";
+  pen.lineWidth = 12;
+  pen.lineJoin = "round";
+  if (arrow) {
+    pen.save();
+    pen.translate(0, 84);
+    pen.rotate({ left: Math.PI, right: 0, down: Math.PI / 2 }[arrow]);
+    pen.beginPath();
+    for (const [x, y] of [[-74, -24], [8, -24], [8, -62], [82, 0], [8, 62], [8, 24], [-74, 24]]) pen.lineTo(x, y);
+    pen.closePath();
+    pen.stroke();
+    pen.fill();
+    pen.restore();
+  }
+  // Long words shrink to fit the card rather than run off its edges.
+  pen.font = "900 66px system-ui, sans-serif";
+  const fits = Math.min(66, Math.floor((66 * 470) / pen.measureText(text).width));
+  pen.font = `900 ${fits}px system-ui, sans-serif`;
+  pen.textAlign = "center";
+  pen.textBaseline = "middle";
+  const y = arrow ? 206 : 128;
+  pen.strokeText(text, 0, y);
+  pen.fillText(text, 0, y);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, fog: false }));
+  sprite.userData.keepMaterial = true;
+  sprite.renderOrder = 10;
+  sprite.scale.set(size, size / 2, 1);
+  sprite.visible = false;
+  return sprite;
+}
+
+const overlay = (geometry, colour) => {
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+  mesh.userData.keepMaterial = true;
+  mesh.renderOrder = 6;
+  return mesh;
+};
+
+// The rival's arm posed from its shoulder: o is the side the arm is on, +1 to the right of the screen.
+function poseArm(character, side, upper, lower, weight) {
+  if (weight <= 0.001) return;
+  aimBone(character.bones.get(`upperarm_${side}`), upper, weight);
+  aimBone(character.bones.get(`lowerarm_${side}`), lower, weight);
+}
+
+// One shot, from its wind-up to its swing. wind and swing each run from 0 to 1.
+function poseShot(rival, side, wind, swing, weight) {
+  if (side === "high") {
+    // Both fists go up over the head and hammer down at the player's: the one shot to duck.
+    for (const [hand, o] of [["r", -1], ["l", 1]]) {
+      poseArm(rival, hand, new THREE.Vector3(o * 0.25, 0.95, -0.15), new THREE.Vector3(-o * 0.15, 0.9, 0.3), wind * weight);
+      poseArm(rival, hand, new THREE.Vector3(o * 0.12, 0.2, 1), new THREE.Vector3(-o * 0.12, -0.2, 1), swing * weight);
+    }
+    return;
+  }
+  // A hook: the elbow swings out to the side and back, then the fist sweeps across at head height.
+  const o = SAFE[side] * -1;
+  poseArm(rival, HAND[side], new THREE.Vector3(o * 0.9, 0.05, -0.35), new THREE.Vector3(o * 0.15, 0.25, 0.95), wind * weight);
+  poseArm(rival, HAND[side], new THREE.Vector3(-o * 0.3, 0.05, 1), new THREE.Vector3(-o * 0.85, 0.05, 0.5), swing * weight);
+}
+
 export const bout = {
   usesRival: true,
   mirrorsArms: true,
   async build({ scene, camera, world, hero, rival, fx, focusShadow, accent }) {
     scene.add(ringPlatform(world), world.ring({ inner: 10 }));
     gloves(hero, "#ff3b4e", world);
-    gloves(rival, "#2f6bff", world);
+    const rivalGloves = gloves(rival, "#2f6bff", world);
+    const glowOf = Object.fromEntries(Object.entries(rivalGloves).map(([hand, glove]) => [hand, { glove, emissive: glove.material.emissive?.clone(), intensity: glove.material.emissiveIntensity ?? 0 }]));
     hero.root.rotation.y = Math.PI;
-    hero.root.position.z = 1;
-    rival.root.position.z = -0.75;
+    hero.root.position.set(HERO_X, 0, 1);
+    rival.root.position.z = RIVAL_Z;
     hero.play("Idle_Loop");
     rival.play("Idle_Loop");
 
-    const warn = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.66, 40), new THREE.MeshBasicMaterial({ color: "#ff3b4e", transparent: true, opacity: 0, side: THREE.DoubleSide, depthTest: false }));
-    warn.userData.keepMaterial = true;
-    warn.renderOrder = 5;
-    scene.add(warn);
+    // Where the shot lands: a red patch over the side of the head it is aimed at, and a ring that
+    // closes on it as the shot comes in. The sign on the other side says which way to go.
+    const danger = overlay(new THREE.PlaneGeometry(1, 1), DANGER_RED);
+    const closing = overlay(new THREE.RingGeometry(0.5, 0.62, 40), DANGER_RED);
+    const signs = {
+      slip_left: signCard("STEP LEFT", "#ffffff", "left", 1.15),
+      slip_right: signCard("STEP RIGHT", "#ffffff", "right", 1.15),
+      duck: signCard("DUCK", "#ffffff", "down", 1.15),
+    };
+    // After a dodge the rival is off balance: a gold ring round its feet drains as the chance runs out.
+    const openSign = signCard("HIT NOW  x2", OPEN_GOLD, null, 1.7);
+    const openRing = overlay(new THREE.RingGeometry(0.62, 0.8, 48), OPEN_GOLD);
+    openRing.rotation.x = -Math.PI / 2;
+    openRing.material.depthTest = true;
+    scene.add(danger, closing, openSign, openRing, ...Object.values(signs));
+
+    // The punch that landed and what it took, rising off the rival.
+    const cards = new Map();
+    const floating = [];
+    const cardFor = (text, colour) => {
+      const key = `${text}|${colour}`;
+      if (!cards.has(key)) {
+        const card = signCard(text, colour, null, 0.95);
+        scene.add(card);
+        cards.set(key, card);
+      }
+      return cards.get(key);
+    };
+
+    const head = hero.bones.get("Head");
+    const headAt = new THREE.Vector3();
+    let aimedAt = null;
     let x = 0;
-    let lean = 0;
+    let rivalX = 0;
     let swingMs = 0;
-    let rivalBusyMs = 0;
+    let uppercutMs = 0;
+    let flinch = 0;
+    let flinchSide = 0;
+    let riseMs = 0;
+    let stance = 1;
+    let follow = { side: null, amount: 0, dodged: false };
 
     return {
-      update(state, dt) {
-        swingMs = Math.max(0, swingMs - dt * 1000);
-        rivalBusyMs = Math.max(0, rivalBusyMs - dt * 1000);
+      update(state, dt, elapsed) {
+        const ms = dt * 1000;
+        swingMs = Math.max(0, swingMs - ms);
+        riseMs = Math.max(0, riseMs - ms);
+        flinch = damp(flinch, 0, 7, dt);
+        follow.amount = damp(follow.amount, 0, follow.dodged ? 3 : 6, dt);
+
+        // The hero steps the whole body, not a lean, the way the player does.
         const slip = state.defence === "slip_left" ? -1 : state.defence === "slip_right" ? 1 : 0;
-        x = damp(x, slip * 0.6, 16, dt);
-        lean = damp(lean, slip * 0.28, 16, dt);
-        hero.root.position.x = x - 0.3;
-        hero.root.rotation.z = -lean;
+        x = damp(x, slip * STEP_X, 14, dt);
+        hero.root.position.x = HERO_X + x;
         const ducking = state.defence === "duck";
         if (swingMs <= 0 && state.status === "playing") hero.loop(ducking ? "Crouch_Idle_Loop" : "Idle_Loop", { fade: 0.08 });
         if (swingMs <= 0 && !ducking) fightingStance(hero, -1, 0.85);
-        if (rivalBusyMs <= 0 && state.downMs <= 0 && !state.attack) fightingStance(rival, 1, 0.85);
+        // The library has no uppercut, so it is posed over the idle clip.
+        uppercutMs = Math.max(0, uppercutMs - ms);
+        if (uppercutMs > 0) applyPose(hero, MOVE_POSES.uppercut_right(0.12 + 0.7 * (1 - uppercutMs / UPPERCUT_MS)), { flip: true });
 
+        // The rival's own pose, eased in and out around a knockdown so nothing snaps.
+        const down = state.downMs > 0 || riseMs > 0 || (state.status === "ended" && state.knockdowns >= 3);
+        stance = damp(stance, down ? 0 : 1, 8, dt);
         const attack = state.attack;
-        warn.material.opacity = attack ? 0.9 : 0;
+        const open = state.openMs > 0 && !attack;
+        const wind = attack ? ease(Math.min(1, attack.ms / (attack.windupMs * CHAMBER))) : 0;
+        const swing = attack ? ease(Math.max(0, (attack.ms / attack.windupMs - CHAMBER) / (1 - CHAMBER))) : 0;
+        if (open) {
+          // Guard dropped, leaning in and swaying: the opening to punch into.
+          for (const [hand, o] of [["r", -1], ["l", 1]]) poseArm(rival, hand, new THREE.Vector3(o * 0.3, -1, 0.15), new THREE.Vector3(o * 0.1, -1, 0.35), 0.85 * stance);
+        } else {
+          fightingStance(rival, 1, (state.guarding ? 1 : 0.85) * stance);
+        }
+        if (attack) poseShot(rival, attack.side, wind, swing, stance);
+        else if (follow.side) poseShot(rival, follow.side, follow.amount, follow.amount, stance);
+
+        const shotSide = attack?.side ?? (follow.amount > 0.05 ? follow.side : null);
+        const twist = shotSide && shotSide !== "high" ? -SAFE[shotSide] : 0;
+        const winding = attack ? wind : 0;
+        const swung = attack ? swing : follow.amount;
+        rival.root.rotation.y = twist * (0.4 * winding - 0.75 * swung) + flinchSide * flinch * 0.35;
+        rival.root.rotation.x = (shotSide === "high" ? -0.15 * winding + 0.25 * swung : 0.08 * swung) - 0.2 * flinch + (open ? 0.12 : 0);
+        rival.root.rotation.z = open ? Math.sin(elapsed * 8) * 0.07 : 0;
+        rivalX = damp(rivalX, x * 0.35, 3, dt);
+        rival.root.position.x = rivalX;
+        rival.root.position.z = RIVAL_Z + 0.3 * swung - 0.18 * flinch;
+
+        // The glove that is about to hit glows hotter as the shot comes, and both glow gold while open.
+        for (const [hand, { glove, emissive, intensity }] of Object.entries(glowOf)) {
+          if (!glove.material.emissive) continue;
+          const lit = attack && (attack.side === "high" || HAND[attack.side] === hand);
+          if (lit) {
+            glove.material.emissive.set(DANGER_RED);
+            glove.material.emissiveIntensity = 0.6 + 1.6 * wind * (0.75 + 0.25 * Math.sin(elapsed * 30));
+          } else if (open) {
+            glove.material.emissive.set(OPEN_GOLD);
+            glove.material.emissiveIntensity = 0.8 + 0.4 * Math.sin(elapsed * 14);
+          } else {
+            glove.material.emissive.copy(emissive);
+            glove.material.emissiveIntensity = intensity;
+          }
+        }
+
+        for (const sign of Object.values(signs)) sign.visible = false;
+        danger.material.opacity = 0;
+        closing.material.opacity = 0;
         if (attack) {
           const progress = attack.ms / attack.windupMs;
-          const spot = { left: [-0.6, 1.45], right: [0.6, 1.45], high: [0, 1.85] }[attack.side];
-          warn.position.set(spot[0] - 0.1, spot[1], 0);
-          warn.scale.setScalar(2.1 - progress * 1.4);
-          warn.lookAt(camera.position);
+          // Where the head was as the shot started, so stepping or ducking out of the patch reads.
+          if (aimedAt !== attack) {
+            aimedAt = attack;
+            if (head) head.getWorldPosition(headAt);
+            else headAt.set(hero.root.position.x, 1.6, 1);
+            headAt.x += HERO_X - hero.root.position.x;
+          }
+          const high = attack.side === "high";
+          const offset = high ? 0 : -SAFE[attack.side] * 0.24;
+          const pulse = 0.75 + 0.25 * Math.sin(elapsed * 22);
+          const baseX = headAt.x;
+          danger.position.set(baseX + offset, headAt.y + (high ? 0.08 : -0.05), headAt.z);
+          danger.scale.set(high ? 1.15 : 0.5, high ? 0.3 : 0.8, 1);
+          danger.material.opacity = (0.18 + 0.32 * progress) * pulse;
+          danger.lookAt(camera.position);
+          closing.position.copy(danger.position);
+          closing.scale.setScalar(Math.max(0.35, 1.9 - progress * 1.5));
+          closing.material.opacity = 0.9;
+          closing.lookAt(camera.position);
+
+          const sign = signs[high ? "duck" : SAFE[attack.side] > 0 ? "slip_right" : "slip_left"];
+          sign.visible = true;
+          if (high) sign.position.set(baseX, headAt.y + 0.62, headAt.z);
+          else sign.position.set(baseX + SAFE[attack.side] * (SAFE[attack.side] > 0 ? 1.35 : 0.95), headAt.y - 0.2, headAt.z);
+          sign.material.opacity = Math.min(1, progress * 5);
         }
+
+        openSign.visible = open;
+        openRing.material.opacity = 0;
+        if (open) {
+          const left = state.openMs / state.openMaxMs;
+          const beat = 1 + Math.sin(elapsed * 14) * 0.06;
+          openSign.position.set(rivalX, 2.4, RIVAL_Z);
+          openSign.scale.set(1.7 * beat, 0.85 * beat, 1);
+          openRing.position.set(rivalX, 0.04, RIVAL_Z);
+          openRing.scale.setScalar(0.45 + 0.55 * left);
+          openRing.material.opacity = 0.95;
+        }
+
+        for (let index = floating.length - 1; index >= 0; index -= 1) {
+          const item = floating[index];
+          item.ms += ms;
+          const p = item.ms / 750;
+          item.card.position.set(item.x, 1.45 + p * 0.4, RIVAL_Z + 0.2);
+          item.card.material.opacity = 1 - Math.max(0, p - 0.5) * 2;
+          if (p >= 1) {
+            item.card.visible = false;
+            floating.splice(index, 1);
+          }
+        }
+
         camera.position.set(1.7 + x * 0.3, 2, 3.9);
         camera.lookAt(-0.25 + x * 0.15, 1.2, -0.6);
         focusShadow(0, 0, 0);
@@ -328,32 +542,42 @@ export const bout = {
       event(event) {
         if (event.type === "throw") {
           swingMs = 480;
+          if (event.punch === "uppercut") uppercutMs = UPPERCUT_MS;
           hero.play(PUNCH_CLIPS[event.punch], { once: true, speed: 1.9, fade: 0.05, then: "Idle_Loop" });
         }
         if (event.type === "land") {
-          fx.burst({ x: 0, y: 1.5, z: -0.45 }, accent, 18);
-          fx.shake(0.12);
-          rivalBusyMs = 420;
-          rival.play("Hit_Head", { once: true, speed: 1.5, fade: 0.05, then: "Idle_Loop" });
+          const colour = event.counter ? OPEN_GOLD : PUNCH_COLOURS[event.punch];
+          fx.burst({ x: rivalX, y: 1.5, z: RIVAL_Z + 0.3 }, colour, event.counter ? 34 : 18);
+          fx.shake(event.counter ? 0.22 : 0.12);
+          if (event.counter) fx.flash(OPEN_GOLD, 0.16);
+          flinch = event.counter ? 1 : 0.6;
+          flinchSide = event.punch === "hook" ? (Math.random() < 0.5 ? -1 : 1) : event.punch === "jab" ? 1 : -1;
+          const card = cardFor(`${event.punch.toUpperCase()} -${event.damage}${event.counter ? " x2" : ""}`, colour);
+          const already = floating.find((item) => item.card === card);
+          if (already) already.ms = 0;
+          else floating.push({ card, ms: 0, x: rivalX + 0.65 + Math.random() * 0.2 });
+          card.visible = true;
         }
-        if (event.type === "windup") {
-          rivalBusyMs = 1000;
-          rival.play(event.side === "high" ? "Punch_Cross" : "Melee_Hook", { once: true, speed: 0.95, then: "Idle_Loop" });
-        }
-        if (event.type === "dodge") fx.flash(accent, 0.1);
+        if (event.type === "dodge" || event.type === "hurt") follow = { side: event.side, amount: 1, dodged: event.type === "dodge" };
+        if (event.type === "dodge") fx.flash(accent, 0.12);
         if (event.type === "hurt") {
           swingMs = 420;
-          fx.shake(0.45);
-          fx.flash("#ff3b4e", 0.32);
+          fx.shake(0.4);
+          fx.flash(DANGER_RED, 0.3);
           hero.play("Hit_Head", { once: true, speed: 1.4, fade: 0.05, then: "Idle_Loop" });
         }
         if (event.type === "knockdown") {
-          rivalBusyMs = 2600;
-          fx.burst({ x: 0, y: 1.3, z: -0.75 }, accent, 50);
+          follow = { side: null, amount: 0, dodged: false };
+          for (const item of floating) item.card.visible = false;
+          floating.length = 0;
+          fx.burst({ x: rivalX, y: 1.3, z: RIVAL_Z }, accent, 50);
           fx.flash("#ffffff", 0.3);
-          rival.play("Death01", { once: true, fade: 0.08 });
+          rival.play("Death01", { once: true, fade: 0.12 });
         }
-        if (event.type === "rise") rival.play("LayToIdle", { once: true, speed: 1.3, then: "Idle_Loop" });
+        if (event.type === "rise") {
+          riseMs = 1300;
+          rival.play("LayToIdle", { once: true, speed: 1.3, then: "Idle_Loop" });
+        }
       },
     };
   },

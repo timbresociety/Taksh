@@ -308,7 +308,49 @@ describe("Counter Bout rules", () => {
   it("tells the player the move to make, not the side of the shot", () => {
     const state = bout.create(specOf(bout));
     while (!state.attack) bout.step(state, 20);
-    assert.match(bout.hud(state).extra, /^(Lean left|Lean right|Duck)$/);
+    const wanted = { left: "Step right", right: "Step left", high: "Duck" }[state.attack.side];
+    assert.ok(bout.hud(state).extra.includes(wanted), bout.hud(state).extra);
+    assert.equal(bout.hud(state).tone, "danger");
+  });
+
+  it("says when the rival is open to a counter", () => {
+    const state = bout.create(specOf(bout));
+    dodge(state);
+    assert.match(bout.hud(state).extra, /Hit now/);
+    assert.equal(bout.hud(state).tone, "open");
+  });
+
+  it("throws all four punches, and the bigger ones hit harder", () => {
+    const taken = (punch) => {
+      const state = bout.create(specOf(bout));
+      assert.ok(bout.act(state, punch).some((event) => event.type === "land"), punch);
+      return state.rivalMax - state.rivalHealth;
+    };
+    const [jab, cross, hook, uppercut] = ["jab", "cross", "hook", "uppercut"].map(taken);
+    assert.ok(jab < cross && cross < hook && hook < uppercut, [jab, cross, hook, uppercut].join());
+  });
+
+  it("a hit taken costs less than a fifth of the player's health", () => {
+    const state = bout.create(specOf(bout));
+    while (!state.attack) bout.step(state, 20);
+    while (state.attack) bout.step(state, 20);
+    assert.equal(state.hurt, 1);
+    assert.ok(100 - state.health < 20, `${100 - state.health}`);
+  });
+
+  it("coming back to the middle after a step does not undo the dodge", () => {
+    const state = bout.create(specOf(bout, { warningMs: 2000 }));
+    while (!state.attack || state.attack.side === "high") {
+      bout.step(state, 20);
+      if (state.attack?.side === "high") while (state.attack) bout.step(state, 20);
+    }
+    const wanted = { left: "slip_right", right: "slip_left" }[state.attack.side];
+    bout.act(state, wanted);
+    bout.step(state, 300);
+    bout.act(state, wanted === "slip_left" ? "slip_right" : "slip_left"); // the step back in
+    const events = [];
+    while (state.attack) events.push(...bout.step(state, 20));
+    assert.ok(events.some((event) => event.type === "dodge"), events.map((event) => event.type).join());
   });
 
   it("holding down a key cannot outrun an arm", () => {

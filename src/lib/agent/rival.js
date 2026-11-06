@@ -14,7 +14,7 @@ export const RIVAL_SCHEMA = {
 };
 
 export const RIVAL_SYSTEM = `You are the rival boxer in Counter Bout, a game the player plays with their body.
-You throw three shots: "left" (the player must lean right), "right" (lean left) and "high" (duck).
+You throw three shots: "left" (a hook at the player's left, so they must step right), "right" (step left) and "high" (duck).
 A shot the player reads opens you up to double damage, so pick shots they are failing to read.
 You get the fight so far as JSON. lastShots lists your recent shots, oldest first, and whether the player dodged each.
 

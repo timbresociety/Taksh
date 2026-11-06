@@ -1229,6 +1229,31 @@ kbd {
   text-transform: capitalize;
 }
 
+/* A shot coming in is red and a chance to hit back is gold, so the call reads before its words do. */
+.hud__call[data-tone="danger"] {
+  background: #ff2a3d;
+  color: #fff;
+  animation: hud-call-pulse 280ms ease-in-out infinite alternate;
+}
+
+.hud__call[data-tone="open"] {
+  background: #ffae00;
+  color: var(--rubber);
+  animation: hud-call-pulse 200ms ease-in-out infinite alternate;
+}
+
+@keyframes hud-call-pulse {
+  to {
+    scale: 1.08;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud__call[data-tone] {
+    animation: none;
+  }
+}
+
 .hud__bars {
   position: absolute;
   top: 92px;
