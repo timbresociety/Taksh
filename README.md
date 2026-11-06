@@ -249,7 +249,7 @@ Writes go through `/api/arkiv/scores` and `/api/arkiv/games`, signed on the serv
 
 Set `ARKIV_ACCESS_KEY` (free at https://hub.arkiv.network/access-keys) for anything past local testing. Without it the server uses the public endpoint, whose query budget runs out after about 1,000 queries per client address and then answers `429 ANON_COST_LIMITED` for about ten minutes. The app says so on every page when that happens. `npm run arkiv:probe` prints live counts, query times and the rate-limit headers.
 
-Writer wallet: `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30` (testnet dev wallet, fund it at https://hub.arkiv.network/faucet).
+Writer wallet: [`0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30`](https://rabdi.explorer.arkiv.network/address/0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30) (testnet dev wallet, fund it at https://hub.arkiv.network/faucet). Every Taksh entity is owned by it.
 
 A query to run against testnet, the top ten scores across every game:
 
@@ -265,7 +265,16 @@ curl -s https://rpc.rabdi.db-chain.testnet.arkiv.network -H "content-type: appli
   -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"arkiv_query\",\"params\":[\"arkiv.schema = str('taksh.scores.v1') AND daily = str('$(date -u +%F)') AND \$owner = addr(0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30) ORDER BY score:i32 DESC\",{\"select\":{\"key\":true,\"attributes\":true,\"count\":true},\"limit\":\"0xa\"}]}"
 ```
 
-If either answers `{"error":"ANON_COST_LIMITED"}`, the public endpoint's budget for your network is spent. Wait out the `Retry-After` (about ten minutes), or put your access key in the path: `https://rpc.rabdi.db-chain.testnet.arkiv.network/<key>`.
+On 2026-11-06 at block 310695 the first query returned 8 scores, best first (flattened here):
+
+```text
+0xb67f88ad2f…  Firstmate QA       5654  chop  mumbai    keyboard  daily 2026-11-06
+0xa101e1a7b4…  ketan              4210  hop   diwali    keyboard
+0x2f6b5c9af1…  ketan              3000  bout  downtown  keyboard
+…
+```
+
+If either answers `{"error":"ANON_COST_LIMITED"}`, the public endpoint's budget for your network is spent. Wait out the `Retry-After` (about ten minutes), put your access key in the path (`https://rpc.rabdi.db-chain.testnet.arkiv.network/<key>`), or send the same body to the Rabdi indexer, which answered `arkiv_query` with no budget on 2026-11-06: `https://indexer.rabdi.db-chain.testnet.arkiv.network/api/entity-explorer/rpc`.
 
 The same board through the app: `curl 'http://localhost:3000/api/arkiv/scores?template=poses'`, or `?daily=2026-11-07` for a day. The response includes the exact query text sent to the node.
 
@@ -273,10 +282,10 @@ Live on Rabdi testnet (2026-11-06), written by `0x7b78f1303a0c4916B5c9F8A858CbC0
 
 | What | Entity key | Tx |
 | --- | --- | --- |
-| Score, Sky Hop, 4210 | `0xa101e1a7b4a827df18d1fff911bc75d240c836080b490decd7ab78a9b87282a8` | [`0xccc8fc34…1b507`](https://rabdi.explorer.arkiv.network/tx/0xccc8fc34c2d2b937d1fdaf5e10f61c8ffe59f2922b12db4eba0bd4fd5251b507) |
-| Published game, Chop Shop | `0xf596b5687d9e58f37928e08ed49096cec6f1594559720ec591b842b31c66485a` | [`0x2d4baa27…de8c4`](https://rabdi.explorer.arkiv.network/tx/0x2d4baa2784ec63feb0e374cc9f5fef560dc294a8d53d22e40348c9f6aa1de8c4) |
-| Daily challenge, 2026-11-06, Mango Slice Fest (0G request `df9f68a1-05f9-4b82-9569-509c1e178412`) | `0x7ed5ac2484f8cceb77bb86d5dd8a50ed27128a33dd2962ddbf96136f59653f3c` | |
-| Score on that day's board, 1234 | `0x992e107686ba05339aa39e2b9dd8cfa8dc50a4216b44b97979c8135b052b113b` | [`0x94845855…a4f2e`](https://rabdi.explorer.arkiv.network/tx/0x94845855a48a2a04636bf757ca94881b7f4207358dcfb51c3a506762e1ca4f2e) |
+| Score, Sky Hop, 4210 | [`0xa101e1a7…282a8`](https://rabdi.explorer.arkiv.network/entity/0xa101e1a7b4a827df18d1fff911bc75d240c836080b490decd7ab78a9b87282a8) | [`0xccc8fc34…1b507`](https://rabdi.explorer.arkiv.network/tx/0xccc8fc34c2d2b937d1fdaf5e10f61c8ffe59f2922b12db4eba0bd4fd5251b507) |
+| Published game, Chop Shop | [`0xf596b568…6485a`](https://rabdi.explorer.arkiv.network/entity/0xf596b5687d9e58f37928e08ed49096cec6f1594559720ec591b842b31c66485a) | [`0x2d4baa27…de8c4`](https://rabdi.explorer.arkiv.network/tx/0x2d4baa2784ec63feb0e374cc9f5fef560dc294a8d53d22e40348c9f6aa1de8c4) |
+| Daily challenge, 2026-11-06, Mango Slice Fest (0G request `df9f68a1-05f9-4b82-9569-509c1e178412`) | [`0x7ed5ac24…53f3c`](https://rabdi.explorer.arkiv.network/entity/0x7ed5ac2484f8cceb77bb86d5dd8a50ed27128a33dd2962ddbf96136f59653f3c) | |
+| Score on that day's board, 1234 | [`0x992e1076…b113b`](https://rabdi.explorer.arkiv.network/entity/0x992e107686ba05339aa39e2b9dd8cfa8dc50a4216b44b97979c8135b052b113b) | [`0x94845855…a4f2e`](https://rabdi.explorer.arkiv.network/tx/0x94845855a48a2a04636bf757ca94881b7f4207358dcfb51c3a506762e1ca4f2e) |
 
 All were read back through the app: `GET /api/arkiv/scores?template=hop`, `GET /api/arkiv/games`, `GET /api/daily` and `GET /api/arkiv/scores?daily=2026-11-06`.
 
