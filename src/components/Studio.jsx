@@ -130,7 +130,7 @@ export default function Studio() {
       {stage !== "play" && stage !== "calibrate" && stage !== "practice" && <SourceNote status={status} game={stage === "idea" ? null : game} />}
 
       {stage === "idea" && (
-        <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
+        <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} voice={status?.source === "0g"} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
       )}
       {stage === "brief" && <BriefStage game={game} onChangeSkin={changeSkin} onPlay={startPlay} onBack={restart} />}
       {stage === "calibrate" && (

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createOgProvider, readTrace } from "../src/lib/pipeline/provider-0g.js";
+import { createOgProvider, readTrace, transcribe0g } from "../src/lib/pipeline/provider-0g.js";
 
 const TRACE = { request_id: "req-1", provider: "0xabc", billing: { currency: "usd", total_cost: "9763", total_cost_usd_micro: "9763" } };
 const reply = (content, extra = {}) => ({ choices: [{ finish_reason: "stop", message: { content } }], usage: { total_tokens: 5 }, x_0g_trace: TRACE, ...extra });
@@ -81,5 +81,30 @@ describe("0g provider", () => {
     assert.equal(trace.costUsd, null);
     assert.equal(trace.costNeuron, "1935800000000000");
     assert.equal(readTrace({}), null);
+  });
+
+  it("transcribes on the private tier, naming the file by what the browser recorded", async () => {
+    const seen = [];
+    const fetch = async (url, init) => {
+      seen.push({ url, init });
+      return { ok: true, status: 200, json: async () => ({ text: "  A boxing game in Mumbai. ", x_0g_trace: TRACE }) };
+    };
+    const result = await transcribe0g(new Blob(["x"], { type: "audio/mp4" }), { apiKey: "k", fetch });
+    assert.equal(result.text, "A boxing game in Mumbai.");
+    assert.equal(result.trace.requestId, "req-1");
+    const { url, init } = seen[0];
+    assert.equal(url, "https://router-api.0g.ai/v1/audio/transcriptions");
+    assert.equal(init.headers["X-0G-Provider-Trust-Mode"], "private");
+    assert.equal(init.body.get("model"), "whisper-large-v3");
+    assert.equal(init.body.get("file").name, "idea.mp4");
+  });
+
+  it("a failed transcription says what to do, and keeps the request ID", async () => {
+    const fetch = async () => ({ ok: false, status: 402, json: async () => ({ request_id: "req-9" }) });
+    await assert.rejects(transcribe0g(new Blob(["x"], { type: "audio/webm" }), { apiKey: "k", fetch }), (error) => {
+      assert.match(error.message, /balance is empty/);
+      assert.equal(error.requestId, "req-9");
+      return true;
+    });
   });
 });

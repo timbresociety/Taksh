@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { TEMPLATES } from "@/lib/templates";
+import MicButton from "./MicButton";
 
 const EXAMPLES = [
   "A pixel goalkeeper saving shots in the forest",
@@ -9,9 +10,10 @@ const EXAMPLES = [
   "Flying through hoops at sunset",
 ];
 
-export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmit, onAccept, onChangeIdea, onPick }) {
+export default function IdeaStage({ draft, intent, busy, error, fixture, voice, onSubmit, onAccept, onChangeIdea, onPick }) {
   const [idea, setIdea] = useState(draft.idea);
   const [answer, setAnswer] = useState("");
+  const [micError, setMicError] = useState(null);
 
   const asking = intent?.status === "clarify";
   const unsupported = intent?.status === "unsupported";
@@ -48,11 +50,12 @@ export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmi
                   }
                 }}
               />
+              {voice && <MicButton disabled={Boolean(busy)} onText={setIdea} onError={setMicError} />}
               <button className="button button--go" type="submit" disabled={Boolean(busy) || !idea.trim()}>
                 {busy ?? "Make my game"}
               </button>
             </div>
-            {error && <p className="error" role="alert">{error}</p>}
+            {(error || micError) && <p className="error" role="alert">{error || micError}</p>}
             <div className="examples">
               {EXAMPLES.map((example) => (
                 <button key={example} type="button" className="chip" onClick={() => setIdea(example)}>

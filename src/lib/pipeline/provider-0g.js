@@ -113,3 +113,22 @@ export async function check0g({ model = process.env.OG_MODEL || OG_DEFAULT_MODEL
     return { ok: false, model, reason: `0G router unreachable: ${error.message}` };
   }
 }
+
+// Speech to text on the same private tier, so a spoken idea is heard only inside a TEE.
+export const OG_SPEECH_MODEL = "whisper-large-v3";
+
+export async function transcribe0g(audio, { apiKey = process.env.OG_API_KEY, fetch = globalThis.fetch } = {}) {
+  const form = new FormData();
+  form.append("model", OG_SPEECH_MODEL);
+  // Chrome records webm, Safari mp4. Whisper reads the format from the file name.
+  form.append("file", audio, audio.type.includes("mp4") ? "idea.mp4" : "idea.webm");
+  const response = await fetch(`${OG_BASE_URL}/audio/transcriptions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "X-0G-Provider-Trust-Mode": OG_TRUST_MODE },
+    body: form,
+    signal: AbortSignal.timeout(30000),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) throw ogError(MESSAGES[response.status] ?? "0G could not hear that. Try again, or type it.", response.status, json);
+  return { text: (json.text ?? "").trim(), trace: readTrace(json) };
+}
