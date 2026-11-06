@@ -103,7 +103,8 @@ export function readTrace(json) {
 export async function check0g({ model = process.env.OG_MODEL || OG_DEFAULT_MODEL, fetch = globalThis.fetch } = {}) {
   if (!process.env.OG_API_KEY) return { ok: false, model, reason: "OG_API_KEY is not set." };
   try {
-    const response = await fetch(`${OG_BASE_URL}/models`, { signal: AbortSignal.timeout(10000) });
+    // The model list took 9 to 10 s on 2026-11-06, so 10 s timed out about half the time.
+    const response = await fetch(`${OG_BASE_URL}/models`, { signal: AbortSignal.timeout(25000) });
     const { data = [] } = await response.json();
     const entry = data.find((item) => item.id === model);
     if (!entry) return { ok: false, model, reason: `0G does not serve ${model}.` };

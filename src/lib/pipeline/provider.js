@@ -4,11 +4,20 @@ import { checkClaude, createClaudeProvider } from "./provider-claude.js";
 import { createFixtureProvider } from "./provider-fixture.js";
 import { check0g, createOgProvider } from "./provider-0g.js";
 
+// A reached provider is kept for the process. A fallback is retried after a minute, so one slow
+// answer from the 0G router at startup doesn't leave the server on fixtures until it restarts.
+const RETRY_MS = 60_000;
 let cached = null;
 
 export async function getProvider() {
-  cached ??= resolveProvider();
-  return cached;
+  if (cached && (cached.kept || Date.now() - cached.at < RETRY_MS)) return cached.promise;
+  const entry = { at: Date.now(), kept: false };
+  entry.promise = resolveProvider().then((result) => {
+    entry.kept = result.reason === null || process.env.TAKSH_PROVIDER === "fixture";
+    return result;
+  });
+  cached = entry;
+  return entry.promise;
 }
 
 async function resolveProvider() {
