@@ -75,6 +75,8 @@ A game reads the body in five ways. There are no clicks, because the tracker can
 
 To add a world, follow [docs/new-world.md](docs/new-world.md).
 
+Players can also ask for a new world, art style, character, boss or game from the look screen. The game's model (GLM-5.3 on 0G in production) drafts it from the skills in `skills/`, code checks it, and worlds, styles and characters are playable at once while bosses and games are queued for a build. See [docs/user-requests.md](docs/user-requests.md).
+
 A spec is `template + skin + tuning`. The skin picks one of nine worlds (downtown, forest, station, moon, village, sunset, mumbai, marine_drive, diwali), one of six art styles (bright, toon, neon, pixel, comic, clay), and the look of the hero and rival. Tuning is a set of bounded numbers per template. Levels come from a seed, so a model only ever chooses from these lists and can't produce something unplayable.
 
 The camera only works on `http://localhost` or an HTTPS address. The `Network` address Next.js prints is plain HTTP, so browsers block the camera there. Another device needs an HTTPS address.
@@ -234,6 +236,7 @@ Live on Sepolia (2026-11-06), tested on an anvil fork first:
 - `src/lib/templates`: the games as pure logic with no drawing or camera, each with a bot, so they can all be played in a test.
 - `src/lib/motion`: pose feed, calibration and gesture recognition. Thresholds scale to the player's torso length, or shoulder width when the hips are out of frame, and follow them as they drift closer or further. A punch reads MediaPipe's metric depth and the arm looking short in the image. A game listens only for the moves it binds, and arm games calibrate without seeing the legs.
 - `src/lib/pipeline`: clarify, generate and revise, with validation and one repair attempt. Credentials stay on the server.
+- `src/lib/requests`, `src/workflows`, `skills/`: player requests for new worlds, styles, characters, bosses and games, run as durable workflows so a slow model call never holds a request open.
 - `src/lib/stage`: the three.js renderer. `worlds.js` and `styles.js` are data plus one post-processing pass, `views/` draws each template, and `character.js` builds a rigged human whose 65-bone skeleton plays every clip in the animation library.
 
 ## Arkiv

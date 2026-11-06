@@ -6,3 +6,6 @@ export const POST = route(async (body, provider) => {
   if (!body.brief || typeof body.brief !== "object") throw badRequest("The game brief is missing.");
   return generateGame({ idea, clarification: body.clarification, brief: body.brief }, provider);
 });
+
+// A thinking model can take minutes; give the call all the time a function has.
+export const maxDuration = 300;

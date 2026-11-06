@@ -4,6 +4,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { registerMade } from "../requests/made.js";
 import { createCharacter } from "./character.js";
 import { mirrorArms } from "./coach.js";
 import { LOOKS, StylePass, applyLook } from "./styles.js";
@@ -65,6 +66,7 @@ class Sparks {
 // The stage makes its own canvas inside host. A lost context can't be revived, and React may mount
 // the same element twice, so a canvas never outlives its stage.
 export async function createStage(host, spec, { preview = false } = {}) {
+  registerMade(spec); // a world or style the player asked for, already checked by validateSpec
   const look = LOOKS[spec.skin.style];
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "display:block;width:100%;height:100%";

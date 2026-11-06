@@ -1550,6 +1550,113 @@ kbd {
   transform: scaleX(-1);
 }
 
+/* Ask for something new: the request desk under the look panel. */
+.desk {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 3px solid var(--line);
+  background: var(--court-deep);
+}
+
+.desk h2 {
+  font-size: 1.4rem;
+}
+
+.desk__form {
+  display: grid;
+  gap: 12px;
+}
+
+.desk__form .who {
+  flex-wrap: wrap;
+}
+
+.desk textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid color-mix(in srgb, var(--line) 50%, transparent);
+  background: var(--court);
+  color: var(--line);
+  font: inherit;
+  resize: vertical;
+}
+
+.desk textarea:focus-visible {
+  outline: 3px solid var(--volt);
+  outline-offset: 2px;
+}
+
+.desk__hint {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.desk__asked {
+  font-style: italic;
+}
+
+.desk__stages {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.desk__stages li {
+  padding-left: 22px;
+  position: relative;
+  opacity: 0.55;
+}
+
+.desk__stages li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+}
+
+.desk__stages li[data-state="done"] {
+  opacity: 0.8;
+}
+
+.desk__stages li[data-state="done"]::before {
+  background: var(--line);
+}
+
+.desk__stages li[data-state="now"] {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.desk__stages li[data-state="now"]::before {
+  border-color: var(--volt);
+  background: var(--volt);
+  animation: desk-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes desk-pulse {
+  50% { transform: scale(0.6); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desk__stages li[data-state="now"]::before { animation: none; }
+}
+
+.desk__done {
+  display: grid;
+  gap: 10px;
+}
+
+.desk__name {
+  font-size: 1.3rem;
+  font-weight: 800;
+
 /* The 0G rival's state, under the score in Counter Bout. */
 .hud__rival {
   position: absolute;

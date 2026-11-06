@@ -1,6 +1,7 @@
 // What Taksh stores on Arkiv, and how a score or a game turns into an entity. Pure, so the browser
 // can hash a spec the same way the server does, and tests run without a network.
 import { bytes, defineSchema, i32, str, u64 } from "@arkiv-network/sdk/schema";
+import { isMadeId } from "../requests/made-id.js";
 import { STYLES, WORLDS } from "../spec/contract.js";
 import { templateInfo } from "../templates/index.js";
 
@@ -128,8 +129,8 @@ export function readScope(params) {
   const scope = { template: params.get("template") };
   if (!templateInfo(scope.template)) throw new Error(`Unknown template "${scope.template}".`);
   const checks = {
-    world: (v) => WORLDS.some((w) => w.id === v),
-    style: (v) => STYLES.some((s) => s.id === v),
+    world: (v) => WORLDS.some((w) => w.id === v) || isMadeId("world", v),
+    style: (v) => STYLES.some((s) => s.id === v) || isMadeId("style", v),
     hash: (v) => SPEC_HASH.test(v),
     mode: (v) => v === "camera" || v === "keyboard",
   };
