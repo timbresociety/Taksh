@@ -1,4 +1,5 @@
 import { Anybody, Hanken_Grotesk } from "next/font/google";
+import Providers from "@/components/Providers";
 import "./globals.css";
 
 const display = Anybody({ subsets: ["latin"], variable: "--font-display", axes: ["wdth"], weight: "variable" });
@@ -12,7 +13,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

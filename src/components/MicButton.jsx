@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ogHeaders } from "@/lib/og/session";
 
 const MAX_MS = 15000; // the route refuses anything much longer
 
@@ -38,7 +39,7 @@ export default function MicButton({ onText, onError, disabled }) {
       const audio = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
       setState("hearing");
       try {
-        const response = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": audio.type }, body: audio });
+        const response = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": audio.type, ...ogHeaders() }, body: audio });
         const reply = await response.json();
         if (!response.ok) throw new Error(reply.error);
         onText(reply.text);
