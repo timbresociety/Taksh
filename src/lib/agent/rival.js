@@ -23,6 +23,26 @@ Return JSON:
 - taunt: one short line of trash talk, under 8 words, that fits what just happened. No slurs.
 - read: under 12 words on the player's weakness, for the log.`;
 
+const SIDES = ["left", "right", "high"];
+const whole = (value, max) => (Number.isFinite(value) ? Math.min(max, Math.max(0, Math.round(value))) : 0);
+
+// Only these fields, as numbers and known sides, reach the model. Anything else the browser sends is
+// dropped, so the route can't be used to send free text to a paid model.
+export function cleanObservation(raw) {
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.lastShots)) return null;
+  return {
+    secondsLeft: whole(raw.secondsLeft, 600),
+    playerHealth: whole(raw.playerHealth, 100),
+    rivalHealth: whole(raw.rivalHealth, 100),
+    knockdowns: whole(raw.knockdowns, 3),
+    queued: whole(raw.queued, 4),
+    lastShots: raw.lastShots
+      .filter((shot) => SIDES.includes(shot?.side))
+      .slice(-8)
+      .map((shot) => ({ side: shot.side, dodged: shot.dodged === true })),
+  };
+}
+
 export function rivalMessage(observation) {
   return `<fight>\n${JSON.stringify(observation)}\n</fight>`;
 }

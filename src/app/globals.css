@@ -1434,3 +1434,15 @@ kbd {
 .hud__rival[data-status="lost"] {
   color: var(--volt);
 }
+
+.rival-episode {
+  margin-top: 20px;
+  max-width: 46ch;
+  font-size: 0.95rem;
+}
+.rival-episode p {
+  margin: 0 0 8px;
+}
+.rival-episode__error {
+  color: var(--volt);
+}
