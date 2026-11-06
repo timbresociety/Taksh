@@ -43,10 +43,21 @@ describe("spec and text records", () => {
     assert.equal(back.spec.title, "Moon Hop");
   });
 
-  it("ignores empty field records and refuses names without a game", () => {
+  it("stores no field twice, and reads names published with the whole spec in taksh.spec", () => {
     const spec = starterSpec("hop", 1);
-    const texts = { ...asTexts(specToRecords(spec)), [KEYS.world]: "" };
-    assert.equal(recordsToSpec(texts).skin.world, spec.skin.world);
+    const stored = JSON.parse(asTexts(specToRecords(spec))[KEYS.spec]);
+    for (const field of ["template", "title", "objective"]) assert.equal(stored[field], undefined, field);
+    assert.equal(stored.skin.world, undefined);
+    assert.equal(stored.skin.style, undefined);
+    assert.ok(stored.skin.hero, "the characters stay in the spec");
+    // A name from before the split: the spec record is whole, and an empty field record falls back to it.
+    const legacy = { ...asTexts(specToRecords(spec)), [KEYS.spec]: JSON.stringify(spec), [KEYS.world]: "" };
+    assert.deepEqual(validateSpec(recordsToSpec(legacy)).spec, spec);
+  });
+
+  it("refuses a new name whose field record was cleared, and names without a game", () => {
+    const texts = { ...asTexts(specToRecords(starterSpec("hop", 1))), [KEYS.world]: "" };
+    assert.equal(validateSpec(recordsToSpec(texts)).ok, false);
     assert.throws(() => recordsToSpec({}), /No Taksh game/);
     assert.throws(() => recordsToSpec({ [KEYS.spec]: "{nope" }), /not valid JSON/);
     assert.throws(() => recordsToSpec({ [KEYS.spec]: "[1]" }), /not a spec/);
