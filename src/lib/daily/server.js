@@ -1,7 +1,7 @@
 // Server-only. Today's challenge: read it from Arkiv, or make it on 0G, store it and read again, so
 // every instance serves the earliest stored game for the date.
 import { specHash } from "../arkiv/schema.js";
-import { canWrite, readDaily, writeDaily } from "../arkiv/store.js";
+import { canWrite, readDaily, withDeadline, writeDaily } from "../arkiv/store.js";
 import { generateGame } from "../pipeline/pipeline.js";
 import { getProvider } from "../pipeline/provider.js";
 import { addDays, dayKey, fallbackSpec, themeFor } from "./daily.js";
@@ -45,14 +45,30 @@ export async function resolveDaily(date, { read, write, make, create }) {
   return stored(settled ?? { key: written.key, date, theme: theme.idea, requestId: made.requestId, spec: made.spec });
 }
 
-async function make(theme) {
-  const { provider } = await getProvider();
-  if (provider.source !== "0g") return null;
+// 0G's router answered in 9 to 10 s on 2026-11-06 and a game takes one or two calls, so each try
+// gets 45 s, and a failed try is retried once. The home card shows "Making today's game" meanwhile.
+const MAKE_MS = 45_000;
+
+async function makeOnce(theme, provider) {
   const generated = await generateGame({ idea: theme.idea, brief: theme.brief }, provider);
   if (!generated.ok) throw new Error(`the game failed validation: ${generated.errors[0]}`);
   const requestId = generated.traces?.at(-1)?.requestId;
   if (!requestId) throw new Error("0G returned no request ID");
   return { spec: generated.spec, requestId };
+}
+
+export async function makeWithRetry(theme, provider, once = makeOnce, ms = MAKE_MS) {
+  try {
+    return await withDeadline(once(theme, provider), ms, `0G took longer than ${ms / 1000} s`);
+  } catch {
+    return withDeadline(once(theme, provider), ms, `0G took longer than ${ms / 1000} s twice`);
+  }
+}
+
+async function make(theme) {
+  const { provider } = await getProvider();
+  if (provider.source !== "0g") return null;
+  return makeWithRetry(theme, provider);
 }
 
 const live = { read: readDaily, write: writeDaily, make };

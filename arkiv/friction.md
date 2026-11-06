@@ -43,6 +43,8 @@ Each column comes back as `{ type, value }`, and `u64`, `count` and `blockNumber
 
 The viem `http()` transport retries three times with backoff. Against a dead endpoint, one board read would hang for many seconds before the UI could say "unavailable". The client now uses `http(undefined, { timeout: 8000, retryCount: 1 })`. Worth a line in the "Connect to Arkiv" page for server use.
 
+That wasn't enough. Once the public endpoint's quota runs out, it answers `429` with `Retry-After: 761`, and viem waits the full Retry-After before its one retry. The 8 s timeout covers each attempt but not that wait, so every route on the server hung for over two minutes with no response. The transport now uses `retryCount: 0`. Every read and write also races a hard deadline: 10 s for reads, 25 s for writes, which wait for a receipt. A 429 shows as "rate limiting this server, set ARKIV_ACCESS_KEY". With no access key the SDK only warns once, at startup, so the cause is easy to miss.
+
 ## What was easy
 
 Named schemas with `.indexed()`, the builder's `toString()`, and `withCount()` made the leaderboard short. The query text comes back with every board response and shows under "Query sent to Arkiv" on the result screen. `ownedBy` made the trust rule one line.

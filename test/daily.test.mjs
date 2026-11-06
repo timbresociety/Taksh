@@ -205,3 +205,25 @@ describe("daily cache window", async () => {
     assert.match(challenge.hash, /^[0-9a-f]{64}$/);
   });
 });
+
+describe("daily generation retry", async () => {
+  const { makeWithRetry } = await import("../src/lib/daily/server.js");
+  const made = { spec: starterSpec("hop", 3), requestId: "req-2" };
+
+  it("retries once after a try that never finishes", async () => {
+    let tries = 0;
+    const once = () => (++tries === 1 ? new Promise(() => {}) : Promise.resolve(made));
+    assert.deepEqual(await makeWithRetry({}, {}, once, 50), made);
+    assert.equal(tries, 2);
+  });
+
+  it("gives up after two failed tries, so the starter game is served", async () => {
+    let tries = 0;
+    const once = async () => { tries += 1; throw new Error("503"); };
+    await assert.rejects(makeWithRetry({}, {}, once, 50), /503/);
+    assert.equal(tries, 2);
+    const challenge = await resolveDaily("2026-11-07", { read: async () => null, write: async () => ({}), make: () => makeWithRetry({}, {}, () => new Promise(() => {}), 30), create: true });
+    assert.equal(challenge.source, "starter");
+    assert.match(challenge.reason, /took longer than 0.03 s twice/);
+  });
+});

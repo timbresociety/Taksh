@@ -6,7 +6,7 @@ import { ExpirationTime } from "@arkiv-network/sdk";
 import { eq } from "@arkiv-network/sdk/query";
 import { bytes, defineSchema, str, u64 } from "@arkiv-network/sdk/schema";
 import { readSpecBytes } from "./schema.js";
-import { connect } from "./store.js";
+import { WRITE_MS, arkiv, connect, read } from "./store.js";
 
 export const Decisions = defineSchema("taksh.rival.decisions.v1", {
   roundId: str().indexed(),
@@ -29,7 +29,7 @@ const valueOf = (field) => (field && typeof field === "object" && "value" in fie
 export async function writeDecision(requestId, { roundId, askedAt, issuedAt, ...rest }) {
   // Wrap times in u64(): a bare bigint is written as a u256 and the schema refuses it.
   const { writer } = connect();
-  await writer.createEntity(Decisions, { roundId, requestId, askedAt: u64(BigInt(askedAt)), issuedAt: u64(BigInt(issuedAt)), record: encode(rest) }, { expiration: LIFETIME() });
+  await arkiv(writer.createEntity(Decisions, { roundId, requestId, askedAt: u64(BigInt(askedAt)), issuedAt: u64(BigInt(issuedAt)), record: encode(rest) }, { expiration: LIFETIME() }), "write a decision", WRITE_MS);
 }
 
 export async function readRound(roundId) {
@@ -37,8 +37,8 @@ export async function readRound(roundId) {
   // 100 is the node maximum. A 120 s round asks 0G about 30 times, so a round that fills the page is
   // refused rather than checked against part of its decisions.
   const [decisions, spent] = await Promise.all([
-    reader.select({ requestId: true, askedAt: true, issuedAt: true, record: true }).from(Decisions).ownedBy(owner).where(eq("roundId", roundId)).limit(100).fetch(),
-    reader.count().from(Spent).ownedBy(owner).where(eq("roundId", roundId)).fetch(),
+    read(reader.select({ requestId: true, askedAt: true, issuedAt: true, record: true }).from(Decisions).ownedBy(owner).where(eq("roundId", roundId)).limit(100), "read the round"),
+    read(reader.count().from(Spent).ownedBy(owner).where(eq("roundId", roundId)), "read the round"),
   ]);
   const records = decisions.entities.map((entity) => ({
     requestId: valueOf(entity.requestId),
@@ -52,5 +52,5 @@ export async function readRound(roundId) {
 
 export async function writeSpent(roundId, rootHash) {
   const { writer } = connect();
-  await writer.createEntity(Spent, { roundId, rootHash: rootHash ?? "", storedAt: u64(BigInt(Date.now())) }, { expiration: ExpirationTime.fromHours(2) });
+  await arkiv(writer.createEntity(Spent, { roundId, rootHash: rootHash ?? "", storedAt: u64(BigInt(Date.now())) }, { expiration: ExpirationTime.fromHours(2) }), "mark the round stored", WRITE_MS);
 }

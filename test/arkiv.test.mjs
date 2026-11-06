@@ -119,3 +119,25 @@ describe("arkiv write throttle", async () => {
     assert.doesNotThrow(() => throttle(from("10.0.1.1"), 4000, start + 61000));
   });
 });
+
+describe("arkiv deadline", async () => {
+  const { READ_MS, arkiv, withDeadline } = await import("../src/lib/arkiv/store.js");
+  // A node that accepts the request and never answers, like the public endpoint sleeping on a 429.
+  const stuck = createPublicClient({ chain, transport: custom({ request: () => new Promise(() => {}) }) });
+
+  it("gives up on a never-resolving query with an exposed 503", async () => {
+    const started = Date.now();
+    await assert.rejects(arkiv(scoreQuery(stuck, OWNER, { template: "hop" }).fetch(), "read the board", 80), (error) => {
+      assert.equal(error.status, 503);
+      assert.equal(error.expose, true);
+      assert.match(error.message, /longer than 0.08 s to read the board/);
+      return true;
+    });
+    assert.ok(Date.now() - started < 1000);
+  });
+
+  it("passes a value through and keeps reads at about 10 s", async () => {
+    assert.equal(await withDeadline(Promise.resolve(7), 50, "late"), 7);
+    assert.equal(READ_MS, 10_000);
+  });
+});

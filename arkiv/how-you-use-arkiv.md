@@ -39,7 +39,8 @@ Arkiv is public, so every read filters on `$owner`. A shared spec is validated a
 ## When Arkiv is not there
 
 - No `ARKIV_PRIVATE_KEY`: the board and gallery still read the default writer's data, and Post and Publish return "Arkiv writes are off".
-- The RPC is down or slow: routes return `{ available: false }` within about 8 seconds, the result screen says "Leaderboard unavailable", and the game, revise and replay all still work.
+- The RPC is down or slow: every read gives up after 10 s and every write after 25 s (`withDeadline` in `store.js`). Routes then return `{ available: false }`, the result screen says "Leaderboard unavailable", and the game, revise and replay all still work.
+- The public endpoint is rate limiting (no `ARKIV_ACCESS_KEY`): it answers `429` with a Retry-After of minutes. The transport doesn't retry, so the route answers at once, and the message says to set the key.
 - An unfunded wallet: the error names the wallet and the faucet.
 - No 0G, no writer key, or no Arkiv for today's challenge: every instance serves the same starter game, picked from the date, and the home card says which of the three is missing. No request ID is shown, because none exists.
 

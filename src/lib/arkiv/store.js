@@ -18,11 +18,32 @@ const DAILY_LIFETIME = () => ExpirationTime.fromDays(8);
 
 let clients;
 
-// One RPC failure shouldn't hang a request for half a minute, so keep timeouts short.
+// Every read and write gets a hard deadline, so a route answers { available: false } instead of
+// hanging. Writes wait for the receipt, which took about 8 s, so they get longer.
+export const READ_MS = 10_000;
+export const WRITE_MS = 25_000;
+
+const unavailable = (message) => Object.assign(new Error(message), { status: 503, expose: true });
+
+// Rejects with an exposed 503 carrying message once ms pass. The call it wraps keeps running.
+export function withDeadline(promise, ms, message) {
+  let timer;
+  const late = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(unavailable(message)), ms);
+  });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
+export const late = (what, ms) => `Arkiv took longer than ${ms / 1000} s to ${what}, so this is unavailable right now.`;
+export const arkiv = (promise, what, ms = READ_MS) => withDeadline(promise, ms, late(what, ms));
+export const read = (query, what = "answer") => arkiv(query.fetch(), what);
+
+// The public endpoint answers 429 with Retry-After in minutes (761 s on 2026-11-06) once its quota
+// is used. viem sleeps that long before a retry, past its own timeout, so the transport doesn't retry.
 export function connect() {
   if (clients) return clients;
   const chain = rabdi({ accessKey: process.env.ARKIV_ACCESS_KEY ?? "" });
-  const transport = http(undefined, { timeout: 8000, retryCount: 1 });
+  const transport = http(undefined, { timeout: 8000, retryCount: 0 });
   let account = null;
   try {
     if (process.env.ARKIV_PRIVATE_KEY) account = privateKeyToAccount(process.env.ARKIV_PRIVATE_KEY);
@@ -63,11 +84,9 @@ export function gamesQuery(reader, owner, { template, limit = 30 } = {}) {
 export async function topScores(scope) {
   const { reader, owner } = connect();
   const query = scoreQuery(reader, owner, scope);
-  const page = await query.fetch();
+  const page = await read(query, "read the board");
   return { rows: page.entities.map(plainRow), count: Number(page.count), block: Number(page.blockNumber), query: query.toString(), owner };
 }
-
-const unavailable = (message) => Object.assign(new Error(message), { status: 503, expose: true });
 
 function requireWriter() {
   const { writer } = connect();
@@ -79,9 +98,10 @@ function requireWriter() {
 async function create(schema, values, expiration) {
   const writer = requireWriter();
   try {
-    return await writer.createEntity(schema, values, { expiration });
+    return await arkiv(writer.createEntity(schema, values, { expiration }), "write", WRITE_MS);
   } catch (error) {
-    const balance = await connect().reader.getBalance({ address: writer.account.address }).catch(() => null);
+    if (error.status === 503) throw error;
+    const balance = await arkiv(connect().reader.getBalance({ address: writer.account.address }), "read the balance").catch(() => null);
     if (balance === 0n) throw unavailable(`The writer wallet ${writer.account.address} has no tGLM. Fund it at https://hub.arkiv.network/faucet.`);
     throw error;
   }
@@ -94,8 +114,8 @@ export async function postScore(input) {
   const { entityKey, txHash } = await create(Scores, values, SCORE_LIFETIME());
   const scope = values.daily ? eq("daily", values.daily) : eq("template", values.template);
   const [better, total] = await Promise.all([
-    reader.count().from(Scores).ownedBy(owner).where(scope).where(gt("score", i32(values.score))).fetch(),
-    reader.count().from(Scores).ownedBy(owner).where(scope).fetch(),
+    read(reader.count().from(Scores).ownedBy(owner).where(scope).where(gt("score", i32(values.score))), "count the board"),
+    read(reader.count().from(Scores).ownedBy(owner).where(scope), "count the board"),
   ]);
   return { key: entityKey, txHash, rank: Number(better) + 1, total: Number(total), daily: values.daily ?? null };
 }
@@ -108,7 +128,7 @@ export function dailyQuery(reader, owner, date) {
 // The earliest challenge for a date, or null if none is stored.
 export async function readDaily(date) {
   const { reader, owner } = connect();
-  const { entities } = await dailyQuery(reader, owner, date).fetch();
+  const { entities } = await read(dailyQuery(reader, owner, date), "read today's challenge");
   const first = pickEarliest(entities);
   if (!first) return null;
   return { key: first.$key, date, theme: first.theme.value, requestId: first.requestId.value || null, spec: readSpecBytes(first.spec.value) };
@@ -123,7 +143,7 @@ export const canWrite = () => Boolean(connect().writer);
 
 export async function listGames(options) {
   const { reader, owner } = connect();
-  const page = await gamesQuery(reader, owner, options).fetch();
+  const page = await read(gamesQuery(reader, owner, options), "list games");
   return { games: page.entities.map(plainRow), count: Number(page.count) };
 }
 
@@ -132,7 +152,7 @@ export async function listGames(options) {
 export async function publishGame({ upload, ...input }) {
   requireWriter();
   const { reader, owner } = connect();
-  const { entities } = await reader.select({ $key: true }).from(Games).ownedBy(owner).where(eq("specHash", input.hash)).limit(1).fetch();
+  const { entities } = await read(reader.select({ $key: true }).from(Games).ownedBy(owner).where(eq("specHash", input.hash)).limit(1), "look the game up");
   if (entities[0]) return { key: entities[0].$key, existing: true };
   const swarmRef = (await upload?.()) ?? null;
   const { entityKey, txHash } = await create(Games, gameValues({ ...input, swarmRef }), GAME_LIFETIME());
@@ -144,7 +164,7 @@ export async function readGame(key) {
   if (!ENTITY_KEY.test(key ?? "")) return null;
   const { reader, owner } = connect();
   try {
-    const entity = await reader.getEntity(key, Games);
+    const entity = await arkiv(reader.getEntity(key, Games), "read the game");
     if (entity.$owner.toLowerCase() !== owner.toLowerCase()) return null;
     return { key, title: entity.title.value, author: entity.author.value, specHash: entity.specHash.value, swarmRef: entity.swarmRef?.value ?? null, spec: readSpecBytes(entity.spec.value) };
   } catch (error) {
