@@ -30,6 +30,7 @@ export function checkEpisode(raw, spec) {
   const plans = log.filter(([, kind]) => kind === "plan").map(([, , value]) => value);
   const claimed = decisions.filter((decision) => decision?.requestId);
   if (claimed.length !== plans.length) throw refuse("The plans and the 0G decisions do not line up.");
+  if (new Set(claimed.map((decision) => decision.requestId)).size !== claimed.length) throw refuse("A 0G decision appears twice in this round.");
   claimed.forEach((decision, index) => {
     const issued = issuedDecision(decision.requestId);
     if (!issued || JSON.stringify(issued.plan) !== JSON.stringify(plans[index])) throw refuse("A 0G decision in this round was not issued by this server.");

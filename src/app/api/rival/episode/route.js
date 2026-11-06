@@ -3,6 +3,7 @@ import { uploadEpisode } from "@/lib/agent/storage";
 import { MAX_EPISODE_BYTES, checkEpisode } from "@/lib/agent/episode";
 import { validateSpec } from "@/lib/spec/validate";
 import { createBudget } from "@/lib/agent/budget";
+import { spendDecisions } from "@/lib/agent/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export async function POST(request) {
     spend();
     const replayed = replayEpisode(episode);
     const stored = await uploadEpisode({ ...episode, replayed, storedAt: new Date().toISOString() });
+    spendDecisions(episode.decisions.map((decision) => decision.requestId));
     return Response.json({ ...stored, replayed });
   } catch (error) {
     return Response.json({ error: error.expose ? error.message : "0G Storage did not respond.", rootHash: error.rootHash }, { status: error.status ?? 502 });

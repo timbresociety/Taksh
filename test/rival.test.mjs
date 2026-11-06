@@ -116,3 +116,26 @@ describe("0G rival episodes", async () => {
     assert.throws(() => checkEpisode(junk, junk.spec), /step times/);
   });
 });
+
+describe("0G rival decisions are single-use", async () => {
+  const { checkEpisode } = await import("../src/lib/agent/episode.js");
+  const { recordDecision, spendDecisions } = await import("../src/lib/agent/ledger.js");
+
+  function round(ids) {
+    const session = new GameSession(starterSpec("bout"), { rival: "0g" });
+    for (const id of ids) session.plan(["left"]);
+    for (let i = 0; i < 50; i += 1) session.tick(16);
+    return { spec: session.spec, ...session.recording, decisions: ids.map((requestId) => ({ t: 0, requestId })) };
+  }
+
+  it("refuses one decision used twice in a round, and a decision already stored", () => {
+    recordDecision("req-once", { plan: ["left"], trace: { requestId: "req-once" } });
+    const twice = round(["req-once", "req-once"]);
+    assert.throws(() => checkEpisode(twice, twice.spec), /appears twice/);
+
+    const once = round(["req-once"]);
+    assert.doesNotThrow(() => checkEpisode(once, once.spec));
+    spendDecisions(["req-once"]);
+    assert.throws(() => checkEpisode(once, once.spec), /not issued by this server/);
+  });
+});
