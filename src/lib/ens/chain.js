@@ -1,7 +1,7 @@
 // ENSv2 on chain: publish a game as a subname, and read a game back from a name. Server only,
 // because publishing signs with the registrar key.
 import {
-  createPublicClient, createWalletClient, encodeFunctionData, http, isAddress, keccak256, labelhash, parseAbi, parseEventLogs,
+  createPublicClient, createWalletClient, encodeFunctionData, fallback, http, isAddress, keccak256, labelhash, parseAbi, parseEventLogs,
   toHex, zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -91,12 +91,27 @@ export function ensConfig(env = process.env) {
   return config;
 }
 
+// viem's built-in Sepolia RPC (thirdweb) answers 429 once its free quota is used, and viem then
+// waits out Retry-After, so on 2026-11-07 /play/<name> hung 90 s and a publish never finished.
+// ENS_RPC_URL goes first, then two keyless public endpoints, then viem's own. Each gets 8 s and no
+// retry of its own, so a dead one costs seconds and the next takes over.
+export const PUBLIC_RPCS = {
+  sepolia: ["https://ethereum-sepolia-rpc.publicnode.com", "https://sepolia.gateway.tenderly.co"],
+};
+
+// undefined at the end is viem's own RPC for the chain.
+export const rpcUrls = (config) => [...new Set([config.rpcUrl, ...(PUBLIC_RPCS[config.chainName] ?? [])].filter(Boolean)), undefined];
+
+export function rpcTransport(config, { batch = false } = {}) {
+  return fallback(rpcUrls(config).map((url) => http(url, { batch, timeout: 8000, retryCount: 0 })), { retryCount: 1 });
+}
+
 export function publicClient(config) {
-  return createPublicClient({ chain: config.deployment.chain, transport: http(config.rpcUrl, { batch: true }) });
+  return createPublicClient({ chain: config.deployment.chain, transport: rpcTransport(config, { batch: true }) });
 }
 
 export function walletClient(config, key) {
-  return createWalletClient({ account: privateKeyToAccount(key), chain: config.deployment.chain, transport: http(config.rpcUrl) });
+  return createWalletClient({ account: privateKeyToAccount(key), chain: config.deployment.chain, transport: rpcTransport(config) });
 }
 
 export const dnsEncode = (name) => toHex(packetToBytes(name));

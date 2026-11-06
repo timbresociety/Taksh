@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { normalize } from "viem/ens";
-import { CREATOR_TOKEN_ROLES, ROLES, admin, ensConfig } from "../src/lib/ens/chain.js";
+import { CREATOR_TOKEN_ROLES, PUBLIC_RPCS, ROLES, admin, ensConfig, rpcUrls } from "../src/lib/ens/chain.js";
 import { KEYS, MAX_LABEL, MAX_SPEC_BYTES, recordsToSpec, slugLabel, specToRecords } from "../src/lib/ens/records.js";
 import { starterSpec } from "../src/lib/spec/starter.js";
 import { validateSpec } from "../src/lib/spec/validate.js";
@@ -106,5 +106,11 @@ describe("config and roles", () => {
     assert.equal(ROLES.canTransferAdmin, (1n << 28n) << 128n);
     assert.equal(CREATOR_TOKEN_ROLES & ROLES.registrar, 0n);
     assert.ok(CREATOR_TOKEN_ROLES & ROLES.setResolver);
+  });
+
+  it("tries ENS_RPC_URL first, then keyless public RPCs, and viem's rate-limited default last", () => {
+    const urls = rpcUrls(ensConfig({ ENS_PARENT_NAME: "games.eth", ENS_RPC_URL: "https://mine.example" }));
+    assert.deepEqual(urls, ["https://mine.example", ...PUBLIC_RPCS.sepolia, undefined]);
+    assert.deepEqual(rpcUrls(ensConfig({ ENS_PARENT_NAME: "games.eth", ENS_RPC_URL: PUBLIC_RPCS.sepolia[0] })), [...PUBLIC_RPCS.sepolia, undefined]);
   });
 });
