@@ -35,6 +35,7 @@ export const BODIES = [
   { id: "peasant-male", label: "Villager, male" },
   { id: "dabbawala", label: "Dabbawala" },
   { id: "fisherman", label: "Koli fisherman" },
+  { id: "ravana", label: "Ravana" },
 ];
 
 export const HAIR = ["simple-parted", "long", "buns", "buzzed", "buzzed-female", "none"];
