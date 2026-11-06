@@ -82,6 +82,7 @@ const PUNCH_MAX_RISE = 0.35; // torso lengths above the shoulder; higher is arms
 const PUNCH_MAX_DROP = 3; // torso lengths per second; a hand swinging past the shoulder this fast is no punch
 
 const SHOULDER_POINTS = [LM.leftShoulder, LM.rightShoulder];
+const HIP_POINTS = [LM.leftHip, LM.rightHip];
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 const clampUnit = (value) => Math.min(1, Math.max(-1, value));
@@ -189,8 +190,8 @@ export const CARDIO_MOVES = [
 
 // The live reading behind each gated move, for practice meters and the input lab.
 export const MOVE_READINGS = {
-  step_left: { gate: "step", read: (f) => -f.hipOffset },
-  step_right: { gate: "step", read: (f) => f.hipOffset },
+  step_left: { gate: "step", read: (f) => -f.stepOffset },
+  step_right: { gate: "step", read: (f) => f.stepOffset },
   jump: { gate: "jump", read: (f) => (f.feetLifted ? f.hipRise : 0) },
   squat_down: { gate: "squat", read: (f) => f.squat },
   lean_left: { gate: "lean", read: (f) => -f.lean },
@@ -602,7 +603,7 @@ export class GestureEngine {
   // stands. Coming back to the middle is a step too, marked so the input lab can tell it apart.
   updateZone(f, emit) {
     const { enter, exit } = THRESHOLDS.step;
-    const offset = f.hipOffset;
+    const offset = f.stepOffset;
     const magnitude = Math.abs(offset);
     if (this.zone === 0 && magnitude >= enter) {
       this.zone = Math.sign(offset);
@@ -695,6 +696,10 @@ export class GestureEngine {
     const heightRight = (shoulder.y - rightWrist.y) / u;
     const hipDrop = (hip.y - cal.hipY) / u;
     const hipOffset = (hip.x - cal.hipX) / u;
+    // Up close the hips may be below the frame, where MediaPipe only guesses them, so the shoulders
+    // carry a step. A whole-body step moves them a shoulder width, far more than a lean does.
+    const hipsSeen = visibility(points, HIP_POINTS) >= MIN_CONFIDENCE;
+    const stepOffset = upper && !hipsSeen ? (shoulder.x - cal.shoulderX) / u : hipOffset;
     const kneeLeft = kneeLift(points[LM.leftKnee], cal.thighLeft);
     const kneeRight = kneeLift(points[LM.rightKnee], cal.thighRight);
     const footOutLeft = (cal.leftAnkleX ?? cal.hipX - 0.22 * u) / u - leftAnkle.x / u;
@@ -755,6 +760,7 @@ export class GestureEngine {
       curlRight: curl(rightShoulder, points[LM.rightElbow], rightWrist),
       guard: 0.6 - Math.max(distance(leftWrist, nose), distance(rightWrist, nose)) / u,
       hipOffset,
+      stepOffset,
       reachLeft: reach(points[LM.leftShoulder], { wrist: leftWrist, dir: -1 }),
       reachRight: reach(points[LM.rightShoulder], { wrist: rightWrist, dir: 1 }),
       kickLeft: kick(leftAnkle, rightAnkle, -1),

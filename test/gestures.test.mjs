@@ -250,8 +250,9 @@ const strike = (pose, holdMs = 1500) => [move(350, REST, armsOf(pose)), hold(hol
 const EXERCISES = {
   squat: ["hop", squat(), ["squat_down", "squat_up"]],
   "squat as a duck": ["bout", squat(), ["squat_down"]],
-  lean_left: ["bout", [[260, ramp("lean", 0, -0.5)], [300, { lean: -0.5 }], [260, ramp("lean", -0.5, 0)]], ["lean_left"]],
-  lean_right: ["bout", [[260, ramp("lean", 0, 0.5)], [300, { lean: 0.5 }], [260, ramp("lean", 0.5, 0)]], ["lean_right"]],
+  "step left as a dodge": ["bout", [[300, ramp("x", 0, -0.9)], [400, { x: -0.9 }], [300, ramp("x", -0.9, 0)]], ["step_left", "step_right"]],
+  "step right as a dodge": ["bout", [[300, ramp("x", 0, 0.9)], [400, { x: 0.9 }], [300, ramp("x", 0.9, 0)]], ["step_right", "step_left"]],
+  "a lean is not a dodge": ["bout", [[260, ramp("lean", 0, -0.5)], [300, { lean: -0.5 }], [260, ramp("lean", -0.5, 0)]], []],
   punch_left: ["pads", oneArm("leftArm", FISTS, JAB, 120, 200), ["punch_left"]],
   punch_right: ["pads", oneArm("rightArm", FISTS, JAB, 120, 200), ["punch_right"]],
   hook_left: ["pads", oneArm("leftArm", HOOK_START, HOOK_END, 200, 300), ["hook_left"]],
@@ -381,9 +382,14 @@ describe("moves that used to be missed or double counted", () => {
     assert.deepEqual(playedIn("hop", body, down), ["squat_down", "squat_up"]);
   });
 
-  it("an upper-body player with hips out of view can slip", () => {
-    const slip = [[260, (p) => ({ lean: -0.5 * p, hide })], [300, { lean: -0.5, hide }], [260, (p) => ({ lean: -0.5 * (1 - p), hide })]];
-    assert.deepEqual(playedIn("bout", body, slip, { framing: "upper", hide }), ["lean_left"]);
+  it("an upper-body player with hips out of view can step aside", () => {
+    const step = [[300, (p) => ({ x: -0.9 * p, hide })], [400, { x: -0.9, hide }], [300, (p) => ({ x: -0.9 * (1 - p), hide })]];
+    assert.deepEqual(playedIn("bout", body, step, { framing: "upper", hide }), ["step_left", "step_right"]);
+  });
+
+  it("an upper-body player leaning with hips out of view does not step", () => {
+    const slip = [[260, (p) => ({ lean: -0.3 * p, hide })], [300, { lean: -0.3, hide }], [260, (p) => ({ lean: -0.3 * (1 - p), hide })]];
+    assert.deepEqual(playedIn("bout", body, slip, { framing: "upper", hide }), []);
   });
 
   it("an upper-body player with hips out of view can duck", () => {

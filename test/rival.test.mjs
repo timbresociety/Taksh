@@ -144,7 +144,7 @@ describe("0G rival episodes", async () => {
   });
 
   it("refuses a round that leaves out a plan 0G served in time, but not one the browser gave up on", async () => {
-    const cut = playRound({ jabEvery: 40 });
+    const cut = playRound({ jabEvery: 60 });
     const dropped = cut.raw.decisions[1].requestId;
     assert.ok(cut.raw.decisions[1].t < cut.raw.dts.reduce((sum, dt) => sum + dt, 0) - 3000, "a plan from mid-round");
     let seen = 0;
@@ -159,11 +159,13 @@ describe("0G rival episodes", async () => {
 
   it("refuses a round cut short, and a dropped plan even when pauses put the game clock behind", async () => {
     const short = playRound();
-    short.raw.dts = short.raw.dts.slice(0, -40);
+    // Cut after the last plan, so what is refused is the missing end and not a missing plan.
+    const lastPlan = Math.max(...short.raw.log.filter(([, kind]) => kind === "plan").map(([step]) => step));
+    short.raw.dts = short.raw.dts.slice(0, Math.max(lastPlan + 1, short.raw.dts.length - 40));
     short.raw.log = short.raw.log.filter(([step]) => step < short.raw.dts.length);
     await assert.rejects(short.check(short.endsAt), /stops before it ended/);
 
-    const lagged = playRound({ jabEvery: 40, issueGapMs: 30000 });
+    const lagged = playRound({ jabEvery: 60, issueGapMs: 30000 });
     const dropped = lagged.raw.decisions.at(-1).requestId;
     let seen = 0;
     const last = lagged.raw.log.filter(([, kind]) => kind === "plan").length - 1;
