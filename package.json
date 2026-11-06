@@ -1,0 +1,27 @@
+{
+  "name": "taksh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/setup-mediapipe.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "models": "node scripts/check-models.mjs",
+    "eval": "node scripts/run-evals.mjs",
+    "replay": "node scripts/replay-trace.mjs",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@mediapipe/tasks-vision": "^1.2.2",
+    "next": "^16.4.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1"
+  }
+}

@@ -1,0 +1,53 @@
+[
+  {
+    "id": "clear-goalkeeper",
+    "kind": "clear",
+    "idea": "A pixel art goalkeeper. I step left and right to save shots in a packed stadium.",
+    "expect": { "status": "ready", "preset": "pixel", "requires": ["position"], "kinds": ["target"], "gestures": ["step_left", "step_right"] }
+  },
+  {
+    "id": "clear-robot",
+    "kind": "clear",
+    "idea": "Comic book chase: a huge robot attacks lanes and I dodge out of the way, jumping over sweeps.",
+    "expect": { "status": "ready", "preset": "comic", "requires": ["position", "up"], "kinds": ["hazard"] }
+  },
+  {
+    "id": "clear-boxing",
+    "kind": "clear",
+    "idea": "Neon boxing. Punch glowing pads with my left and right hands.",
+    "expect": { "status": "ready", "preset": "neon", "requires": ["strike_left", "strike_right"], "gestures": ["hand_left", "hand_right"] }
+  },
+  {
+    "id": "ambiguous",
+    "kind": "ambiguous",
+    "idea": "make me a cool workout game",
+    "answer": "Dodging attacks",
+    "expect": { "status": "clarify", "afterAnswer": "ready" }
+  },
+  {
+    "id": "unsupported-handstand",
+    "kind": "unsupported",
+    "idea": "A game where I do handstands and walk on my hands across a beach",
+    "expect": { "status": "unsupported" }
+  },
+  {
+    "id": "unsupported-two-player",
+    "kind": "unsupported",
+    "idea": "Two players fight each other on the same webcam with sword gestures",
+    "expect": { "status": "unsupported" }
+  },
+  {
+    "id": "revise-more-time",
+    "kind": "revision",
+    "base": "clear-robot",
+    "request": "give me more time to dodge",
+    "expect": { "metric": "hazardWarningMs", "direction": "up", "minChange": 1.25 }
+  },
+  {
+    "id": "revise-harder",
+    "kind": "revision",
+    "base": "clear-boxing",
+    "request": "make it much harder and faster",
+    "expect": { "metric": "gapMs", "direction": "down", "minChange": 1.05, "orMetric": "targetWarningMs" }
+  }
+]
