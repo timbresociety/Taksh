@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { gameFiles, readCover, tar } from "../src/lib/swarm/bee.js";
+import { cleanCover, gameFiles, readCover, tar } from "../src/lib/swarm/bee.js";
 
 const webp = readFileSync(new URL("../public/previews/game-bout.webp", import.meta.url));
 
@@ -17,6 +17,13 @@ describe("swarm", () => {
     assert.deepEqual(readFileSync(join(dir, "cover.webp")), webp);
     assert.deepEqual(JSON.parse(readFileSync(join(dir, "spec.json"), "utf8")).title, "Moon <Hop>");
     assert.match(readFileSync(join(dir, "index.html"), "utf8"), /<title>Moon &#60;Hop&#62;<\/title>/);
+  });
+
+  it("draws the cover again, so bytes after a valid image don't reach Swarm", async () => {
+    const tail = Buffer.from("<script>alert(1)</script>");
+    const cleaned = await cleanCover(`data:image/webp;base64,${Buffer.concat([webp, tail]).toString("base64")}`);
+    assert.ok(cleaned && !Buffer.from(cleaned).includes(tail));
+    assert.equal(await cleanCover(`data:image/webp;base64,${Buffer.from("RIFF\0\0\0\0WEBPjunkjunk").toString("base64")}`), null);
   });
 
   it("takes only a webp cover under 200 KB", () => {

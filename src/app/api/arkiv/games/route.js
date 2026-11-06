@@ -1,11 +1,14 @@
 import { cleanName, specHash, stableJson } from "@/lib/arkiv/schema";
 import { listGames, publishGame } from "@/lib/arkiv/store";
 import { validateSpec } from "@/lib/spec/validate";
-import { gameFiles, readCover, swarmOn, swarmUrl, uploadCollection } from "@/lib/swarm/bee";
+import { cleanCover, gameFiles, swarmOn, swarmUrl, uploadCollection } from "@/lib/swarm/bee";
+import { createBudget } from "@/lib/agent/budget";
 import { templateInfo } from "@/lib/templates";
 import { arkivRoute, badRequest, readBody, throttle } from "../_route";
 
 const MAX_SPEC_BYTES = 4096;
+// Each upload spends the postage batch, whoever asks.
+const swarmBudget = createBudget(20);
 
 export const dynamic = "force-dynamic";
 
@@ -26,10 +29,18 @@ export const POST = arkivRoute(async (request) => {
   throttle(request);
   const hash = await specHash(checked.spec);
   // A Swarm failure costs the game its cover, not its publish.
-  const cover = readCover(body.cover);
-  const upload = swarmOn() && cover
-    ? () => uploadCollection(gameFiles({ spec: checked.spec, cover, author: cleanName(body.author), playUrl: `${new URL(request.url).origin}/games` }))
-        .catch((error) => (console.error("Swarm upload failed:", error.message), null))
+  const upload = swarmOn() && body.cover
+    ? async () => {
+        try {
+          const cover = await cleanCover(body.cover);
+          if (!cover) return null;
+          swarmBudget();
+          return await uploadCollection(gameFiles({ spec: checked.spec, cover, author: cleanName(body.author), playUrl: `${new URL(request.url).origin}/games` }));
+        } catch (error) {
+          console.error("Swarm upload skipped:", error.message);
+          return null;
+        }
+      }
     : null;
   const published = await publishGame({ spec: checked.spec, hash, author: body.author, source: body.source, upload });
   return { available: true, hash, url: `/games/${published.key}`, ...published, swarm: published.swarmRef ? swarmUrl(published.swarmRef) : null };

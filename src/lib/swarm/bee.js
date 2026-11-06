@@ -77,6 +77,20 @@ ${playUrl ? `<p><a href="${escape(playUrl)}">Play it on Taksh</a></p>` : ""}`;
 
 // A cover from the browser: a webp data URL, checked by its magic bytes, at most 200 KB.
 export const MAX_COVER_BYTES = 200 * 1024;
+
+// Decoded and drawn again at 640x360, so only pixels reach Swarm, never bytes riding behind a
+// valid header. Returns null if it doesn't decode.
+export async function cleanCover(dataUrl) {
+  const bytes = readCover(dataUrl);
+  if (!bytes) return null;
+  const { default: sharp } = await import("sharp");
+  try {
+    return new Uint8Array(await sharp(bytes, { limitInputPixels: 4096 * 4096 }).resize(640, 360, { fit: "cover" }).webp({ quality: 80 }).toBuffer());
+  } catch {
+    return null;
+  }
+}
+
 export function readCover(dataUrl) {
   const prefix = "data:image/webp;base64,";
   if (typeof dataUrl !== "string" || !dataUrl.startsWith(prefix) || dataUrl.length > MAX_COVER_BYTES * 1.4) return null;
