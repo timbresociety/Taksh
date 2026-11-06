@@ -16,7 +16,8 @@
     "assets": "node scripts/build-assets.mjs",
     "previews": "node scripts/capture-previews.mjs",
     "world:check": "node scripts/world-check.mjs",
-    "replay-episode": "node scripts/replay-episode.mjs"
+    "replay-episode": "node scripts/replay-episode.mjs",
+    "ens:setup": "node --env-file=.env.local scripts/ens-setup.mjs"
   },
   "dependencies": {
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.13",

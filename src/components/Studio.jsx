@@ -18,7 +18,7 @@ async function post(path, body) {
   return data;
 }
 
-// initialGame opens straight on the brief, as a shared game from Arkiv does.
+// initialGame opens straight on the brief, as a shared game from Arkiv or ENS does.
 export default function Studio({ initialGame = null }) {
   const [stage, setStage] = useState(initialGame ? "brief" : "idea");
   const [status, setStatus] = useState(null);

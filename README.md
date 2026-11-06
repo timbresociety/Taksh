@@ -152,6 +152,53 @@ Also confirmed on the production build:
 4. Tune `THRESHOLDS` in `src/lib/motion/gestures.js` if needed.
 5. Open `/debug/cursor` and touch the 24 dots. It reports dots reached, dots missed and average time for each hand, on its own side and across the body, plus how much a still hand wobbles. Results save as `taksh-drill-cursor-*.json`, which git ignores.
 
+## Games as ENS names
+
+Every published game is an ENSv2 subname on Sepolia, such as `moon-hop.taksh-games.eth`, and the game itself is stored in that name's text records. `/play/<name>` resolves the name through the ENS Universal Resolver on every visit, rebuilds the spec from the records, runs it through `src/lib/spec/validate.js` and loads it. There is no copy of a published game anywhere else, so a name that stops resolving is a game that stops loading.
+
+Records on each game name:
+
+| Key | Holds |
+| --- | --- |
+| `taksh.spec` | The whole spec as JSON, up to 4096 bytes |
+| `taksh.template`, `taksh.world`, `taksh.style`, `taksh.title` | Single fields. When one differs from the spec, it wins, so an owner who changes `taksh.world` to `moon` in the ENS app moves the game to the moon |
+| `description`, `url` | The objective and the `/play` link, for ordinary ENS clients |
+
+What happens on publish, from the result screen:
+
+1. The registrar wallet deploys a Permissioned Resolver for this one game through the Verifiable Factory. `initialize()` grants every resolver role to the creator and writes the text records in the same transaction. The registrar holds no role on it afterwards.
+2. The registrar registers the label in the parent's UserRegistry, with the creator as owner, that resolver, and the same token roles the .eth registrar gives a registrant: set resolver, set subregistry, and transfer.
+
+The creator enters an owner address when publishing. Left blank, the game goes to the parent name's owner. The private key stays in the API route (`src/app/api/ens/route.js`) and never reaches the browser.
+
+Roles, all from ENSv2 Enhanced Access Control:
+
+- The registrar wallet holds `ROLE_REGISTRAR` on the game registry and nothing else. It can issue a new name. It can't change, remove or take back a published game.
+- The parent owner holds only registrar and renew roles and their admins on the game registry, so the registry reports `isEmancipated() == true`. Nobody can unregister a game or swap its resolver except its owner.
+- The parent name's own resolver has an ENSIP-26 `agent-context` record that describes the game generator and the record layout above.
+
+Set it up:
+
+```bash
+# put ENS_PARENT_NAME, ENS_OWNER_PRIVATE_KEY and ENS_REGISTRAR_PRIVATE_KEY in .env.local
+npm run ens:setup
+```
+
+The setup registers the parent through the ENSv2 ETH Registrar (commit, a 60 second wait, register), paid in Sepolia MockUSDC, which anyone can mint. It deploys the parent's resolver and the game registry, grants the registrar its one role and sends it 0.01 ETH for gas. Run it again and it skips whatever the chain shows as done. The owner key needs about 0.02 Sepolia ETH. A publish is two transactions, about 5.1M gas in all: 4.5M to deploy the game's resolver and 0.6M to register the name. At 20 gwei that is about 0.1 ETH, so top up the registrar before a busy demo.
+
+Contract addresses come from the Sepolia (ENSv2) table at https://docs.ens.domains/learn/deployments and live in `src/lib/ens/chain.js`. The Universal Resolver address comes from viem, as the ENS docs ask. The parent name and keys come from env. Without them, or with the RPC down, games still play, the result screen says publishing is unavailable, and `/play/<name>` says ENS could not be reached.
+
+The publish route allows 10 publishes a minute across all callers and refuses a spec over 4 KB. A starter spec is about 600 bytes.
+
+Tested on an anvil fork of Sepolia first: setup, two publishes, `/play/<name>` loading both, a taken name refused, and the role checks above read back from the contracts. Then on live Sepolia (2026-11-06):
+
+| | |
+| --- | --- |
+| Parent | `taksh-games.eth`, registered in [`0x12128e2d…bb26ca`](https://sepolia.etherscan.io/tx/0x12128e2da3dc7986f88381e84a419883d86d3ec93aac658da49f38c813bb26ca), expires 2027-11-06 |
+| Game registry | `0xcA36D4cAbC9A10d3fbeFDBc2D4CA7Fa5ce4ecD43`, `isEmancipated() == true` |
+| First game | `mumbai-monsoon-bout.taksh-games.eth`, registered in [`0x1b70d81a…2b8e`](https://sepolia.etherscan.io/tx/0x1b70d81acfa561a7ffb04de9843e09f25277238e0b8874df7f4260f3fa9e2b8e), resolver `0x8c560120F72ceD142cdf19f67C3Fde5C28Bf0100` |
+| Play | `/play/mumbai-monsoon-bout.taksh-games.eth` loads the game from its text records |
+
 ## How it fits together
 
 - `src/lib/spec`: the versioned `GameSpec` contract, its validator, revision comparison and starter specs.
