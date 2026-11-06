@@ -10,7 +10,7 @@ import { WRITE_MS, arkiv, connect, read } from "./store.js";
 
 export const Decisions = defineSchema("taksh.rival.decisions.v1", {
   roundId: str().indexed(),
-  requestId: str().indexed(),
+  requestId: str(), // read back with the round, never filtered on, so not indexed
   askedAt: u64(),
   issuedAt: u64(),
   record: bytes(), // plan, read, observation and 0G trace, as JSON

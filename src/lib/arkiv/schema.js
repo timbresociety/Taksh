@@ -35,9 +35,9 @@ export const Scores = defineSchema("taksh.scores.v1", {
 });
 
 export const Games = defineSchema("taksh.games.v1", {
-  template: str().indexed(),
-  world: str().indexed(),
-  style: str().indexed(),
+  template: str().indexed(), // the gallery's game filter
+  world: str().indexed(), // the gallery's world filter
+  style: str(), // shown on the card, not filtered on
   specHash: str().indexed(),
   title: str(),
   author: str(),
