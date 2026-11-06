@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import PublishGame from "./PublishGame";
 
 const SUGGESTIONS = ["Give me more time", "Make it harder", "Switch it to neon"];
 
@@ -91,6 +92,7 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
             Back to all games
           </button>
         </div>
+        <PublishGame key={JSON.stringify(spec)} spec={spec} />
         <details className="spec-json">
           <summary>GameSpec</summary>
           <pre>{JSON.stringify(spec, null, 2)}</pre>
