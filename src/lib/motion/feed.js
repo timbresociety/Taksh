@@ -1,6 +1,7 @@
 // Browser-only: opens the camera and runs MediaPipe Pose Landmarker from this app's own origin.
 // No video frame leaves the machine.
 import { FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
+import { openCamera, pickCamera, saveCamera } from "./camera.js";
 import { LandmarkSmoother, normalizeLandmarks } from "./landmarks.js";
 
 async function createLandmarker(model, delegate) {
@@ -32,10 +33,7 @@ export class PoseFeed {
     this.video = video;
     // Browsers remove mediaDevices entirely on plain http addresses other than localhost.
     if (!navigator.mediaDevices) throw new DOMException("The camera needs a secure address", "InsecureContextError");
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: "user" },
-    });
+    this.stream = await openCamera();
     video.srcObject = this.stream;
     await video.play();
 
@@ -60,6 +58,22 @@ export class PoseFeed {
     this.loop += 1;
     this.schedule();
     return video.play();
+  }
+
+  get deviceId() {
+    return this.stream?.getVideoTracks()[0]?.getSettings().deviceId ?? null;
+  }
+
+  // Swaps the camera under a running tracker. The new stream opens before the old one closes, so a
+  // camera that fails to open leaves the player on the one that worked.
+  async useCamera(deviceId) {
+    const stream = await pickCamera(deviceId);
+    this.stream?.getTracks().forEach((track) => track.stop());
+    this.stream = stream;
+    saveCamera(deviceId);
+    this.smoother = new LandmarkSmoother(); // the last camera's pose would be smoothed into the new one
+    this.lastVideoTime = -1;
+    return this.attach(this.video);
   }
 
   schedule() {
