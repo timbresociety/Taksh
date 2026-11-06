@@ -11,17 +11,21 @@ export function recordDecision(requestId, decision) {
   if (issued.size > LIMIT) issued.delete(issued.keys().next().value);
 }
 
-// A decision backs one stored episode, once. It is spent only after the upload succeeds, so a round
-// that failed to store (an empty wallet, say) can be sent again.
+// A decision backs one stored episode, once. checkEpisode reserves it in the same synchronous step
+// as the check, so two uploads racing on one decision can't both pass. A failed upload releases it,
+// so a round that failed to store (an empty wallet, say) can be sent again.
 // ponytail: not bound to the caller. Add a per-round nonce from /api/rival/decide if rounds get stolen.
 export const issuedDecision = (requestId) => {
   const decision = issued.get(requestId);
-  return decision && !decision.spent ? decision : undefined;
+  return decision && !decision.state ? decision : undefined;
 };
 
-export function spendDecisions(requestIds) {
+const mark = (requestIds, state) => {
   for (const id of requestIds) {
     const decision = issued.get(id);
-    if (decision) decision.spent = true;
+    if (decision) decision.state = state;
   }
-}
+};
+export const reserveDecisions = (requestIds) => mark(requestIds, "pending");
+export const releaseDecisions = (requestIds) => mark(requestIds, undefined);
+export const spendDecisions = (requestIds) => mark(requestIds, "spent");

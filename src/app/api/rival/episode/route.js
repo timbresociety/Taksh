@@ -3,7 +3,7 @@ import { uploadEpisode } from "@/lib/agent/storage";
 import { MAX_EPISODE_BYTES, checkEpisode } from "@/lib/agent/episode";
 import { validateSpec } from "@/lib/spec/validate";
 import { createBudget } from "@/lib/agent/budget";
-import { spendDecisions } from "@/lib/agent/ledger";
+import { releaseDecisions, spendDecisions } from "@/lib/agent/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +22,17 @@ export async function POST(request) {
     const checked = validateSpec(raw?.spec);
     if (!checked.ok) return Response.json({ error: "That is not a Taksh episode." }, { status: 400 });
     const episode = checkEpisode(raw, checked.spec);
-    spend();
-    const replayed = replayEpisode(episode);
-    const stored = await uploadEpisode({ ...episode, replayed, storedAt: new Date().toISOString() });
-    spendDecisions(episode.decisions.map((decision) => decision.requestId));
-    return Response.json({ ...stored, replayed });
+    const ids = episode.decisions.map((decision) => decision.requestId);
+    try {
+      spend();
+      const replayed = replayEpisode(episode);
+      const stored = await uploadEpisode({ ...episode, replayed, storedAt: new Date().toISOString() });
+      spendDecisions(ids);
+      return Response.json({ ...stored, replayed });
+    } catch (error) {
+      releaseDecisions(ids);
+      throw error;
+    }
   } catch (error) {
     return Response.json({ error: error.expose ? error.message : "0G Storage did not respond.", rootHash: error.rootHash }, { status: error.status ?? 502 });
   }

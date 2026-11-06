@@ -119,7 +119,7 @@ describe("0G rival episodes", async () => {
 
 describe("0G rival decisions are single-use", async () => {
   const { checkEpisode } = await import("../src/lib/agent/episode.js");
-  const { recordDecision, spendDecisions } = await import("../src/lib/agent/ledger.js");
+  const { recordDecision, releaseDecisions, spendDecisions } = await import("../src/lib/agent/ledger.js");
 
   function round(ids) {
     const session = new GameSession(starterSpec("bout"), { rival: "0g" });
@@ -135,7 +135,11 @@ describe("0G rival decisions are single-use", async () => {
 
     const once = round(["req-once"]);
     assert.doesNotThrow(() => checkEpisode(once, once.spec));
+    assert.throws(() => checkEpisode(once, once.spec), /not issued by this server/, "a second upload racing the first is refused");
+    releaseDecisions(["req-once"]);
+    assert.doesNotThrow(() => checkEpisode(once, once.spec), "a failed upload frees the round to be sent again");
     spendDecisions(["req-once"]);
+    releaseDecisions([]);
     assert.throws(() => checkEpisode(once, once.spec), /not issued by this server/);
   });
 });

@@ -1,7 +1,7 @@
 // Checks a round sent by the browser and rebuilds the only object that gets stored. Moves and step
 // times come from the browser, so the score is still the browser's word. The 0G decisions do not:
 // each one must match what /api/rival/decide recorded, or the episode is refused.
-import { issuedDecision } from "./ledger.js";
+import { issuedDecision, reserveDecisions } from "./ledger.js";
 
 export const MAX_EPISODE_BYTES = 512 * 1024;
 const MAX_STEPS = 30000; // 120 s at 250 fps
@@ -38,5 +38,7 @@ export function checkEpisode(raw, spec) {
   });
   const safeStops = decisions.filter((decision) => decision?.safeStop).length;
 
+  // No await between the checks above and this line, so nothing else can claim these decisions first.
+  reserveDecisions(verified.map((decision) => decision.requestId));
   return { version: 1, spec, options: { rival: "0g" }, dts, log, decisions: verified, safeStops };
 }
