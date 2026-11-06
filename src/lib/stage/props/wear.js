@@ -1,5 +1,6 @@
 // What a character wears or carries that the rig cannot: rigid pieces that ride on one bone.
 import * as THREE from "three";
+import { addCrown, addHeads } from "./bosses.js";
 import { forge } from "./forge.js";
 
 // Sets object on a bone so that, in the rest pose, it stands at the bone plus at (metres, world axes)
@@ -84,5 +85,10 @@ export const WEAR = {
   fisherman(character) {
     wearOnBone(character, "Head", piece(headCloth), [0, 0.105, 0.015]);
     wearOnBone(character, "clavicle_l", piece(netCoil), [0.17, -0.02, 0]);
+  },
+  // Nine more heads beside his own, merged so the row costs a few draw calls, and his own crowned.
+  ravana(character) {
+    addHeads(character, 9);
+    addCrown(character);
   },
 };

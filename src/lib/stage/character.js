@@ -17,6 +17,8 @@ const BODY_FILES = {
   // the real tunic and trousers from the villager outfit go over it, re-tailored by CLOTHES.
   dabbawala: { file: "body-male", sex: "male", clothed: true, hair: "buzzed", outfit: { top: "#f6f2e6", bottom: "#efe9da", shoes: "#5c3a20", cut: { sleeve: 0.74, topHem: 0.2, bottomHem: -0.875, shoe: -0.975 } } },
   fisherman: { file: "body-male", sex: "male", clothed: true, hair: "buzzed", outfit: { top: "#8fb4c2", bottom: "#2d4f9e", shoes: "#000000", cut: { sleeve: 0.3, topHem: 0.2, bottomHem: -0.3, shoe: -9 } } },
+  // The Twin Sights boss at a person's size: his colours here, his heads and crown in WEAR.
+  ravana: { file: "body-male", sex: "male", clothed: true, hair: "none", outfit: { top: "#8a1420", bottom: "#d9a441", shoes: "#5a1220" } },
 };
 
 // Where the painted clothes stop, in bind coordinates: how far down the arm a sleeve reaches, and the
