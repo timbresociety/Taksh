@@ -1,8 +1,8 @@
 // ENSv2 on chain: publish a game as a subname, and read a game back from a name. Server only,
 // because publishing signs with the registrar key.
 import {
-  createPublicClient, createWalletClient, encodeFunctionData, fallback, http, isAddress, keccak256, labelhash, parseAbi, parseEventLogs,
-  toHex, zeroAddress,
+  createPublicClient, createWalletClient, encodeFunctionData, fallback, http, isAddress, keccak256, labelhash, nonceManager, parseAbi,
+  parseEventLogs, toHex, zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
@@ -114,8 +114,10 @@ export function publicClient(config) {
   return createPublicClient({ chain: config.deployment.chain, transport: rpcTransport(config, { batch: true }) });
 }
 
+// A publish and a rival round can sign from the registrar wallet at the same moment. viem's nonce
+// manager hands out nonces in order within this process, so the two don't collide.
 export function walletClient(config, key) {
-  return createWalletClient({ account: privateKeyToAccount(key), chain: config.deployment.chain, transport: rpcTransport(config) });
+  return createWalletClient({ account: privateKeyToAccount(key, { nonceManager }), chain: config.deployment.chain, transport: rpcTransport(config) });
 }
 
 export const dnsEncode = (name) => toHex(packetToBytes(name));

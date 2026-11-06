@@ -9,6 +9,9 @@ export async function generateMetadata({ params }) {
 }
 
 const short = (hex) => `${hex.slice(0, 6)}…${hex.slice(-4)}`;
+// Anyone can write these keys on a name they own, so a value is shown as a round only when it is a
+// 0G Storage root hash, and the score only when it is a number.
+const ROOT_HASH = /^0x[0-9a-f]{64}$/i;
 const date = (expiry) => new Date(Number(expiry) * 1000).toISOString().slice(0, 10);
 
 function Address({ explorer, value }) {
@@ -45,6 +48,11 @@ export default async function NamePage({ params }) {
   const parent = view.path.at(-2);
   const writable = view.serverKeys.filter((grant) => grant.canWrite);
   const allResolverRoles = view.ownerResolverRoles.length === 20;
+  const lastEpisode = ROOT_HASH.test(records[LAST_EPISODE] ?? "") ? records[LAST_EPISODE] : null;
+  // A round block claims the Taksh server wrote it, so it needs the server's grant on this resolver.
+  const serverWrote = (key) => view.serverKeys.some((grant) => grant.key === key && grant.canWrite);
+  const round = ROOT_HASH.test(records[ROUND_KEYS.episode] ?? "") && serverWrote(ROUND_KEYS.episode) ? records[ROUND_KEYS.episode] : null;
+  const score = round && /^\d{1,9}$/.test(records[ROUND_KEYS.score] ?? "") && serverWrote(ROUND_KEYS.score) ? records[ROUND_KEYS.score] : null;
 
   return (
     <main className="shelf-page">
@@ -127,23 +135,23 @@ export default async function NamePage({ params }) {
             <h2>The agent behind this name</h2>
             <p>ENSIP-26 records. An agent or a person can read what it is and where to reach it from the name alone.</p>
             <pre className="ens-name__context" data-testid="ens-agent-context">{records["agent-context"]}</pre>
-            {records[LAST_EPISODE] && (
+            {lastEpisode && (
               <p data-testid="ens-last-episode">
-                Its latest round on 0G Storage is <code>{short(records[LAST_EPISODE])}</code>, named{" "}
-                <Link href={`/name/${roundLabel(records[LAST_EPISODE])}.${view.name}`}>{roundLabel(records[LAST_EPISODE])}.{view.name}</Link>. Replay it with{" "}
-                <code>npm run replay-episode -- {records[LAST_EPISODE]}</code>.
+                Its latest round on 0G Storage is <code>{short(lastEpisode)}</code>, named{" "}
+                <Link href={`/name/${roundLabel(lastEpisode)}.${view.name}`}>{roundLabel(lastEpisode)}.{view.name}</Link>. Replay it with{" "}
+                <code>npm run replay-episode -- {lastEpisode}</code>.
               </p>
             )}
           </>
         )}
 
-        {records[ROUND_KEYS.episode] && (
+        {round && (
           <>
             <h2>A round the rival fought</h2>
             <p data-testid="ens-round">
-              {records[ROUND_KEYS.score] && <>The server replayed it to a score of {records[ROUND_KEYS.score]}. </>}
-              The whole round is on 0G Storage at <code>{short(records[ROUND_KEYS.episode])}</code>, with the 0G request ID of every
-              decision the rival made. Replay it with <code>npm run replay-episode -- {records[ROUND_KEYS.episode]}</code>.
+              {score && <>The server replayed it to a score of {score}. </>}
+              The whole round is on 0G Storage at <code>{short(round)}</code>, with the 0G request ID of every
+              decision the rival made. Replay it with <code>npm run replay-episode -- {round}</code>.
             </p>
           </>
         )}
