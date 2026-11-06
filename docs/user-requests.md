@@ -94,9 +94,6 @@ design by following the "Building it" section of that skill. `npx workflow web` 
 - No request has been sent to a real model: there was no key. The steps were tested on fixtures,
   slowed down, and against a stand-in that refuses with a 401. Once `OG_API_KEY` is set, send a
   handful of real requests of each kind before opening this to players, and read what comes back.
-- With the Arkiv pull request (#2), a game in a made world publishes and loads, but a leaderboard
-  filtered by world refuses a made world's id (`readScope` checks the built-in list). Boards
-  scoped by spec hash work.
 - Made worlds and styles are checked by code, not by eye. A model can still pick colours that pass
   the contrast checks and look wrong. `npm run world:check` takes a world id from `WORLD_LOOKS`; it
   does not yet render a made world.

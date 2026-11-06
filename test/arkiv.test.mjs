@@ -84,6 +84,8 @@ describe("arkiv queries", () => {
     assert.deepEqual(readScope(params({ template: "hop", world: "moon", style: "neon", mode: "camera" })), { template: "hop", world: "moon", style: "neon", mode: "camera" });
     assert.throws(() => readScope(params({ template: "tetris" })), /Unknown template/);
     assert.throws(() => readScope(params({ template: "hop", world: "mars" })), /Unknown world/);
+    assert.deepEqual(readScope(params({ template: "hop", world: "made-world-goa-sunset-ab12", style: "made-style-noir-cd34" })), { template: "hop", world: "made-world-goa-sunset-ab12", style: "made-style-noir-cd34" });
+    assert.throws(() => readScope(params({ template: "hop", world: "made-style-noir-cd34" })), /Unknown world/);
     assert.throws(() => readScope(params({ template: "hop", hash: "') OR 1=1" })), /Unknown hash/);
   });
 

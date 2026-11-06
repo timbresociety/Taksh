@@ -6,6 +6,7 @@ import { PROP_NAMES } from "../stage/props/index.js";
 import { LOOKS } from "../stage/styles.js";
 import { checkWorld } from "../stage/world-check.js";
 import { WORLD_LOOKS } from "../stage/worlds.js";
+import { MADE_ID } from "./made-id.js";
 
 const COLOUR = /^#[0-9a-f]{6}$/i;
 const isColour = (value) => typeof value === "string" && COLOUR.test(value);
@@ -37,7 +38,7 @@ for (const entry of baseEntries.filter((item) => item !== "house")) {
 }
 
 export const slug = (text) => text.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "made";
-export const MADE_ID = /^made-(world|style)-[a-z0-9-]{1,32}-[a-z0-9]{4,8}$/;
+export { MADE_ID };
 
 export function worldLook(made) {
   const base = WORLD_LOOKS[made.base];
