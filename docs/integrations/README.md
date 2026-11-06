@@ -8,6 +8,7 @@ Source: https://ethglobal.com/events/mumbai/prizes (pulled 2026-11-06). Taksh pl
 | `arkiv.md` | Every page in the Arkiv docs: schemas, writes, queries, React guide, JSON-RPC, limits |
 | `ens-v2.md` | 22 ENSv2 pages plus Building with AI, ENSIP-25 and ENSIP-26 |
 | `*-llms.txt` | Each site's page index, for fetching anything not saved here |
+| `prizes.md` | The whole prize page: every sponsor, track, payout and requirement |
 
 Tracks marked (Continuity) are only for projects in the Continuity batch. Taksh is a new project, so those are skipped.
 
