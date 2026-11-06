@@ -10,11 +10,15 @@ const SAME_ACTION_MS = 350; // a high-knee jump may trip two gestures bound to o
 const LOG_LENGTH = 6;
 
 export class GameSession {
-  constructor(spec, { usesCamera = false } = {}) {
+  constructor(spec, { usesCamera = false, rival } = {}) {
     this.spec = spec;
     this.usesCamera = usesCamera;
     this.template = templateInfo(spec.template);
-    this.state = this.template.create(spec);
+    this.options = rival ? { rival } : {};
+    this.state = this.template.create(spec, this.options);
+    // Every step's dt, and each move or plan with the step it came before, so replayEpisode() can play
+    // the round again exactly.
+    this.recording = { dts: [], log: [] };
     this.phase = "countdown"; // countdown | playing | paused | ended
     this.countdownMs = COUNTDOWN_MS;
     this.clock = 0;
@@ -47,6 +51,13 @@ export class GameSession {
     this.act(action);
   }
 
+  // A plan from the rival's brain, for templates that have one.
+  plan(sides) {
+    if (!this.template.plan || this.phase === "ended") return;
+    this.recording.log.push([this.recording.dts.length, "plan", sides]);
+    this.template.plan(this.state, sides);
+  }
+
   // Games with a hand on screen read positions rather than moves. x and y run from -1 to 1, y up.
   handleAim(aim) {
     if (this.phase === "playing") this.template.aim?.(this.state, aim);
@@ -63,6 +74,7 @@ export class GameSession {
   }
 
   act(action) {
+    this.recording.log.push([this.recording.dts.length, "act", action]);
     this.actionCount += 1;
     this.pending.push({ type: "action", action }, ...this.template.act(this.state, action));
   }
@@ -93,6 +105,7 @@ export class GameSession {
         this.countdownMs = null;
       }
     } else if (this.phase === "playing") {
+      this.recording.dts.push(dtMs);
       events.push(...this.template.step(this.state, dtMs));
       if (this.state.status === "ended") this.phase = "ended";
     }
@@ -104,6 +117,30 @@ export class GameSession {
   }
 
   result() {
-    return { ...this.template.result(this.state), actions: this.actionCount };
+    return { ...this.template.result(this.state), actions: this.actionCount, ms: this.state.t };
   }
+}
+
+// Plays a recorded round again from its spec, step times, moves and plans. Aim is not recorded, so
+// this is exact for every template without a hand on screen.
+export function replayEpisode({ spec, options = {}, dts, log }, { onAct, onEnd } = {}) {
+  const template = templateInfo(spec.template);
+  const state = template.create(spec, options);
+  let next = 0;
+  const apply = (until) => {
+    for (; next < log.length && log[next][0] <= until; next += 1) {
+      const [, kind, value] = log[next];
+      if (kind === "act") {
+        onAct?.(state, value);
+        template.act(state, value);
+      }
+      else template.plan(state, value);
+    }
+  };
+  dts.forEach((dt, index) => {
+    apply(index);
+    template.step(state, dt);
+  });
+  onEnd?.(state);
+  return template.result(state);
 }

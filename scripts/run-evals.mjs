@@ -3,6 +3,8 @@
 //
 //   npm run eval                       default model, real provider
 //   npm run eval -- --model claude-sonnet-5-5
+//   npm run eval -- --provider 0g      0G router, private tier (default model glm-5.3)
+//   npm run eval -- --provider 0g --model 0gm-1.0-35b-a3b
 //   npm run eval -- --fixture          exercises this script only; proves nothing about a model
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -10,6 +12,7 @@ import { clarifyIdea, generateGame, reviseGame } from "../src/lib/pipeline/pipel
 import { PROMPT_VERSIONS } from "../src/lib/pipeline/prompts.js";
 import { checkClaude, createClaudeProvider, DEFAULT_MODEL } from "../src/lib/pipeline/provider-claude.js";
 import { createFixtureProvider } from "../src/lib/pipeline/provider-fixture.js";
+import { check0g, createOgProvider, OG_DEFAULT_MODEL } from "../src/lib/pipeline/provider-0g.js";
 import { simulate, templateInfo } from "../src/lib/templates/index.js";
 
 // The demo budget: type an idea, and be playing inside this many seconds.
@@ -17,18 +20,19 @@ const BUDGET_MS = { intent: 8000, generate: 30000, revise: 30000 };
 
 const args = process.argv.slice(2);
 const useFixture = args.includes("--fixture");
-const model = args.includes("--model") ? args[args.indexOf("--model") + 1] : DEFAULT_MODEL;
+const use0g = args.includes("--provider") && args[args.indexOf("--provider") + 1] === "0g";
+const model = args.includes("--model") ? args[args.indexOf("--model") + 1] : use0g ? OG_DEFAULT_MODEL : DEFAULT_MODEL;
 
 // A fixture run needs no credentials, so it never opens them.
 if (!useFixture) {
   if (existsSync(".env.local")) process.loadEnvFile(".env.local");
-  const check = await checkClaude(model);
+  const check = use0g ? await check0g({ model }) : await checkClaude(model);
   if (!check.ok) {
-    console.error(`Cannot reach ${model}: ${check.reason}\nAdd ANTHROPIC_API_KEY to .env.local, or run with --fixture to test this script.`);
+    console.error(`Cannot reach ${model}: ${check.reason}\nAdd ${use0g ? "OG_API_KEY" : "ANTHROPIC_API_KEY"} to .env.local, or run with --fixture to test this script.`);
     process.exit(2);
   }
 }
-const provider = useFixture ? createFixtureProvider() : createClaudeProvider({ model });
+const provider = useFixture ? createFixtureProvider() : use0g ? createOgProvider({ model }) : createClaudeProvider({ model });
 
 function keepsIdea(spec, expect) {
   const misses = [];

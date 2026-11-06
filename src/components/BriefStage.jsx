@@ -36,9 +36,23 @@ export function Controls({ spec }) {
   );
 }
 
-function LivePreview({ spec }) {
+// 640x360, the gallery card's shape, cut from the middle of the preview.
+function snapshot(canvas) {
+  const out = document.createElement("canvas");
+  out.width = 640;
+  out.height = 360;
+  const scale = Math.min(canvas.width / 640, canvas.height / 360);
+  const [w, h] = [640 * scale, 360 * scale];
+  out.getContext("2d").drawImage(canvas, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h, 0, 0, 640, 360);
+  return out.toDataURL("image/webp", 0.8);
+}
+
+// onCover gets a snapshot once the scene has run a second. It's the cover a published game gets.
+function LivePreview({ spec, onCover }) {
   const host = useRef(null);
   const [ready, setReady] = useState(false);
+  const cover = useRef(onCover);
+  cover.current = onCover;
 
   useEffect(() => {
     let alive = true;
@@ -52,9 +66,13 @@ function LivePreview({ spec }) {
       stage = made;
       setReady(true);
       let last = performance.now();
+      let frames = 0;
       const frame = (now) => {
         stage.frame(null, Math.min(50, now - last));
         last = now;
+        // Read in the same task as the render, before WebGL clears the buffer.
+        const canvas = host.current?.querySelector("canvas");
+        if (++frames === 60 && cover.current && canvas) cover.current(snapshot(canvas));
         raf = requestAnimationFrame(frame);
       };
       raf = requestAnimationFrame(frame);
@@ -104,7 +122,7 @@ function Swatches({ legend, colours, value, onChange }) {
   );
 }
 
-export default function BriefStage({ game, onChangeSkin, onPlay, onBack }) {
+export default function BriefStage({ game, onChangeSkin, onPlay, onBack, onCover }) {
   const { spec } = game;
   const template = templateInfo(spec.template);
   const [who, setWho] = useState("hero");
@@ -116,7 +134,7 @@ export default function BriefStage({ game, onChangeSkin, onPlay, onBack }) {
   return (
     <main className="look">
       <section className="look__stage">
-        <LivePreview key={JSON.stringify(skin) + who} spec={who === "rival" ? { ...spec, skin: { ...skin, hero: skin.rival } } : spec} />
+        <LivePreview key={JSON.stringify(skin) + who} spec={who === "rival" ? { ...spec, skin: { ...skin, hero: skin.rival } } : spec} onCover={who === "hero" ? onCover : undefined} />
       </section>
 
       <section className="look__panel">
