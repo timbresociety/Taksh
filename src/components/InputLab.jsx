@@ -14,7 +14,7 @@ const REPS = 6;
 
 // Bars show each live signal against its trigger threshold, in torso lengths.
 function readings(f) {
-  const { step, hand, kick, knee, jump, burpee } = THRESHOLDS;
+  const { step, hand, kick, knee, jump, burpee, squat, lean, punch, hook, uppercut, swing, reach, guard } = THRESHOLDS;
   return [
     ["Step", Math.abs(f.hipOffset), step.enter],
     ["Left hand", f.reachLeft, hand.enter],
@@ -25,11 +25,25 @@ function readings(f) {
     ["Right knee", f.kneeRight, knee.enter],
     ["Jump", f.feetLifted ? f.hipRise : 0, jump.enter],
     ["Burpee", f.burpee, burpee.enter],
+    ["Squat", f.squat, squat.enter],
+    ["Lean", Math.abs(f.lean), lean.enter],
+    ["Left punch", f.punchLeft, punch.enter],
+    ["Right punch", f.punchRight, punch.enter],
+    ["Left hook", f.hookLeft, hook.enter],
+    ["Right hook", f.hookRight, hook.enter],
+    ["Left uppercut", f.riseLeft, uppercut.enter],
+    ["Right uppercut", f.riseRight, uppercut.enter],
+    ["Swing", Math.abs(f.sweep), swing.enter],
+    ["Left reach", f.heightLeft, reach.enter],
+    ["Right reach", f.heightRight, reach.enter],
+    ["Guard", f.guard, guard.enter],
   ];
 }
 
+const DRILLABLE = GESTURES.filter((gesture) => !gesture.hidden);
+
 function emptyTotals() {
-  return Object.fromEntries(GESTURES.map((gesture) => [gesture.id, { prompts: 0, detected: 0, missed: 0, doubles: 0, wrong: 0 }]));
+  return Object.fromEntries(DRILLABLE.map((gesture) => [gesture.id, { prompts: 0, detected: 0, missed: 0, doubles: 0, wrong: 0 }]));
 }
 
 function download(name, data) {
@@ -56,7 +70,7 @@ export default function InputLab() {
   const [totals, setTotals] = useState(emptyTotals);
   const [prompt, setPrompt] = useState(null);
   const [falseFires, setFalseFires] = useState(0);
-  const [selected, setSelected] = useState(GESTURES.map((gesture) => gesture.id));
+  const [selected, setSelected] = useState(DRILLABLE.map((gesture) => gesture.id));
 
   async function start() {
     setState({ phase: "starting", message: "Starting the camera" });
@@ -80,7 +94,7 @@ export default function InputLab() {
 
   function onFrame({ points, raw, t, aspect }) {
     drawSkeleton(overlay.current, points, aspect);
-    if (raw) trace.current.frames.push({ t: Math.round(t), lm: raw.map((p) => [+p.x.toFixed(4), +p.y.toFixed(4), +(p.visibility ?? 0).toFixed(2)]) });
+    if (raw) trace.current.frames.push({ t: Math.round(t), lm: raw.map((p) => [+p.x.toFixed(4), +p.y.toFixed(4), +(p.visibility ?? 0).toFixed(2), +(p.z ?? 0).toFixed(4)]) });
     else trace.current.frames.push({ t: Math.round(t), lm: null });
     trace.current.aspect = aspect;
 
@@ -88,7 +102,7 @@ export default function InputLab() {
       const result = calibrator.current.push(points, t);
       setState((current) => ({ ...current, message: result.message, progress: result.progress }));
       if (result.done) {
-        engine.current = new GestureEngine(result.calibration);
+        engine.current = new GestureEngine(result.calibration, { moves: "all" });
         trace.current.calibration = result.calibration;
         trace.current.calibratedAt = Math.round(t);
         setState({ phase: "ready", message: "Calibrated. Try each move, or run a drill." });
@@ -99,7 +113,7 @@ export default function InputLab() {
     const result = engine.current.push(points, t);
     for (const event of result.events) {
       // Coming back to the middle after a step is part of that step, so a drill does not score it.
-      if (event.returning) continue;
+      if (event.returning || !DRILLABLE.some((gesture) => gesture.id === event.gesture)) continue;
       recordDrill(event);
     }
     if (result.events.length) {
@@ -253,7 +267,7 @@ export default function InputLab() {
         <p>Each move is prompted {REPS} times in random order. Do it once per prompt.</p>
         <fieldset className="drill-picks">
           <legend className="visually-hidden">Moves in the drill</legend>
-          {GESTURES.map((gesture) => (
+          {DRILLABLE.map((gesture) => (
             <label key={gesture.id}>
               <input
                 type="checkbox"

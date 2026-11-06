@@ -6,24 +6,22 @@
 //   npm run eval -- --fixture          exercises this script only; proves nothing about a model
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { simulate } from "../src/lib/runtime/bot.js";
 import { clarifyIdea, generateGame, reviseGame } from "../src/lib/pipeline/pipeline.js";
 import { PROMPT_VERSIONS } from "../src/lib/pipeline/prompts.js";
 import { checkClaude, createClaudeProvider, DEFAULT_MODEL } from "../src/lib/pipeline/provider-claude.js";
 import { createFixtureProvider } from "../src/lib/pipeline/provider-fixture.js";
-import { gameplayMetrics } from "../src/lib/spec/compare.js";
-import { PLAYER_PROFILES } from "../src/lib/spec/contract.js";
+import { simulate, templateInfo } from "../src/lib/templates/index.js";
 
 // The demo budget: type an idea, and be playing inside this many seconds.
 const BUDGET_MS = { intent: 8000, generate: 30000, revise: 30000 };
-
-if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 
 const args = process.argv.slice(2);
 const useFixture = args.includes("--fixture");
 const model = args.includes("--model") ? args[args.indexOf("--model") + 1] : DEFAULT_MODEL;
 
+// A fixture run needs no credentials, so it never opens them.
 if (!useFixture) {
+  if (existsSync(".env.local")) process.loadEnvFile(".env.local");
   const check = await checkClaude(model);
   if (!check.ok) {
     console.error(`Cannot reach ${model}: ${check.reason}\nAdd ANTHROPIC_API_KEY to .env.local, or run with --fixture to test this script.`);
@@ -34,23 +32,17 @@ const provider = useFixture ? createFixtureProvider() : createClaudeProvider({ m
 
 function keepsIdea(spec, expect) {
   const misses = [];
-  if (expect.preset && spec.artStyle.preset !== expect.preset) misses.push(`preset is ${spec.artStyle.preset}`);
-  for (const requires of expect.requires ?? []) {
-    if (!spec.events.some((event) => event.requires === requires)) misses.push(`no ${requires} events`);
-  }
-  for (const kind of expect.kinds ?? []) {
-    if (!spec.events.some((event) => event.kind === kind)) misses.push(`no ${kind} events`);
-  }
-  for (const gesture of expect.gestures ?? []) {
-    if (!spec.movementBindings.some((binding) => binding.gesture === gesture)) misses.push(`${gesture} not bound`);
-  }
+  if (expect.templates && !expect.templates.includes(spec.template)) misses.push(`template is ${spec.template}`);
+  if (expect.world && spec.skin.world !== expect.world) misses.push(`world is ${spec.skin.world}`);
+  if (expect.style && spec.skin.style !== expect.style) misses.push(`style is ${spec.skin.style}`);
   return misses;
 }
 
+// The same 90 seconds the validator proves a game with, for each kind of simulated player.
 function plays(spec) {
-  const quick = simulate(spec, PLAYER_PROFILES.quick);
-  const casual = simulate(spec, PLAYER_PROFILES.casual);
-  return { quickFailures: quick.failures.length, casualClearRate: Math.round(casual.clearRate * 100) };
+  const template = templateInfo(spec.template);
+  const score = (skill) => simulate(template, spec, { skill, maxMs: 90000 }).score;
+  return { quickScore: score("quick"), casualScore: score("casual") };
 }
 
 const cases = JSON.parse(await readFile("evals/cases.json", "utf8"));
@@ -109,7 +101,7 @@ for (const item of cases.filter((entry) => entry.kind !== "revision")) {
   row.title = spec.title;
   Object.assign(row, plays(spec));
   notes.push(...keepsIdea(spec, item.expect));
-  if (row.quickFailures) notes.push("not clearable");
+  if (row.quickScore <= 0) notes.push("a quick player cannot score");
   if (row.intentMs > BUDGET_MS.intent) notes.push("intent over budget");
   if (row.generateMs > BUDGET_MS.generate) notes.push("generate over budget");
   rows.push({ ...row, pass: notes.length === 0, notes: notes.join("; ") });
@@ -128,16 +120,18 @@ for (const item of cases.filter((entry) => entry.kind === "revision")) {
     rows.push({ ...row, pass: false, valid: false, notes: revised.error ?? revised.value.errors[0] });
     continue;
   }
-  const { spec, attempts, changeSummary } = revised.value;
-  const before = gameplayMetrics(base);
-  const after = gameplayMetrics(spec);
+  const { spec, attempts, changeSummary, comparison } = revised.value;
   const { metric, orMetric, direction, minChange } = item.expect;
+  const before = base.tuning;
+  const after = spec.tuning;
   const moved = (key) => (direction === "up" ? after[key] >= before[key] * minChange : before[key] >= after[key] * minChange);
-  const notes = [];
-  if (!moved(metric) && !(orMetric && moved(orMetric))) notes.push(`${metric} ${before[metric]} -> ${after[metric]}`);
+  const notes = keepsIdea(spec, item.expect);
+  if (metric && !moved(metric) && !(orMetric && moved(orMetric))) notes.push(`${metric} ${before[metric]} -> ${after[metric]}`);
+  if (item.expect.lookChanged && !comparison.lookChanged) notes.push("look did not change");
   if (row.generateMs > BUDGET_MS.revise) notes.push("revise over budget");
-  Object.assign(row, { valid: true, attempts, changeSummary, metric: `${metric} ${before[metric]} -> ${after[metric]}`, casualClear: `${before.casualClearRate}% -> ${after.casualClearRate}%`, ...plays(spec) });
-  if (row.quickFailures) notes.push("not clearable");
+  const measured = comparison.changes.map((change) => `${change.key} ${change.before} -> ${change.after}`).join(", ");
+  Object.assign(row, { valid: true, attempts, changeSummary, measured, casualBefore: plays(base).casualScore, ...plays(spec) });
+  if (row.quickScore <= 0) notes.push("a quick player cannot score");
   rows.push({ ...row, pass: notes.length === 0, notes: notes.join("; ") });
 }
 

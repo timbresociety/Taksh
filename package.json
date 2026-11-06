@@ -12,16 +12,24 @@
     "models": "node scripts/check-models.mjs",
     "eval": "node scripts/run-evals.mjs",
     "replay": "node scripts/replay-trace.mjs",
-    "e2e": "node scripts/e2e.mjs"
+    "e2e": "node scripts/e2e.mjs",
+    "assets": "node scripts/build-assets.mjs",
+    "previews": "node scripts/capture-previews.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
     "@mediapipe/tasks-vision": "^1.2.2",
     "next": "^16.4.5",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "three": "^0.186.1"
   },
   "devDependencies": {
-    "playwright-core": "^1.64.1"
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "meshoptimizer": "^1.3.0",
+    "playwright-core": "^1.64.1",
+    "sharp": "^0.35.5"
   }
 }

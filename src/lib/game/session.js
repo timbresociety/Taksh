@@ -1,7 +1,7 @@
-// One play-through: a countdown, the round, and the pause rules around it. Gestures and keys both
-// arrive here as actions, so game logic can be tested without a camera.
-import { applyAction, createRound, stepRound } from "../runtime/engine.js";
+// One play-through of any template: a countdown, the game, and the pause rules around it. Gestures
+// and keys both arrive here as actions, so game logic can be tested without a camera.
 import { gestureInfo } from "../spec/contract.js";
+import { templateInfo } from "../templates/index.js";
 
 const COUNTDOWN_MS = 3000;
 const RESUME_COUNTDOWN_MS = 2000;
@@ -13,53 +13,52 @@ export class GameSession {
   constructor(spec, { usesCamera = false } = {}) {
     this.spec = spec;
     this.usesCamera = usesCamera;
-    this.round = createRound(spec);
+    this.template = templateInfo(spec.template);
+    this.state = this.template.create(spec);
     this.phase = "countdown"; // countdown | playing | paused | ended
     this.countdownMs = COUNTDOWN_MS;
     this.clock = 0;
-    this.bindings = new Map(spec.movementBindings.map(({ gesture, action }) => [gesture, action]));
-    this.lastActionAt = {};
+    this.bindings = new Map(this.template.bindings.map(({ gesture, action }) => [gesture, action]));
+    this.lastGesture = {};
     this.movements = [];
     this.goodSince = null;
-    this.pendingOutcomes = [];
-    this.actionsTaken = [];
+    this.pending = [];
+    this.actionCount = 0;
   }
 
+  // Moves with no meaning in this game are ignored quietly, because the detector reads them all.
   handleGesture(event) {
     const action = this.bindings.get(event.gesture);
-    const accepted = Boolean(action) && this.phase === "playing";
-    this.movements = [
-      {
-        id: `${event.t}-${event.gesture}`,
-        label: gestureInfo(event.gesture)?.label ?? event.gesture,
-        confidence: event.confidence,
-        used: accepted,
-      },
-      ...this.movements,
-    ].slice(0, LOG_LENGTH);
-    if (accepted) this.act(action);
+    if (!action) return;
+    const accepted = this.phase === "playing";
+    const info = gestureInfo(event.gesture);
+    if (!info?.hidden) this.log(`${event.t}-${event.gesture}`, info?.label ?? event.gesture, event.confidence, accepted);
+    if (!accepted) return;
+    const last = this.lastGesture[action];
+    if (last && last.gesture !== event.gesture && this.clock - last.at < SAME_ACTION_MS) return;
+    this.lastGesture[action] = { gesture: event.gesture, at: this.clock };
+    this.act(action);
   }
 
   handleKey(action) {
     if (this.phase !== "playing") return;
-    this.movements = [{ id: `${this.clock}-${action}`, label: `Key: ${action.replace("_", " ")}`, confidence: 1, used: true }, ...this.movements].slice(0, LOG_LENGTH);
+    this.log(`${this.clock}-${action}`, `Key: ${action.replace(/_/g, " ")}`, 1, true);
     this.act(action);
   }
 
-  act(action) {
-    const last = this.lastActionAt[action];
-    const isMove = action === "move_left" || action === "move_right";
-    if (!isMove && last !== undefined && this.clock - last < SAME_ACTION_MS) return;
-    this.lastActionAt[action] = this.clock;
-    this.actionsTaken.push({ action, t: this.clock });
-    this.pendingOutcomes.push(...applyAction(this.round, action));
+  log(id, label, confidence, used) {
+    this.movements = [{ id, label, confidence, used }, ...this.movements].slice(0, LOG_LENGTH);
   }
 
-  // tracking is good, partial, lost or searching. Only a lost body pauses the round.
+  act(action) {
+    this.actionCount += 1;
+    this.pending.push({ type: "action", action }, ...this.template.act(this.state, action));
+  }
+
+  // tracking is good, partial, lost or searching. Only a lost body pauses the game.
   setTracking(tracking) {
     if (!this.usesCamera || this.phase === "ended") return;
     if (tracking === "lost") {
-      if (this.phase === "playing" || this.phase === "countdown") this.pausedFrom = this.phase;
       this.phase = "paused";
       this.goodSince = null;
       this.countdownMs = null;
@@ -71,11 +70,10 @@ export class GameSession {
     }
   }
 
-  // The round clock only advances while playing, so nothing can be hit during a pause.
+  // The game clock only advances while playing, so nothing can be hit during a pause.
   tick(dtMs) {
     this.clock += dtMs;
-    const outcomes = this.pendingOutcomes.splice(0);
-
+    const events = this.pending.splice(0);
     if (this.phase === "countdown" || (this.phase === "paused" && this.countdownMs !== null)) {
       this.countdownMs -= dtMs;
       if (this.countdownMs <= 0) {
@@ -83,9 +81,17 @@ export class GameSession {
         this.countdownMs = null;
       }
     } else if (this.phase === "playing") {
-      outcomes.push(...stepRound(this.round, dtMs));
-      if (this.round.status === "ended") this.phase = "ended";
+      events.push(...this.template.step(this.state, dtMs));
+      if (this.state.status === "ended") this.phase = "ended";
     }
-    return outcomes;
+    return events;
+  }
+
+  hud() {
+    return this.template.hud(this.state);
+  }
+
+  result() {
+    return { ...this.template.result(this.state), actions: this.actionCount };
   }
 }

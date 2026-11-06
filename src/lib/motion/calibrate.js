@@ -8,6 +8,8 @@ const MAX_SWAY = 0.09; // torso lengths
 const MIN_TORSO = 0.11; // fractions of frame height; smaller means too far to track limbs well
 const MAX_TORSO = 0.34; // larger means the feet cannot stay in frame through a jump
 
+const SHOULDERS = [LM.leftShoulder, LM.rightShoulder];
+
 const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
 
 function measure(points) {
@@ -19,6 +21,7 @@ function measure(points) {
     torso: distance(shoulder, hip),
     hipX: hip.x,
     hipY: hip.y,
+    shoulderX: shoulder.x,
     shoulderY: shoulder.y,
     ankleY,
     kneeY,
@@ -27,28 +30,32 @@ function measure(points) {
   };
 }
 
-function framingIssue(points) {
+// Arm games only need the upper body in view, so a laptop on a desk or a seated player can calibrate.
+function framingIssue(points, framing) {
+  const full = framing === "full";
   if (!points) return "Step into the camera's view.";
-  if (visibility(points, CORE_POINTS) < MIN_VISIBILITY) return "Face the camera so your shoulders and hips are visible.";
-  if (visibility(points, LEG_POINTS) < MIN_VISIBILITY) return "Step back until your feet are in frame.";
-  if (visibility(points, ARM_POINTS) < MIN_VISIBILITY) return "Keep both hands in view at your sides.";
+  if (full && visibility(points, CORE_POINTS) < MIN_VISIBILITY) return "Face the camera so your shoulders and hips are visible.";
+  if (!full && visibility(points, SHOULDERS) < MIN_VISIBILITY) return "Face the camera so your shoulders are visible.";
+  if (full && visibility(points, LEG_POINTS) < MIN_VISIBILITY) return "Step back until your feet are in frame.";
+  if (visibility(points, ARM_POINTS) < MIN_VISIBILITY) return "Keep both hands in view.";
   const { torso } = measure(points);
   if (torso < MIN_TORSO) return "Move closer to the camera.";
-  if (torso > MAX_TORSO) return "Step back from the camera.";
+  if (full && torso > MAX_TORSO) return "Step back from the camera.";
   if (points[LM.nose].y < 0.05) return "Tilt the camera down or step back. Your head is at the top edge.";
-  if (Math.max(points[LM.leftAnkle].y, points[LM.rightAnkle].y) > 0.97) return "Step back. Your feet are at the bottom edge.";
+  if (full && Math.max(points[LM.leftAnkle].y, points[LM.rightAnkle].y) > 0.97) return "Step back. Your feet are at the bottom edge.";
   return null;
 }
 
 export class Calibrator {
-  constructor() {
+  constructor({ framing = "full" } = {}) {
+    this.framing = framing;
     this.samples = [];
     this.startedAt = null;
   }
 
   // Returns { done, progress, message, calibration }. Pass null when no pose is detected.
   push(points, t) {
-    const issue = framingIssue(points);
+    const issue = framingIssue(points, this.framing);
     if (issue) {
       this.reset();
       return { done: false, progress: 0, message: issue };

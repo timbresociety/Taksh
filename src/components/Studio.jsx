@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { unlockSound } from "@/lib/game/sound";
+import { starterSpec } from "@/lib/spec/starter";
+import { templateInfo } from "@/lib/templates";
 import IdeaStage from "./IdeaStage";
 import BriefStage from "./BriefStage";
 import CalibrateStage from "./CalibrateStage";
@@ -27,6 +29,7 @@ export default function Studio() {
   const [calibration, setCalibration] = useState(null);
   const [result, setResult] = useState(null);
   const [revision, setRevision] = useState(null);
+  const [playCount, setPlayCount] = useState(0);
   const feed = useRef(null);
 
   useEffect(() => {
@@ -73,11 +76,22 @@ export default function Studio() {
     setError(null);
   };
 
+  const pickGame = (id) => {
+    setGame({ spec: starterSpec(id), source: "template" });
+    setRevision(null);
+    setStage("brief");
+  };
+
+  const changeSkin = (change) => setGame((current) => ({ ...current, spec: { ...current.spec, skin: { ...current.spec.skin, ...change } } }));
+
+  // A calibration taken for an arms-only game has not seen the legs, so a full-body game needs its own.
   function startPlay(nextMode) {
     unlockSound();
     setMode(nextMode);
     setResult(null);
-    if (nextMode === "camera" && !calibration) setStage("calibrate");
+    setPlayCount((count) => count + 1);
+    const framing = templateInfo(game.spec.template).framing;
+    if (nextMode === "camera" && calibration?.framing !== framing) setStage("calibrate");
     else setStage("play");
   }
 
@@ -105,14 +119,15 @@ export default function Studio() {
       {stage !== "play" && stage !== "calibrate" && <SourceNote status={status} />}
 
       {stage === "idea" && (
-        <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} />
+        <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
       )}
-      {stage === "brief" && <BriefStage game={game} onPlay={startPlay} onBack={restart} />}
+      {stage === "brief" && <BriefStage game={game} onChangeSkin={changeSkin} onPlay={startPlay} onBack={restart} />}
       {stage === "calibrate" && (
         <CalibrateStage
           feed={feed}
+          framing={templateInfo(game.spec.template).framing}
           onDone={(values) => {
-            setCalibration(values);
+            setCalibration({ ...values, framing: templateInfo(game.spec.template).framing });
             setStage("play");
           }}
           onKeyboard={() => {
@@ -123,7 +138,7 @@ export default function Studio() {
       )}
       {stage === "play" && (
         <PlayStage
-          key={JSON.stringify(game.spec.events) + mode}
+          key={JSON.stringify(game.spec) + mode + playCount}
           spec={game.spec}
           mode={mode}
           feed={feed}

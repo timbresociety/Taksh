@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
 
-// Low effort keeps the intent step fast. Generation needs enough thought to satisfy the pacing rules.
+// Low effort keeps the intent step fast. Generation needs enough thought to fit the idea to a template.
 const EFFORT = { intent: "low", generate: "medium", revise: "medium" };
 const MAX_TOKENS = { intent: 4000, generate: 16000, revise: 16000 };
 

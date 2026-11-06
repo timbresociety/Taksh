@@ -876,3 +876,392 @@ kbd {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Game shelf */
+.shelf-page {
+  min-height: 100vh;
+  padding: 24px var(--gutter) 64px;
+  background: linear-gradient(180deg, var(--court) 0, var(--court-deep) 620px);
+}
+
+.studio .source-note {
+  z-index: 3;
+}
+
+.studio[data-stage="brief"] .source-note {
+  left: 16px;
+  right: auto;
+}
+
+.pitch .fixture-hint {
+  position: static;
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  translate: none;
+}
+
+.pitch {
+  max-width: 880px;
+  margin: 76px auto 56px;
+  display: grid;
+  gap: 18px;
+}
+
+.pitch--question {
+  max-width: 640px;
+  margin-top: 16vh;
+}
+
+.pitch h1 {
+  font-size: clamp(2.5rem, 6.4vw, 4.9rem);
+}
+
+.pitch__box {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+  border: 3px solid var(--line);
+  background: var(--court-deep);
+}
+
+.pitch__box textarea {
+  padding: 14px 16px;
+  border: 0;
+  outline-offset: -3px;
+  background: transparent;
+  resize: none;
+  font-size: 1.1rem;
+}
+
+.pitch__box textarea::placeholder {
+  color: color-mix(in srgb, var(--line) 62%, transparent);
+}
+
+.pitch__box .button {
+  border: 0;
+  border-radius: 0;
+  height: auto;
+}
+
+.shelf {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.shelf h2 {
+  margin-bottom: 20px;
+}
+
+.shelf ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 28px 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.game-card {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.game-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--court-deep);
+  outline: 3px solid transparent;
+  outline-offset: 0;
+  transition: outline-color 120ms;
+}
+
+.game-card:hover img,
+.game-card:focus-visible img {
+  outline-color: var(--volt);
+}
+
+.game-card__name {
+  margin-top: 8px;
+  font-family: var(--display);
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: 1.55rem;
+  line-height: 1.05;
+}
+
+.game-card__pitch {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--line) 86%, transparent);
+}
+
+.game-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.82rem;
+  color: var(--volt);
+}
+
+/* Make it yours */
+.look {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+  min-height: 100vh;
+  background: var(--court-deep);
+}
+
+.look__stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: var(--rubber);
+}
+
+.look__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+.look__canvas[data-ready="true"] {
+  opacity: 1;
+}
+
+.look__panel {
+  display: grid;
+  gap: 20px;
+  align-content: start;
+  padding: 32px var(--gutter) 48px;
+}
+
+.look__panel h1 {
+  font-size: clamp(2.2rem, 4vw, 3.3rem);
+}
+
+.choices,
+.swatches {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choices legend,
+.swatches legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.choices > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.choices label {
+  position: relative;
+  cursor: pointer;
+}
+
+.choices input,
+.swatches input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.choices span {
+  display: block;
+  padding: 6px 12px;
+  border: 2px solid color-mix(in srgb, var(--line) 42%, transparent);
+  font-size: 0.9rem;
+}
+
+.choices input:checked ~ span {
+  border-color: var(--volt);
+  background: var(--volt);
+  color: var(--rubber);
+  font-weight: 700;
+}
+
+.choices input:focus-visible ~ span,
+.choices input:focus-visible ~ img {
+  outline: 3px solid var(--volt);
+  outline-offset: 2px;
+}
+
+.choices[data-thumbs="true"] > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.choices[data-thumbs="true"] img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--rubber);
+}
+
+.choices[data-thumbs="true"] span {
+  padding: 3px 6px;
+  border-width: 0 2px 2px;
+  font-size: 0.8rem;
+}
+
+.who {
+  display: flex;
+  gap: 8px;
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--volt);
+  color: var(--rubber);
+}
+
+.swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+}
+
+.swatches > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.swatches label {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 26px;
+  background: var(--swatch);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--line) 42%, transparent);
+  cursor: pointer;
+}
+
+.swatches label:has(input:checked) {
+  box-shadow: 0 0 0 2px var(--court-deep), 0 0 0 4px var(--volt);
+}
+
+.swatches label:has(input:focus-visible) {
+  outline: 3px solid var(--volt);
+  outline-offset: 4px;
+}
+
+/* Heads-up display over any game */
+.hud__score small {
+  display: block;
+  font-size: 0.8rem;
+  font-family: var(--body);
+}
+
+.hud__side {
+  grid-column: 3;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+.hud__call {
+  grid-column: 2;
+  align-self: start;
+  padding: 6px 18px;
+  background: var(--volt);
+  color: var(--rubber);
+  font-family: var(--display);
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: clamp(1.3rem, 3vw, 2.1rem);
+  text-transform: capitalize;
+}
+
+.hud__bars {
+  position: absolute;
+  top: 92px;
+  left: 50%;
+  translate: -50% 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 280px));
+  gap: 14px;
+}
+
+.bar {
+  position: relative;
+  height: 20px;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--volt);
+  transition: width 120ms;
+}
+
+.bar + .bar i {
+  background: var(--tape);
+}
+
+.bar span {
+  position: absolute;
+  z-index: 1;
+  left: 8px;
+  font-size: 0.78rem;
+  line-height: 20px;
+  color: var(--line);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+}
+
+.hud__meter {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  translate: -50% 0;
+  width: min(420px, 70vw);
+  height: 14px;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.hud__meter i {
+  display: block;
+  height: 100%;
+  background: var(--volt);
+}
+
+.pip[data-large="true"] {
+  width: min(34vw, 460px);
+}
+
+@media (max-width: 900px) {
+  .look {
+    grid-template-columns: 1fr;
+  }
+
+  .look__stage {
+    position: relative;
+    height: 46vh;
+  }
+
+  .pitch__box {
+    grid-template-columns: 1fr;
+  }
+}

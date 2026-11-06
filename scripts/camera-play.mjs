@@ -12,7 +12,7 @@ await mkdir(shots, { recursive: true });
 const browser = await chromium.launch({
   channel: "chrome",
   headless: true,
-  args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-video-capture=${clip}`, "--enable-unsafe-swiftshader"],
+  args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-video-capture=${clip}`, "--use-angle=metal", "--ignore-gpu-blocklist"],
 });
 const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ["camera"] })).newPage();
 const problems = [];
@@ -76,12 +76,12 @@ await page.screenshot({ path: `${shots}/result.png` });
 
 // Revise, then replay on the same camera session without recalibrating.
 if (await page.$("#revision")) {
-  await page.fill("#revision", "Give me more time to dodge");
+  await page.fill("#revision", "Give me more time");
   await page.click("text=Change it");
   await page.waitForSelector('[data-testid="revision"]');
   console.log("revision:", (await page.textContent('[data-testid="revision"]')).slice(0, 120));
   await page.click("text=Play the new version");
-  await page.waitForSelector('[data-phase="playing"]', { timeout: 15000 });
+  await page.waitForSelector('[data-phase="playing"]', { timeout: 30000 });
   await page.waitForTimeout(1500);
   const replayState = await page.textContent(".pip__state");
   console.log("replay running in camera mode, tracking:", replayState);

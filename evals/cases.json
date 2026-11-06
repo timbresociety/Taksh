@@ -2,20 +2,56 @@
   {
     "id": "clear-goalkeeper",
     "kind": "clear",
-    "idea": "A pixel art goalkeeper. I step left and right to save shots in a packed stadium.",
-    "expect": { "status": "ready", "preset": "pixel", "requires": ["position"], "kinds": ["target"], "gestures": ["step_left", "step_right"] }
+    "idea": "A pixel art goalkeeper. I step left and right to save shots in the city.",
+    "expect": { "status": "ready", "templates": ["guard"], "style": "pixel", "world": "downtown" }
   },
   {
     "id": "clear-robot",
     "kind": "clear",
     "idea": "Comic book chase: a huge robot attacks lanes and I dodge out of the way, jumping over sweeps.",
-    "expect": { "status": "ready", "preset": "comic", "requires": ["position", "up"], "kinds": ["hazard"] }
+    "expect": { "status": "ready", "templates": ["lane_runner", "guard"], "style": "comic" }
   },
   {
-    "id": "clear-boxing",
+    "id": "clear-pads",
     "kind": "clear",
     "idea": "Neon boxing. Punch glowing pads with my left and right hands.",
-    "expect": { "status": "ready", "preset": "neon", "requires": ["strike_left", "strike_right"], "gestures": ["hand_left", "hand_right"] }
+    "expect": { "status": "ready", "templates": ["pads"], "style": "neon" }
+  },
+  {
+    "id": "clear-bout",
+    "kind": "clear",
+    "idea": "Fight a rival boxer on a space station. I slip his shots and hit back.",
+    "expect": { "status": "ready", "templates": ["bout"], "world": "station" }
+  },
+  {
+    "id": "clear-hop",
+    "kind": "clear",
+    "idea": "Hop between floating platforms on the moon.",
+    "expect": { "status": "ready", "templates": ["hop"], "world": "moon" }
+  },
+  {
+    "id": "clear-rally",
+    "kind": "clear",
+    "idea": "A retro tennis rally in a sunset park.",
+    "expect": { "status": "ready", "templates": ["rally"], "style": "pixel", "world": "sunset" }
+  },
+  {
+    "id": "clear-flyer",
+    "kind": "clear",
+    "idea": "A cartoon bird flapping its wings through a forest.",
+    "expect": { "status": "ready", "templates": ["flyer"], "style": "toon", "world": "forest" }
+  },
+  {
+    "id": "clear-reps",
+    "kind": "clear",
+    "idea": "How fast can I pump my arms in fifteen seconds?",
+    "expect": { "status": "ready", "templates": ["reps"] }
+  },
+  {
+    "id": "clear-poses",
+    "kind": "clear",
+    "idea": "Copy my character's dance poses in a clay village.",
+    "expect": { "status": "ready", "templates": ["poses"], "style": "clay", "world": "village" }
   },
   {
     "id": "ambiguous",
@@ -39,15 +75,22 @@
   {
     "id": "revise-more-time",
     "kind": "revision",
-    "base": "clear-robot",
+    "base": "clear-goalkeeper",
     "request": "give me more time to dodge",
-    "expect": { "metric": "hazardWarningMs", "direction": "up", "minChange": 1.25 }
+    "expect": { "metric": "warningMs", "direction": "up", "minChange": 1.25 }
   },
   {
     "id": "revise-harder",
     "kind": "revision",
-    "base": "clear-boxing",
+    "base": "clear-pads",
     "request": "make it much harder and faster",
-    "expect": { "metric": "gapMs", "direction": "down", "minChange": 1.05, "orMetric": "targetWarningMs" }
+    "expect": { "metric": "lifeMs", "direction": "down", "minChange": 1.05, "orMetric": "restMs" }
+  },
+  {
+    "id": "revise-look",
+    "kind": "revision",
+    "base": "clear-rally",
+    "request": "put it in a forest with a comic look",
+    "expect": { "world": "forest", "style": "comic", "lookChanged": true }
   }
 ]

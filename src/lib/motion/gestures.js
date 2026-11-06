@@ -1,7 +1,8 @@
 // Turns a stream of calibrated poses into discrete gesture events.
 // Every gesture is a gate with separate enter and exit thresholds, so holding a position or
 // hovering at a threshold fires once. A gate only rearms after the body has clearly left it.
-import { ARM_POINTS, CORE_POINTS, LEG_POINTS, LM, mid, visibility } from "./landmarks.js";
+import { ARM_POINTS, CORE_POINTS, LEG_POINTS, LM, distance, mid, visibility } from "./landmarks.js";
+import { POSES, poseSimilarity } from "./poses.js";
 
 // All distances are in torso lengths measured at calibration.
 export const THRESHOLDS = {
@@ -11,15 +12,33 @@ export const THRESHOLDS = {
   knee: { enter: 0.55, exit: 0.3, otherMax: 0.35 },
   jump: { enter: 0.24, exit: 0.1, feet: 0.14 },
   burpee: { enter: 0.95, exit: 0.35 },
+  squat: { enter: 0.36, exit: 0.18 },
+  lean: { enter: 0.3, exit: 0.14 },
+  punch: { enter: 0.7, exit: 0.4 }, // wrist ahead of the shoulder, toward the camera
+  hook: { enter: 0.3, exit: 0.08 }, // wrist past the chest centre at shoulder height
+  uppercut: { enter: 3, exit: 1 }, // torso lengths per second, upward
+  swing: { enter: 2.8, exit: 1 }, // torso lengths per second, sideways
+  reach: { enter: 0.55, exit: 0.25 },
+  wings: { enter: 0.15, exit: -0.3, rearmMs: 40 },
+  pump: 0.3,
+  guard: { enter: 0.05, exit: -0.12 },
+  pose: { similarity: 0.8, exit: 0.62, holdMs: 240, rearmMs: 150 },
 };
+
+// What the engine reports unless told otherwise. A game passes the moves it binds, because one arm
+// movement can honestly be a swing, a pump and a pose at once, and only the game knows which it wants.
+export const CLASSIC_MOVES = ["step_left", "step_right", "jump", "high_knee", "hand_left", "hand_right", "kick_left", "kick_right", "burpee"];
 
 const DWELL_MS = 50;
 const REARM_MS = 90;
+const BOTH_HANDS_RISING = 1.5; // torso lengths per second; both hands rising is a guard, not an uppercut
 const MIN_CONFIDENCE = 0.55;
 const LOST_AFTER_MS = 600;
 const BURPEE_GRACE_MS = 3500; // a plank hides most of the body from the camera
 const STILL_SPEED = 0.35; // torso lengths per second
 const BASELINE_RATE = 0.02;
+
+const SHOULDER_POINTS = [LM.leftShoulder, LM.rightShoulder];
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
@@ -63,8 +82,10 @@ export class Gate {
 }
 
 export class GestureEngine {
-  constructor(calibration) {
+  constructor(calibration, { framing = "full", moves = CLASSIC_MOVES } = {}) {
     this.cal = { ...calibration };
+    this.framing = framing;
+    this.moves = moves === "all" ? null : new Set(moves);
     this.gates = {
       hand_left: new Gate(THRESHOLDS.hand),
       hand_right: new Gate(THRESHOLDS.hand),
@@ -74,7 +95,25 @@ export class GestureEngine {
       knee_right: new Gate(THRESHOLDS.knee),
       jump: new Gate(THRESHOLDS.jump),
       burpee: new Gate(THRESHOLDS.burpee),
+      squat: new Gate(THRESHOLDS.squat),
+      lean_left: new Gate(THRESHOLDS.lean),
+      lean_right: new Gate(THRESHOLDS.lean),
+      punch_left: new Gate(THRESHOLDS.punch),
+      punch_right: new Gate(THRESHOLDS.punch),
+      hook_left: new Gate(THRESHOLDS.hook),
+      hook_right: new Gate(THRESHOLDS.hook),
+      uppercut_left: new Gate(THRESHOLDS.uppercut),
+      uppercut_right: new Gate(THRESHOLDS.uppercut),
+      swing_left: new Gate(THRESHOLDS.swing),
+      swing_right: new Gate(THRESHOLDS.swing),
+      reach_up_left: new Gate(THRESHOLDS.reach),
+      reach_up_right: new Gate(THRESHOLDS.reach),
+      wings: new Gate(THRESHOLDS.wings),
+      guard: new Gate(THRESHOLDS.guard),
     };
+    this.pumpSide = null;
+    this.held = { pose: null, since: 0, fired: false };
+    this.lastWrists = null;
     this.zone = 0;
     this.lastCoreAt = null;
     this.lastHip = null;
@@ -83,7 +122,8 @@ export class GestureEngine {
 
   // Returns { events, tracking, features }. Pass null points when no pose was detected.
   push(points, t) {
-    const coreVisibility = points ? visibility(points, CORE_POINTS) : 0;
+    const anchor = this.framing === "full" ? CORE_POINTS : SHOULDER_POINTS;
+    const coreVisibility = points ? visibility(points, anchor) : 0;
     if (coreVisibility >= MIN_CONFIDENCE) {
       this.lastCoreAt = t;
     } else {
@@ -92,12 +132,14 @@ export class GestureEngine {
       return { events: [], tracking: this.tracking, features: null };
     }
 
+    this.frameT = t;
     const features = this.measure(points);
     const legsVisible = features.legVisibility >= MIN_CONFIDENCE;
-    this.tracking = legsVisible ? "good" : "partial";
+    this.tracking = legsVisible || this.framing !== "full" ? "good" : "partial";
 
     const events = [];
     const emit = (gesture, value, enter, seen, extra) => {
+      if (this.moves && !this.moves.has(gesture)) return;
       const margin = clamp01(0.6 + (0.4 * (value - enter)) / Math.max(enter * 0.5, 0.01));
       events.push({ gesture, t, confidence: Number((seen * margin).toFixed(2)), ...extra });
     };
@@ -122,8 +164,80 @@ export class GestureEngine {
     check("knee_right", "high_knee", f.kneeRight, f.legVisibility, !lowered && !airborne && f.kneeLeft < THRESHOLDS.knee.otherMax && f.kickRight < THRESHOLDS.kick.exit);
 
     if (!lowered) this.updateZone(f, emit);
+    this.readExercises(f, points, t, check, emit);
     this.adaptBaseline(f, t, events.length > 0);
     return { events, tracking: this.tracking, features: f };
+  }
+
+  // Arm and torso exercises. Each is gated like the moves above; a squat and a flap also report the
+  // moment they are released, because those games act on the way back up or down.
+  readExercises(f, points, t, check, emit) {
+    const hands = Math.min(f.leftHandVisibility, f.rightHandVisibility);
+    const torso = this.framing === "full" ? f.coreVisibility : f.shoulderVisibility;
+    const squatting = this.gates.squat.held;
+    check("squat", "squat_down", f.squat, torso);
+    if (squatting && !this.gates.squat.held) emit("squat_up", THRESHOLDS.squat.enter, THRESHOLDS.squat.enter, torso);
+
+    check("lean_left", "lean_left", -f.lean, torso);
+    check("lean_right", "lean_right", f.lean, torso);
+    check("punch_left", "punch_left", f.punchLeft, f.leftHandVisibility);
+    check("punch_right", "punch_right", f.punchRight, f.rightHandVisibility);
+    check("hook_left", "hook_left", f.hookLeft, f.leftHandVisibility);
+    check("hook_right", "hook_right", f.hookRight, f.rightHandVisibility);
+    check("uppercut_left", "uppercut_left", f.riseLeft, f.leftHandVisibility);
+    check("uppercut_right", "uppercut_right", f.riseRight, f.rightHandVisibility);
+    check("swing_left", "swing_left", -f.sweep, hands);
+    check("swing_right", "swing_right", f.sweep, hands);
+    check("reach_up_left", "reach_up_left", f.heightLeft, f.leftHandVisibility);
+    check("reach_up_right", "reach_up_right", f.heightRight, f.rightHandVisibility);
+    check("guard", "guard", f.guard, hands);
+
+    const raised = this.gates.wings.held;
+    this.gates.wings.update(Math.min(f.heightLeft, f.heightRight), hands >= MIN_CONFIDENCE, t);
+    if (raised && !this.gates.wings.held) emit("flap", THRESHOLDS.wings.enter, THRESHOLDS.wings.enter, hands);
+
+    const difference = f.heightLeft - f.heightRight;
+    const side = difference > THRESHOLDS.pump ? "left" : difference < -THRESHOLDS.pump ? "right" : null;
+    if (side && side !== this.pumpSide && hands >= MIN_CONFIDENCE) {
+      this.pumpSide = side;
+      emit(`pump_${side}`, Math.abs(difference), THRESHOLDS.pump, hands);
+    }
+
+    if (hands >= MIN_CONFIDENCE) this.readPose(points, t, hands, emit);
+  }
+
+  // A pose counts once it has been held briefly, and again only after the player has left it.
+  readPose(points, t, seen, emit) {
+    const joints = {
+      leftShoulder: points[LM.leftShoulder], leftElbow: points[LM.leftElbow], leftWrist: points[LM.leftWrist],
+      rightShoulder: points[LM.rightShoulder], rightElbow: points[LM.rightElbow], rightWrist: points[LM.rightWrist],
+    };
+    const { similarity, exit, holdMs, rearmMs } = THRESHOLDS.pose;
+    const { held } = this;
+    if (held.fired) {
+      const target = POSES.find((pose) => pose.id === held.pose);
+      if (poseSimilarity(joints, target) >= exit) {
+        held.leftAt = null;
+        return;
+      }
+      held.leftAt ??= t;
+      if (t - held.leftAt < rearmMs) return;
+    }
+
+    let match = null;
+    let best = similarity;
+    for (const pose of POSES) {
+      const score = poseSimilarity(joints, pose);
+      if (score >= best) {
+        best = score;
+        match = pose.id;
+      }
+    }
+    if (match !== held.pose || held.fired) this.held = { pose: match, since: t, fired: false, leftAt: null };
+    if (match && !this.held.fired && t - this.held.since >= holdMs) {
+      this.held.fired = true;
+      emit(`pose_${match}`, best, similarity, seen);
+    }
   }
 
   // The floor space has three zones with hysteresis, so lanes stay in step with where the player
@@ -166,7 +280,37 @@ export class GestureEngine {
     };
     const kneeLift = (knee, thigh) => 1 - (knee.y - hip.y) / thigh;
 
+    const leftShoulder = points[LM.leftShoulder];
+    const rightShoulder = points[LM.rightShoulder];
+    const nose = points[LM.nose];
+    const elbowUp = (elbow) => elbow.y < shoulder.y + 0.4 * u;
+    const nearShoulderHeight = (wrist) => Math.abs(wrist.y - shoulder.y) < 0.6 * u;
+    const forward = (from, wrist) => (nearShoulderHeight(wrist) && Math.abs(wrist.x - from.x) < 0.7 * u ? ((from.z ?? 0) - (wrist.z ?? 0)) / u : 0);
+    const across = (wrist, elbow, dir) => (nearShoulderHeight(wrist) && elbowUp(elbow) ? (dir * (wrist.x - shoulder.x)) / u : 0);
+
+    // Hand speeds are measured against the shoulders, so moving the whole body is not a swing.
+    const now = { t: this.frameT, left: leftWrist, right: rightWrist, body: shoulder };
+    const before = this.lastWrists;
+    this.lastWrists = now;
+    const seconds = before ? Math.max(0.001, (now.t - before.t) / 1000) : null;
+    const velocity = (side, axis) => (seconds ? (now[side][axis] - before[side][axis] - (now.body[axis] - before.body[axis])) / u / seconds : 0);
+    const fastest = (a, b) => (Math.abs(a) > Math.abs(b) ? a : b);
+    const rising = (side, other, wrist) => (Math.abs(wrist.x - shoulder.x) < 0.9 * u && wrist.y < shoulder.y + 0.5 * u && -velocity(other, "y") < BOTH_HANDS_RISING ? -velocity(side, "y") : 0);
+    const upper = this.framing !== "full"; // the hips may be below the frame, so the shoulders stand in
+
     return {
+      squat: upper ? shoulderDrop : Math.max(leftWrist.y, rightWrist.y) > cal.kneeY + 0.5 * u ? 0 : (hip.y - cal.hipY) / u,
+      lean: upper ? (shoulder.x - cal.shoulderX) / u : (shoulder.x - hip.x) / u,
+      punchLeft: forward(leftShoulder, leftWrist),
+      punchRight: forward(rightShoulder, rightWrist),
+      hookLeft: across(leftWrist, points[LM.leftElbow], 1),
+      hookRight: across(rightWrist, points[LM.rightElbow], -1),
+      riseLeft: rising("left", "right", leftWrist),
+      riseRight: rising("right", "left", rightWrist),
+      sweep: fastest(velocity("left", "x"), velocity("right", "x")),
+      heightLeft: (shoulder.y - leftWrist.y) / u,
+      heightRight: (shoulder.y - rightWrist.y) / u,
+      guard: 0.6 - Math.max(distance(leftWrist, nose), distance(rightWrist, nose)) / u,
       hipOffset: (hip.x - cal.hipX) / u,
       reachLeft: reach(points[LM.leftShoulder], { wrist: leftWrist, dir: -1 }),
       reachRight: reach(points[LM.rightShoulder], { wrist: rightWrist, dir: 1 }),
@@ -180,6 +324,7 @@ export class GestureEngine {
       burpee: handsLow ? shoulderDrop : 0,
       scale: Math.hypot(shoulder.x - hip.x, shoulder.y - hip.y) / u,
       coreVisibility: visibility(points, CORE_POINTS),
+      shoulderVisibility: visibility(points, SHOULDER_POINTS),
       legVisibility: visibility(points, LEG_POINTS),
       armVisibility: visibility(points, ARM_POINTS),
       leftHandVisibility: points[LM.leftWrist].v,

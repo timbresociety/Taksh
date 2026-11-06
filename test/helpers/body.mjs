@@ -13,6 +13,8 @@ function seeded(seed) {
 }
 
 // pose fields are in torso lengths, in the player's frame: negative x is the player's left.
+// leftArm and rightArm place a raised arm by hand: { wrist: [x, y, z], elbow: [x, y] } as offsets from
+// that shoulder, with y growing downward and negative z toward the camera. The elbow defaults to halfway.
 export function rawPose(body, pose = {}) {
   const { torso, centerX, hipY, aspect } = body;
   const {
@@ -27,6 +29,9 @@ export function rawPose(body, pose = {}) {
     rightKnee = 0,
     feetRise = 0,
     handsDown = false,
+    lean = 0,
+    leftArm = null,
+    rightArm = null,
     hide = [],
     vis = 0.95,
   } = pose;
@@ -37,16 +42,20 @@ export function rawPose(body, pose = {}) {
   const thigh = 0.85;
   const shin = 0.85;
 
-  const side = (dir, handOut, kick, knee) => {
+  const side = (dir, handOut, kick, knee, arm) => {
     const hipSide = { x: hip.x + dir * 0.22, y: hip.y };
-    const shoulder = { x: hip.x + dir * 0.45, y: shoulderY };
+    const shoulder = { x: hip.x + dir * 0.45 + lean, y: shoulderY };
     const handHangs = handOut === 0 && !handsDown;
-    const wrist = handsDown
-      ? { x: hip.x + dir * 0.4, y: 1.75 }
-      : handHangs
-        ? { x: shoulder.x + dir * 0.08, y: shoulderY + 1.15 }
-        : { x: shoulder.x + dir * handOut, y: shoulderY + 0.25 };
-    const elbow = { x: (shoulder.x + wrist.x) / 2, y: (shoulder.y + wrist.y) / 2 };
+    const wrist = arm
+      ? { x: shoulder.x + arm.wrist[0], y: shoulder.y + arm.wrist[1], z: arm.wrist[2] ?? 0 }
+      : handsDown
+        ? { x: hip.x + dir * 0.4, y: 1.75 }
+        : handHangs
+          ? { x: shoulder.x + dir * 0.08, y: shoulderY + 1.15 }
+          : { x: shoulder.x + dir * handOut, y: shoulderY + 0.25 };
+    const elbow = arm?.elbow
+      ? { x: shoulder.x + arm.elbow[0], y: shoulder.y + arm.elbow[1] }
+      : { x: (shoulder.x + wrist.x) / 2, y: (shoulder.y + wrist.y) / 2 };
 
     const ankleFloor = 1.7 - feetRise;
     const kneePoint = { x: hipSide.x + dir * kick * 0.5, y: hip.y + thigh * (1 - knee) - kick * 0.1 };
@@ -57,14 +66,14 @@ export function rawPose(body, pose = {}) {
     return { hipSide, shoulder, elbow, wrist, knee: kneePoint, ankle };
   };
 
-  const left = side(-1, leftHandOut, leftKick, leftKnee);
-  const right = side(1, rightHandOut, rightKick, rightKnee);
+  const left = side(-1, leftHandOut, leftKick, leftKnee, leftArm);
+  const right = side(1, rightHandOut, rightKick, rightKnee, rightArm);
 
   const points = Array.from({ length: SLOTS }, () => ({ x: 0, y: 0 }));
   const put = (index, point) => {
     points[index] = point;
   };
-  put(LM.nose, { x: hip.x, y: shoulderY - 0.4 });
+  put(LM.nose, { x: hip.x + lean, y: shoulderY - 0.4 });
   put(LM.leftShoulder, left.shoulder);
   put(LM.rightShoulder, right.shoulder);
   put(LM.leftElbow, left.elbow);
@@ -83,7 +92,7 @@ export function rawPose(body, pose = {}) {
     x: centerX - (point.x * torso) / aspect,
     y: hipY + point.y * torso,
     visibility: hide.includes(index) ? 0.1 : vis,
-    z: 0,
+    z: ((point.z ?? 0) * torso) / aspect,
   }));
 }
 

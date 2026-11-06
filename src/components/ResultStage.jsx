@@ -2,19 +2,19 @@
 
 import { useState } from "react";
 
-const SUGGESTIONS = ["Give me more time to dodge", "Make it harder", "Switch it to chalk"];
+const SUGGESTIONS = ["Give me more time", "Make it harder", "Switch it to neon"];
 
 const HEADLINES = { win: "You did it", lose: "Not this time", complete: "Round over" };
 
 function formatValue(value, unit) {
-  if (unit === "ms") return `${(value / 1000).toFixed(1)}s`;
-  return `${value}${unit}`;
+  if (typeof value === "string") return value;
+  if (unit === "ms") return `${(value / 1000).toFixed(1)} s`;
+  return `${Number(value.toFixed(2))}${unit ? ` ${unit}` : ""}`;
 }
 
 export default function ResultStage({ game, result, revision, busy, error, mode, onRevise, onPlay, onNew }) {
   const [request, setRequest] = useState("");
   const { spec } = game;
-  const { theme } = spec;
 
   return (
     <main className="result">
@@ -22,22 +22,12 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
         <h1 data-testid="result-headline">{HEADLINES[result.outcome]}</h1>
         <p className="result__number" data-testid="result-score">{result.score}</p>
         <dl className="tally">
-          <div>
-            <dt>{theme.hitText}</dt>
-            <dd>{result.tally.hit}</dd>
-          </div>
-          <div>
-            <dt>{theme.missText}</dt>
-            <dd>{result.tally.miss}</dd>
-          </div>
-          <div>
-            <dt>{theme.avoidText}</dt>
-            <dd>{result.tally.avoid}</dd>
-          </div>
-          <div>
-            <dt>{theme.hurtText}</dt>
-            <dd>{result.tally.hurt}</dd>
-          </div>
+          {result.stats.map((stat) => (
+            <div key={stat.label}>
+              <dt>{stat.label}</dt>
+              <dd>{stat.value}</dd>
+            </div>
+          ))}
         </dl>
       </section>
 
@@ -53,7 +43,7 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
           <label className="visually-hidden" htmlFor="revision">
             Change to make
           </label>
-          <input id="revision" value={request} maxLength={300} placeholder="Give me more time to dodge" onChange={(event) => setRequest(event.target.value)} />
+          <input id="revision" value={request} maxLength={300} placeholder="Give me more time" onChange={(event) => setRequest(event.target.value)} />
           <button className="button" type="submit" disabled={Boolean(busy) || !request.trim()}>
             {busy ?? "Change it"}
           </button>
@@ -98,7 +88,7 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
             {revision ? "Play the new version" : "Play again"}
           </button>
           <button type="button" className="text-button" onClick={onNew}>
-            Start a new idea
+            Back to all games
           </button>
         </div>
         <details className="spec-json">

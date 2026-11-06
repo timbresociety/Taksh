@@ -6,7 +6,7 @@ import { cameraProblem } from "@/lib/motion/camera-error";
 import { PoseFeed } from "@/lib/motion/feed";
 import { drawSkeleton } from "@/lib/motion/overlay";
 
-export default function CalibrateStage({ feed, onDone, onKeyboard }) {
+export default function CalibrateStage({ feed, framing, onDone, onKeyboard }) {
   const video = useRef(null);
   const overlay = useRef(null);
   const [status, setStatus] = useState({ message: "Starting the camera", progress: 0 });
@@ -16,7 +16,7 @@ export default function CalibrateStage({ feed, onDone, onKeyboard }) {
   useEffect(() => {
     let cancelled = false;
     let unsubscribe = () => {};
-    const calibrator = new Calibrator();
+    const calibrator = new Calibrator({ framing });
 
     async function start() {
       if (feed.current?.running) await feed.current.attach(video.current);
@@ -41,7 +41,7 @@ export default function CalibrateStage({ feed, onDone, onKeyboard }) {
       cancelled = true;
       unsubscribe();
     };
-  }, [feed, onDone, attempt]);
+  }, [feed, framing, onDone, attempt]);
 
   function retry() {
     setFailure(null);
@@ -60,7 +60,9 @@ export default function CalibrateStage({ feed, onDone, onKeyboard }) {
         <div className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(status.progress * 100)}>
           <span style={{ width: `${status.progress * 100}%` }} />
         </div>
-        <p className="calibrate__hint">Stand about two to three metres back with your whole body in view, arms at your sides. Video stays on this device.</p>
+        <p className="calibrate__hint">
+          {framing === "full" ? "Stand about two to three metres back with your whole body in view, arms at your sides." : "Sit or stand with your head, shoulders and both hands in view."} Video stays on this device.
+        </p>
         {failure && (
           <button type="button" className="button button--go" onClick={retry}>
             Try again

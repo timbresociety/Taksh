@@ -1,163 +1,125 @@
-// The single source of truth for what a game can contain. The validator, the runtime,
-// the keyboard map and the generator prompts are all derived from this file.
+// The single source of truth for what a game can contain. A game is a template plus a skin and
+// bounded tuning. The validator, session and generator prompts are all derived from this file.
+import { POSES } from "../motion/poses.js";
+import { TEMPLATES } from "../templates/index.js";
 
-export const SPEC_VERSION = 1;
-export const LANE_COUNT = 3;
+export const SPEC_VERSION = 2;
 
-export const ACTIONS = [
-  { id: "move_left", label: "Move left", key: "ArrowLeft", keyLabel: "←" },
-  { id: "move_right", label: "Move right", key: "ArrowRight", keyLabel: "→" },
-  { id: "strike_left", label: "Strike left", key: "a", keyLabel: "A" },
-  { id: "strike_right", label: "Strike right", key: "d", keyLabel: "D" },
-  { id: "up", label: "Go up", key: "ArrowUp", keyLabel: "↑" },
-  { id: "down", label: "Go down", key: "ArrowDown", keyLabel: "↓" },
+export const WORLDS = [
+  { id: "downtown", label: "Downtown", blurb: "city blocks in bright daylight" },
+  { id: "forest", label: "Wild Forest", blurb: "tall trees, rocks and flowers" },
+  { id: "station", label: "Orbital Station", blurb: "metal decks and sci-fi crates" },
+  { id: "moon", label: "Moon Base", blurb: "grey rock under a black sky" },
+  { id: "village", label: "Old Village", blurb: "timber houses and cobbles" },
+  { id: "sunset", label: "Sunset Park", blurb: "warm evening light through the trees" },
 ];
+
+export const STYLES = [
+  { id: "bright", label: "Bright", blurb: "glossy, saturated, sunlit 3D" },
+  { id: "toon", label: "Toon", blurb: "flat cel shading with ink outlines" },
+  { id: "neon", label: "Neon", blurb: "dark scene with glowing edges" },
+  { id: "pixel", label: "Pixel", blurb: "chunky low-resolution retro pixels" },
+  { id: "comic", label: "Comic", blurb: "halftone dots and heavy ink" },
+  { id: "clay", label: "Clay", blurb: "soft matte handmade models" },
+];
+
+export const BODIES = [
+  { id: "athlete-female", label: "Athlete, female", clothed: true },
+  { id: "athlete-male", label: "Athlete, male", clothed: true },
+  { id: "ranger-female", label: "Ranger, female" },
+  { id: "ranger-male", label: "Ranger, male" },
+  { id: "peasant-female", label: "Villager, female" },
+  { id: "peasant-male", label: "Villager, male" },
+];
+
+export const HAIR = ["simple-parted", "long", "buns", "buzzed", "buzzed-female", "none"];
+export const SKIN_TONES = ["#f2c9a5", "#d9a074", "#a86e4a", "#6e4630"];
+export const HAIR_COLOURS = ["#16100c", "#2b1c14", "#5d3a1e", "#c8742b", "#e6c27a", "#9aa0a6", "#d94f8a"];
+export const CLOTH_COLOURS = ["#ff4f6d", "#2f6bff", "#21c48d", "#ffd23f", "#8b5cf6", "#f5f7fb", "#1f2a55", "#141a33"];
 
 export const GESTURES = [
-  { id: "step_left", label: "Step left", cue: "Step your whole body to your left", actions: ["move_left"] },
-  { id: "step_right", label: "Step right", cue: "Step your whole body to your right", actions: ["move_right"] },
-  { id: "hand_left", label: "Left hand out", cue: "Punch your left hand out to the side", actions: ["move_left", "strike_left"] },
-  { id: "hand_right", label: "Right hand out", cue: "Punch your right hand out to the side", actions: ["move_right", "strike_right"] },
-  { id: "kick_left", label: "Left kick", cue: "Kick your left leg out to the side", actions: ["move_left", "strike_left"] },
-  { id: "kick_right", label: "Right kick", cue: "Kick your right leg out to the side", actions: ["move_right", "strike_right"] },
-  { id: "high_knee", label: "High knee", cue: "Drive one knee up to hip height", actions: ["up"] },
-  { id: "jump", label: "Jump", cue: "Jump with both feet", actions: ["up"] },
-  { id: "burpee", label: "Burpee", cue: "Drop your hands to the floor, then stand back up", actions: ["down"] },
+  { id: "step_left", label: "Step left", cue: "Step your whole body to your left" },
+  { id: "step_right", label: "Step right", cue: "Step your whole body to your right" },
+  { id: "jump", label: "Jump", cue: "Jump with both feet" },
+  { id: "high_knee", label: "High knee", cue: "Drive one knee up to hip height" },
+  { id: "squat_down", label: "Squat", cue: "Bend your knees and sink your hips" },
+  { id: "squat_up", label: "Stand up", cue: "Stand tall out of your squat", hidden: true },
+  { id: "lean_left", label: "Lean left", cue: "Lean your shoulders to your left" },
+  { id: "lean_right", label: "Lean right", cue: "Lean your shoulders to your right" },
+  { id: "punch_left", label: "Left punch", cue: "Punch your left hand at the camera" },
+  { id: "punch_right", label: "Right punch", cue: "Punch your right hand at the camera" },
+  { id: "hook_left", label: "Left hook", cue: "Swing your left fist across your chest" },
+  { id: "hook_right", label: "Right hook", cue: "Swing your right fist across your chest" },
+  { id: "uppercut_left", label: "Left uppercut", cue: "Drive your left fist up past your chin" },
+  { id: "uppercut_right", label: "Right uppercut", cue: "Drive your right fist up past your chin" },
+  { id: "guard", label: "Guard", cue: "Bring both fists up to your chin" },
+  { id: "swing_left", label: "Swing left", cue: "Sweep a hand fast to your left" },
+  { id: "swing_right", label: "Swing right", cue: "Sweep a hand fast to your right" },
+  { id: "reach_up_left", label: "Left hand up", cue: "Reach your left hand above your head" },
+  { id: "reach_up_right", label: "Right hand up", cue: "Reach your right hand above your head" },
+  { id: "flap", label: "Flap", cue: "Lift both arms, then beat them down" },
+  { id: "pump_left", label: "Left pump", cue: "Left hand up, right hand down" },
+  { id: "pump_right", label: "Right pump", cue: "Right hand up, left hand down" },
+  { id: "hand_left", label: "Left hand out", cue: "Punch your left hand out to the side" },
+  { id: "hand_right", label: "Right hand out", cue: "Punch your right hand out to the side" },
+  { id: "kick_left", label: "Left kick", cue: "Kick your left leg out to the side" },
+  { id: "kick_right", label: "Right kick", cue: "Kick your right leg out to the side" },
+  { id: "burpee", label: "Burpee", cue: "Drop your hands to the floor, then stand back up" },
+  ...POSES.map((pose) => ({ id: `pose_${pose.id}`, label: pose.label, cue: `Hold ${pose.label}`, hidden: true })),
 ];
 
-export const ART_PRESETS = {
-  neon: "glowing lines on a dark field, synthwave arcade",
-  pixel: "chunky low-resolution pixels with a limited dithered palette, retro console",
-  comic: "thick ink outlines, flat colour, halftone dots, action bursts",
-  papercut: "layered cut paper with soft shadows, storybook craft",
-  chalk: "hand-drawn chalk strokes on a dark board",
-  watercolor: "soft bleeding washes on textured paper",
-};
+const gestureById = new Map(GESTURES.map((gesture) => [gesture.id, gesture]));
+export const gestureInfo = (id) => gestureById.get(id);
 
-export const SETTINGS = ["stadium", "factory", "space", "jungle", "dojo", "city", "ocean", "desert"];
-export const AVATARS = ["keeper", "runner", "fighter", "ninja", "astronaut", "robot"];
-export const TARGET_SPRITES = ["ball", "coin", "star", "gem", "fruit", "ring", "pad"];
-export const HAZARD_SPRITES = ["laser", "fist", "fireball", "boulder", "saw", "wave"];
-export const PALETTE_KEYS = ["sky", "ground", "ink", "player", "target", "hazard", "accent"];
+const list = (items) => items.map((item) => item.id).join(", ");
 
-export const EVENT_KINDS = ["target", "hazard"];
-export const EVENT_REQUIRES = ["position", "strike_left", "strike_right", "up", "down"];
-export const END_TYPES = ["time", "lives", "score"];
-
-export const PACING = {
-  durationMs: { min: 20000, max: 90000 },
-  telegraphMs: { min: 700, max: 4000 },
-  windowMs: { min: 300, max: 1500 },
-  downWindowMs: { min: 1200, max: 2500 },
-  eventCount: { min: 6, max: 40 },
-  firstSpawnMs: 1500,
-  tailMs: 500,
-  // Minimum time after an event before the next can land. A burpee costs the most recovery.
-  gapAfterMs: { position: 900, strike_left: 800, strike_right: 800, up: 1200, down: 3200 },
-};
-
-// Reaction and movement costs for simulated players, used to prove a spec can be played.
-export const PLAYER_PROFILES = {
-  quick: { reactionMs: 350, moveMs: 400, strikeMs: 250, upMs: 350, downMs: 900 },
-  casual: { reactionMs: 800, moveMs: 650, strikeMs: 450, upMs: 550, downMs: 1500 },
-};
-
-export function gestureInfo(id) {
-  return GESTURES.find((gesture) => gesture.id === id);
-}
-
-export function actionInfo(id) {
-  return ACTIONS.find((action) => action.id === id);
-}
-
-// Plain-English contract injected into the generator prompts, so prompts cannot drift from code.
+// Injected into the generator prompts, so prompts can never drift out of step with the runtime.
 export function contractText() {
-  const list = (items) => items.join(", ");
+  const templates = TEMPLATES.map((template) => {
+    const tuning = Object.entries(template.tuning)
+      .map(([key, field]) => `    ${key}: ${field.label}, ${field.min} to ${field.max}${field.unit ? ` ${field.unit}` : ""}, default ${field.default}, ${field.higherIsHarder ? "higher is harder" : "higher is easier"}`)
+      .join("\n");
+    const moves = [...new Set(template.bindings.map((binding) => binding.exercise))].join(", ");
+    return `- ${template.id} (${template.name}): ${template.pitch}\n  Player moves: ${moves}\n  Tuning:\n${tuning}`;
+  }).join("\n");
   return [
-    `Lanes: exactly ${LANE_COUNT}. Lane 0 is the player's left, 1 is centre, 2 is the player's right.`,
-    "Gestures and the actions each may bind to:",
-    ...GESTURES.map((g) => `- ${g.id} (${g.cue}): ${list(g.actions)}`),
-    `Art presets: ${Object.entries(ART_PRESETS).map(([id, text]) => `${id} = ${text}`).join("; ")}.`,
-    `Settings: ${list(SETTINGS)}. Avatars: ${list(AVATARS)}.`,
-    `Target sprites: ${list(TARGET_SPRITES)}. Hazard sprites: ${list(HAZARD_SPRITES)}.`,
-    "Event rules:",
-    "- kind target + requires position: the player scores by being in the event's lane during its window (a goalkeeper reaching a shot).",
-    "- kind hazard + requires position: the player is hit if still in the event's lane at atMs (a telegraphed attack lane to leave).",
-    "- requires strike_left or strike_right: the matching strike must land in the window. Set lane to 0 for strike_left and 2 for strike_right.",
-    "- requires up or down: the action must happen in the window, for example jumping a sweep or dropping under a beam. Set lane to null.",
-    "- atMs is the impact moment. The event appears telegraphMs earlier, and the window is centred on atMs.",
-    "Pacing bounds:",
-    `- durationMs ${PACING.durationMs.min}-${PACING.durationMs.max}. Events ${PACING.eventCount.min}-${PACING.eventCount.max}, sorted by atMs.`,
-    `- telegraphMs ${PACING.telegraphMs.min}-${PACING.telegraphMs.max}. windowMs ${PACING.windowMs.min}-${PACING.windowMs.max}; events requiring down need windowMs ${PACING.downWindowMs.min}-${PACING.downWindowMs.max}.`,
-    `- The first event must appear no earlier than ${PACING.firstSpawnMs}ms (atMs - telegraphMs). The last atMs must be at least ${PACING.tailMs}ms before durationMs.`,
-    `- Minimum gap to the next atMs, by this event's requires: ${Object.entries(PACING.gapAfterMs).map(([k, v]) => `${k} ${v}ms`).join(", ")}.`,
-    `- A quick player needs ${PLAYER_PROFILES.quick.reactionMs}ms to react and ${PLAYER_PROFILES.quick.moveMs}ms per lane moved, so leave room for two-lane moves.`,
-    "Every action used by an event needs at least one binding. A position event needs move_left and move_right bound.",
-  ].join("\n");
+    `specVersion is ${SPEC_VERSION}.`,
+    `Templates:\n${templates}`,
+    `Worlds: ${WORLDS.map((world) => `${world.id} (${world.blurb})`).join("; ")}`,
+    `Art styles: ${STYLES.map((style) => `${style.id} (${style.blurb})`).join("; ")}`,
+    `Character bodies: ${list(BODIES)}. Hair: ${HAIR.join(", ")}. Clothing colours apply to athlete bodies only.`,
+    `Colours are #rrggbb strings. Skin tones: ${SKIN_TONES.join(", ")}.`,
+    `Tuning is a list of { key, value } pairs for the chosen template, inside the ranges above. Leave out any key to use its default.`,
+  ].join("\n\n");
 }
 
-const hexColor = { type: "string" };
 const text = { type: "string" };
-const object = (properties) => ({
-  type: "object",
-  properties,
-  required: Object.keys(properties),
-  additionalProperties: false,
+const colour = { type: "string" };
+const object = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+const character = object({
+  body: { type: "string", enum: BODIES.map((body) => body.id) },
+  hair: { type: "string", enum: HAIR },
+  skinTone: colour,
+  hairColour: colour,
+  top: colour,
+  bottom: colour,
+  shoes: colour,
 });
 
-// Sent to the model as structured-output format. Numeric bounds live in validate.js,
-// since structured outputs do not support minimum or maximum.
 export const GAME_SPEC_SCHEMA = object({
-  specVersion: { type: "integer", enum: [SPEC_VERSION] },
+  specVersion: { type: "integer" },
+  template: { type: "string", enum: TEMPLATES.map((template) => template.id) },
   title: text,
   objective: text,
-  artStyle: object({
-    preset: { type: "string", enum: Object.keys(ART_PRESETS) },
-    palette: object(Object.fromEntries(PALETTE_KEYS.map((key) => [key, hexColor]))),
-    direction: text,
+  seed: { type: "integer" },
+  skin: object({
+    world: { type: "string", enum: WORLDS.map((world) => world.id) },
+    style: { type: "string", enum: STYLES.map((style) => style.id) },
+    hero: character,
+    rival: character,
   }),
-  theme: object({
-    setting: { type: "string", enum: SETTINGS },
-    avatar: { type: "string", enum: AVATARS },
-    targetSprite: { type: "string", enum: TARGET_SPRITES },
-    hazardSprite: { type: "string", enum: HAZARD_SPRITES },
-    targetName: text,
-    hazardName: text,
-    hitText: text,
-    missText: text,
-    avoidText: text,
-    hurtText: text,
-  }),
-  movementBindings: {
-    type: "array",
-    items: object({
-      gesture: { type: "string", enum: GESTURES.map((g) => g.id) },
-      action: { type: "string", enum: ACTIONS.map((a) => a.id) },
-    }),
-  },
-  events: {
-    type: "array",
-    items: object({
-      atMs: { type: "integer" },
-      kind: { type: "string", enum: EVENT_KINDS },
-      requires: { type: "string", enum: EVENT_REQUIRES },
-      lane: { anyOf: [{ type: "integer", enum: [0, 1, 2] }, { type: "null" }] },
-      telegraphMs: { type: "integer" },
-      windowMs: { type: "integer" },
-    }),
-  },
-  scoring: object({
-    targetHit: { type: "integer" },
-    targetMiss: { type: "integer" },
-    targetMissCostsLife: { type: "boolean" },
-    hazardAvoided: { type: "integer" },
-    hazardHit: { type: "integer" },
-    comboBonus: { type: "integer" },
-  }),
-  end: object({
-    type: { type: "string", enum: END_TYPES },
-    durationMs: { type: "integer" },
-    lives: { type: "integer" },
-    winScore: { type: "integer" },
-  }),
+  tuning: { type: "array", items: object({ key: text, value: { type: "number" } }) },
 });
+
+export const DEFAULT_HERO = { body: "athlete-female", hair: "buns", skinTone: SKIN_TONES[1], hairColour: "#2b1c14", top: "#ff4f6d", bottom: "#1f2a55", shoes: "#f5f7fb" };
+export const DEFAULT_RIVAL = { body: "athlete-male", hair: "buzzed", skinTone: SKIN_TONES[2], hairColour: "#16100c", top: "#2f6bff", bottom: "#141a33", shoes: "#ffd23f" };

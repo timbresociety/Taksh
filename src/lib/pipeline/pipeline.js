@@ -3,9 +3,13 @@
 import { compareSpecs } from "../spec/compare.js";
 import { validateSpec } from "../spec/validate.js";
 import { GAME_SPEC_SCHEMA } from "../spec/contract.js";
+import { TEMPLATES, templateInfo } from "../templates/index.js";
 import { INTENT_SCHEMA, PROMPT_VERSIONS, REVISION_SCHEMA, loadPrompt } from "./prompts.js";
 
 const tag = (name, value) => `<${name}>\n${value}\n</${name}>`;
+
+// A saved spec keeps tuning as an object, but a model reads and writes the { key, value } list.
+const forModel = (spec) => ({ ...spec, tuning: Object.entries(spec.tuning).map(([key, value]) => ({ key, value })) });
 
 function meta(provider, startedAt, attempts) {
   return {
@@ -33,13 +37,15 @@ export async function clarifyIdea({ idea, clarification }, provider) {
 
   // One question at most, whatever the model decides.
   const status = data.status === "clarify" && clarification ? "ready" : data.status;
-  const result = { status, brief: data.brief, ...meta(provider, startedAt, 1) };
+  // The closest game has to be one we can really build, whatever the model named.
+  const template = templateInfo(data.brief?.template) ?? TEMPLATES[0];
+  const result = { status, brief: { ...data.brief, template: template.id }, ...meta(provider, startedAt, 1) };
   if (status === "clarify") {
     result.question = data.question;
     result.options = data.options.slice(0, 4);
   }
   if (status === "unsupported") {
-    result.unsupported = data.unsupported;
+    result.unsupported = { ...data.unsupported, closest: data.unsupported.closest || `${template.name}: ${template.pitch}` };
     result.message = `We're still working on complex interactions like ${data.unsupported.requested}. Here's the closest game you can play today.`;
   }
   return result;
@@ -76,19 +82,14 @@ export async function generateGame({ idea, clarification, brief }, provider) {
 export async function reviseGame({ spec, request }, provider) {
   const startedAt = Date.now();
   const system = await loadPrompt("revise");
-  const message = [tag("spec", JSON.stringify(spec)), tag("request", request)].join("\n\n");
+  const message = [tag("spec", JSON.stringify(forModel(spec))), tag("request", request)].join("\n\n");
   const input = { spec, request };
 
   const review = (data) => {
     const check = validateSpec(data.spec);
     if (!check.ok) return { check, comparison: null, errors: check.errors };
     const comparison = compareSpecs(spec, check.spec);
-    const errors = [];
-    if (!comparison.rulesChanged && !comparison.lookChanged) errors.push("The revised spec is identical to the original.");
-    if (data.changeKind !== "look" && !comparison.rulesChanged) {
-      errors.push("changeKind says gameplay changed, but events, scoring, bindings and the ending are all unchanged.");
-    }
-    return { check, comparison, errors };
+    return { check, comparison, errors: claimErrors(data.changeKind, comparison) };
   };
 
   const first = await provider.complete({ stage: "revise", system, user: message, schema: REVISION_SCHEMA, input });
@@ -119,6 +120,17 @@ export async function reviseGame({ spec, request }, provider) {
     comparison: outcome.comparison,
     ...meta(provider, startedAt, attempts),
   };
+}
+
+// What a revision says it changed has to be what compareSpecs measured.
+function claimErrors(changeKind, { rulesChanged, lookChanged }) {
+  if (!rulesChanged && !lookChanged) return ["The revised spec is identical to the original."];
+  const errors = [];
+  if (changeKind !== "look" && !rulesChanged) errors.push(`changeKind says ${changeKind}, but the template and tuning are unchanged.`);
+  if (changeKind !== "gameplay" && !lookChanged) errors.push(`changeKind says ${changeKind}, but the skin and title are unchanged.`);
+  if (changeKind === "look" && rulesChanged) errors.push("changeKind says look, but the template or tuning changed. Use both, or put the rules back.");
+  if (changeKind === "gameplay" && lookChanged) errors.push("changeKind says gameplay, but the skin or title changed. Use both, or put the look back.");
+  return errors;
 }
 
 function repairMessage(original, output, errors) {

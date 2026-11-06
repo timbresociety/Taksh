@@ -1,14 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { TEMPLATES } from "@/lib/templates";
 
 const EXAMPLES = [
-  "Pixel art goalkeeper saving penalties in a packed stadium",
-  "Escape a giant robot in a comic book factory",
-  "A neon boxing workout where I punch glowing pads",
+  "A pixel goalkeeper saving shots in the forest",
+  "Boxing a rival on a space station, comic style",
+  "Flying through hoops at sunset",
 ];
 
-export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmit, onAccept, onChangeIdea }) {
+export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmit, onAccept, onChangeIdea, onPick }) {
   const [idea, setIdea] = useState(draft.idea);
   const [answer, setAnswer] = useState("");
 
@@ -16,52 +17,76 @@ export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmi
   const unsupported = intent?.status === "unsupported";
 
   return (
-    <main className="court">
-      <CourtLines />
+    <main className="shelf-page">
       <header className="court__mark">Taksh</header>
 
       {!asking && !unsupported && (
-        <form
-          className="centre-circle"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (idea.trim()) onSubmit(idea.trim());
-          }}
-        >
-          <h1>Say a game. Play it with your body.</h1>
-          <label className="visually-hidden" htmlFor="idea">
-            Your game idea
-          </label>
-          <textarea
-            id="idea"
-            value={idea}
-            rows={3}
-            maxLength={500}
-            placeholder="A goalkeeper who saves shots by stepping side to side"
-            onChange={(event) => setIdea(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                if (idea.trim()) onSubmit(idea.trim());
-              }
+        <>
+          <form
+            className="pitch"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (idea.trim()) onSubmit(idea.trim());
             }}
-          />
-          <button className="button button--go" type="submit" disabled={Boolean(busy) || !idea.trim()}>
-            {busy ?? "Make my game"}
-          </button>
-          {error && <p className="error" role="alert">{error}</p>}
-          <div className="examples">
-            {EXAMPLES.map((example) => (
-              <button key={example} type="button" className="chip" onClick={() => setIdea(example)}>
-                {example}
+          >
+            <h1>Say a game. Play it with your body.</h1>
+            <label className="visually-hidden" htmlFor="idea">
+              Your game idea
+            </label>
+            <div className="pitch__box">
+              <textarea
+                id="idea"
+                value={idea}
+                rows={2}
+                maxLength={500}
+                placeholder="A goalkeeper who saves shots by stepping side to side"
+                onChange={(event) => setIdea(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if (idea.trim()) onSubmit(idea.trim());
+                  }
+                }}
+              />
+              <button className="button button--go" type="submit" disabled={Boolean(busy) || !idea.trim()}>
+                {busy ?? "Make my game"}
               </button>
-            ))}
-          </div>
-        </form>
+            </div>
+            {error && <p className="error" role="alert">{error}</p>}
+            <div className="examples">
+              {EXAMPLES.map((example) => (
+                <button key={example} type="button" className="chip" onClick={() => setIdea(example)}>
+                  {example}
+                </button>
+              ))}
+            </div>
+            {fixture && <p className="fixture-hint">Fixture mode matches keywords such as run, box, fly, pose, forest, moon, neon and pixel.</p>}
+          </form>
+
+          <section className="shelf" aria-labelledby="shelf-title">
+            <h2 id="shelf-title">Or start from a game</h2>
+            <ul data-testid="shelf">
+              {TEMPLATES.map((template) => (
+                <li key={template.id}>
+                  <button type="button" className="game-card" data-template={template.id} onClick={() => onPick(template.id)}>
+                    <img src={`/previews/game-${template.id}.webp`} alt="" width="640" height="360" loading="lazy" />
+                    <span className="game-card__name">{template.name}</span>
+                    <span className="game-card__pitch">{template.pitch}</span>
+                    <span className="game-card__facts">
+                      <span>{template.kind}</span>
+                      <span>{template.length}</span>
+                      <span>{template.space}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </>
       )}
 
       {asking && (
-        <section className="centre-circle" data-testid="clarify">
+        <section className="pitch pitch--question" data-testid="clarify">
           <p className="quoted-idea">{draft.idea}</p>
           <h2>{intent.question}</h2>
           <div className="answers">
@@ -92,7 +117,7 @@ export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmi
       )}
 
       {unsupported && (
-        <section className="centre-circle" data-testid="unsupported">
+        <section className="pitch pitch--question" data-testid="unsupported">
           <h2>{intent.message}</h2>
           <p className="closest">{intent.unsupported.closest}</p>
           <div className="answers">
@@ -106,25 +131,6 @@ export default function IdeaStage({ draft, intent, busy, error, fixture, onSubmi
           {error && <p className="error" role="alert">{error}</p>}
         </section>
       )}
-
-      {fixture && !asking && !unsupported && (
-        <p className="fixture-hint">Fixture mode recognises goalkeepers, robots, boxing and hurdles, plus style words like pixel, comic, paper, chalk, watercolour and neon.</p>
-      )}
     </main>
-  );
-}
-
-// The page is the game's own floor plan: three lanes running at you, with the idea at centre court.
-function CourtLines() {
-  return (
-    <svg className="court__lines" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
-      <g fill="none" stroke="currentColor" strokeWidth="2.5" vectorEffect="non-scaling-stroke">
-        <path d="M430 0 L60 1000" vectorEffect="non-scaling-stroke" />
-        <path d="M477 0 L360 1000" vectorEffect="non-scaling-stroke" />
-        <path d="M523 0 L640 1000" vectorEffect="non-scaling-stroke" />
-        <path d="M570 0 L940 1000" vectorEffect="non-scaling-stroke" />
-        <path d="M0 880 H1000" vectorEffect="non-scaling-stroke" />
-      </g>
-    </svg>
   );
 }

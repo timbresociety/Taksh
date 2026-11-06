@@ -41,6 +41,7 @@ export function normalizeLandmarks(raw, aspect) {
   return raw.map((point) => ({
     x: (1 - point.x) * aspect,
     y: point.y,
+    z: (point.z ?? 0) * aspect, // negative is toward the camera
     v: point.visibility ?? 0,
   }));
 }
@@ -82,7 +83,7 @@ class OneEuro {
 export class LandmarkSmoother {
   constructor({ minCutoff = 1.6, beta = 6 } = {}) {
     this.filters = new Map(
-      TRACKED_POINTS.map((index) => [index, [new OneEuro(minCutoff, beta), new OneEuro(minCutoff, beta)]]),
+      TRACKED_POINTS.map((index) => [index, [new OneEuro(minCutoff, beta), new OneEuro(minCutoff, beta), new OneEuro(minCutoff, beta)]]),
     );
     this.lastT = null;
   }
@@ -91,9 +92,9 @@ export class LandmarkSmoother {
     const dt = this.lastT === null ? 1 / 30 : Math.max(0.001, (t - this.lastT) / 1000);
     this.lastT = t;
     const out = points.slice();
-    for (const [index, [fx, fy]] of this.filters) {
+    for (const [index, [fx, fy, fz]] of this.filters) {
       const point = points[index];
-      out[index] = { x: fx.filter(point.x, dt), y: fy.filter(point.y, dt), v: point.v };
+      out[index] = { x: fx.filter(point.x, dt), y: fy.filter(point.y, dt), z: fz.filter(point.z ?? 0, dt), v: point.v };
     }
     return out;
   }

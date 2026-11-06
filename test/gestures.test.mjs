@@ -3,26 +3,29 @@ import { describe, it } from "node:test";
 import { Calibrator } from "../src/lib/motion/calibrate.js";
 import { GestureEngine } from "../src/lib/motion/gestures.js";
 import { LM, LandmarkSmoother } from "../src/lib/motion/landmarks.js";
+import { POSES } from "../src/lib/motion/poses.js";
+import { GESTURES } from "../src/lib/spec/contract.js";
+import { templateInfo } from "../src/lib/templates/index.js";
 import { BODIES, playTimeline } from "./helpers/body.mjs";
 
-function calibrate(body) {
-  const calibrator = new Calibrator();
+function calibrate(body, { framing, hide = [] } = {}) {
+  const calibrator = new Calibrator({ framing });
   let result = null;
-  playTimeline(body, [[2400, {}]], (points, t) => {
+  playTimeline(body, [[2400, { hide }]], (points, t) => {
     if (!result?.done) result = calibrator.push(points, t);
   });
   assert.equal(result.done, true, `calibration failed: ${result.message}`);
   return result.calibration;
 }
 
-function run(body, timeline, options) {
-  const engine = new GestureEngine(calibrate(body));
+function run(body, timeline, { framing, hide = [], moves, ...options } = {}) {
+  const engine = new GestureEngine(calibrate(body, { framing, hide }), { framing, moves });
   const smoother = new LandmarkSmoother();
   const events = [];
   const tracking = [];
   playTimeline(
     body,
-    [[500, {}], ...timeline, [500, {}]],
+    [[500, { hide }], ...timeline, [500, { hide }]],
     (points, t) => {
       const result = engine.push(points ? smoother.push(points, t) : null, t);
       events.push(...result.events);
@@ -182,5 +185,285 @@ describe("calibration", () => {
     });
     assert.equal(result.done, false);
     assert.ok(result.progress < 0.1);
+  });
+});
+
+// The engine reads every move it knows and the session keeps the ones a game binds, so the new moves
+// are checked inside a game that uses them: there, they must read as that move and nothing else.
+// Games ask for the moves they bind, so these tests listen to everything the engine can report.
+const hearAll = (body, timeline, options) => run(body, timeline, { ...options, moves: "all" });
+
+function playedIn(templateId, body, timeline, options) {
+  const bound = new Set(templateInfo(templateId).bindings.map((binding) => binding.gesture));
+  return hearAll(body, timeline, options).names.filter((name) => bound.has(name));
+}
+
+const mix = (from, to, p) => from.map((value, index) => value + ((to[index] ?? value) - value) * p);
+const armBetween = (from, to, p) => ({ wrist: mix(from.wrist, to.wrist, p), elbow: mix(from.elbow, to.elbow, p) });
+
+// Moves both arms between named shapes, so a timeline reads like the exercise it describes.
+const move = (ms, from, to) => [ms, (p) => ({ leftArm: armBetween(from.leftArm, to.leftArm, p), rightArm: armBetween(from.rightArm, to.rightArm, p) })];
+const hold = (ms, shape) => [ms, shape];
+const moveOne = (ms, shape, side, to) => move(ms, shape, { ...shape, [side]: to });
+
+const REST = { leftArm: { wrist: [-0.08, 1.15, 0], elbow: [-0.04, 0.57] }, rightArm: { wrist: [0.08, 1.15, 0], elbow: [0.04, 0.57] } };
+const FISTS = { leftArm: { wrist: [0.25, 0.05, 0], elbow: [-0.05, 0.6] }, rightArm: { wrist: [-0.25, 0.05, 0], elbow: [0.05, 0.6] } };
+const JAB = { leftArm: { wrist: [0.05, 0.1, -1.1], elbow: [0, 0.4] }, rightArm: { wrist: [-0.05, 0.1, -1.1], elbow: [0, 0.4] } };
+const HOOK_START = { leftArm: { wrist: [-0.3, 0.1, 0], elbow: [-0.45, 0.3] }, rightArm: { wrist: [0.3, 0.1, 0], elbow: [0.45, 0.3] } };
+const HOOK_END = { leftArm: { wrist: [1.1, 0.1, 0], elbow: [0.3, 0.15] }, rightArm: { wrist: [-1.1, 0.1, 0], elbow: [-0.3, 0.15] } };
+const LOADED = { leftArm: { wrist: [0.1, 0.5, 0], elbow: [-0.1, 0.8] }, rightArm: { wrist: [-0.1, 0.5, 0], elbow: [0.1, 0.8] } };
+const CHIN = { leftArm: { wrist: [0.15, -0.5, 0], elbow: [-0.05, 0.2] }, rightArm: { wrist: [-0.15, -0.5, 0], elbow: [0.05, 0.2] } };
+const WIDE = { leftArm: { wrist: [-1.1, 0.4, 0], elbow: [-0.5, 0.4] }, rightArm: { wrist: [1.1, 0.4, 0], elbow: [0.5, 0.4] } };
+const ACROSS = { leftArm: { wrist: [0.8, 0.4, 0], elbow: [0.3, 0.4] }, rightArm: { wrist: [-0.8, 0.4, 0], elbow: [-0.3, 0.4] } };
+const OVERHEAD = { leftArm: { wrist: [-0.1, -0.9, 0], elbow: [-0.1, -0.45] }, rightArm: { wrist: [0.1, -0.9, 0], elbow: [0.1, -0.45] } };
+const WINGS_UP = { leftArm: { wrist: [-1, -0.5, 0], elbow: [-0.5, -0.25] }, rightArm: { wrist: [1, -0.5, 0], elbow: [0.5, -0.25] } };
+const WINGS_DOWN = { leftArm: { wrist: [-0.9, 0.7, 0], elbow: [-0.45, 0.35] }, rightArm: { wrist: [0.9, 0.7, 0], elbow: [0.45, 0.35] } };
+const PUMP_DOWN = { leftArm: { wrist: [-0.1, 0.6, 0], elbow: [-0.2, 0.4] }, rightArm: { wrist: [0.1, 0.6, 0], elbow: [0.2, 0.4] } };
+const PUMP_LEFT = { ...PUMP_DOWN, leftArm: { wrist: [-0.1, -0.5, 0], elbow: [-0.2, 0.1] } };
+const PUMP_RIGHT = { ...PUMP_DOWN, rightArm: { wrist: [0.1, -0.5, 0], elbow: [0.2, 0.1] } };
+
+// One arm travels and returns, from and back to a position raised slowly enough to mean nothing.
+const oneArm = (side, start, end, outMs, backMs, leadIn = 900) => [
+  moveOne(leadIn, REST, side, start[side]),
+  hold(200, { ...REST, [side]: start[side] }),
+  move(outMs, { ...REST, [side]: start[side] }, { ...REST, [side]: end[side] }),
+  move(backMs, { ...REST, [side]: end[side] }, { ...REST, [side]: start[side] }),
+  hold(200, { ...REST, [side]: start[side] }),
+  move(leadIn, { ...REST, [side]: start[side] }, REST),
+];
+
+const dropWith = (shape, depth, p) => ({ ...shape, drop: depth * p });
+const squat = (depth = 0.6, shape = FISTS) => [
+  move(900, REST, shape),
+  [350, (p) => dropWith(shape, depth, p)],
+  hold(500, { ...shape, drop: depth }),
+  [350, (p) => dropWith(shape, depth, 1 - p)],
+  move(900, shape, REST),
+];
+
+const armsOf = (pose, length = 0.55) => {
+  const arm = ({ upper, lower }) => ({ elbow: [upper[0] * length, -upper[1] * length], wrist: [(upper[0] + lower[0]) * length, -(upper[1] + lower[1]) * length, 0] });
+  return { leftArm: arm(pose.arms.left), rightArm: arm(pose.arms.right) };
+};
+const strike = (pose, holdMs = 1500) => [move(350, REST, armsOf(pose)), hold(holdMs, armsOf(pose)), move(350, armsOf(pose), REST)];
+
+const EXERCISES = {
+  squat: ["hop", squat(), ["squat_down", "squat_up"]],
+  "squat as a duck": ["bout", squat(), ["guard", "squat_down"]],
+  lean_left: ["bout", [[260, ramp("lean", 0, -0.5)], [300, { lean: -0.5 }], [260, ramp("lean", -0.5, 0)]], ["lean_left"]],
+  lean_right: ["bout", [[260, ramp("lean", 0, 0.5)], [300, { lean: 0.5 }], [260, ramp("lean", 0.5, 0)]], ["lean_right"]],
+  punch_left: ["pads", oneArm("leftArm", FISTS, JAB, 120, 200), ["punch_left"]],
+  punch_right: ["pads", oneArm("rightArm", FISTS, JAB, 120, 200), ["punch_right"]],
+  hook_left: ["pads", oneArm("leftArm", HOOK_START, HOOK_END, 200, 300), ["hook_left"]],
+  hook_right: ["pads", oneArm("rightArm", HOOK_START, HOOK_END, 200, 300), ["hook_right"]],
+  uppercut_left: ["pads", oneArm("leftArm", LOADED, CHIN, 170, 500), ["uppercut_left"]],
+  uppercut_right: ["pads", oneArm("rightArm", LOADED, CHIN, 170, 500), ["uppercut_right"]],
+  guard: ["bout", [move(900, REST, FISTS), hold(500, FISTS), move(900, FISTS, REST)], ["guard"]],
+  swing_left: ["rally", oneArm("rightArm", WIDE, ACROSS, 250, 900), ["swing_left"]],
+  swing_right: ["rally", oneArm("leftArm", WIDE, ACROSS, 250, 900), ["swing_right"]],
+  reach_up_left: ["rally", [moveOne(700, REST, "leftArm", OVERHEAD.leftArm), hold(400, { ...REST, leftArm: OVERHEAD.leftArm }), move(700, { ...REST, leftArm: OVERHEAD.leftArm }, REST)], ["reach_up_left"]],
+  reach_up_right: ["rally", [moveOne(700, REST, "rightArm", OVERHEAD.rightArm), hold(400, { ...REST, rightArm: OVERHEAD.rightArm }), move(700, { ...REST, rightArm: OVERHEAD.rightArm }, REST)], ["reach_up_right"]],
+  flap: ["flyer", [move(400, REST, WINGS_UP), move(250, WINGS_UP, WINGS_DOWN), move(300, WINGS_DOWN, REST)], ["flap"]],
+  pump: ["reps", [move(300, REST, PUMP_DOWN), move(200, PUMP_DOWN, PUMP_LEFT), move(200, PUMP_LEFT, PUMP_RIGHT), move(200, PUMP_RIGHT, PUMP_LEFT), move(200, PUMP_LEFT, PUMP_RIGHT), move(400, PUMP_RIGHT, REST)], ["pump_left", "pump_right", "pump_left", "pump_right"]],
+};
+
+describe("each exercise reads as itself in the game that uses it, at any body scale", () => {
+  for (const [bodyName, body] of Object.entries(BODIES)) {
+    for (const [name, [templateId, timeline, expected]] of Object.entries(EXERCISES)) {
+      it(`${name} on ${bodyName}`, () => {
+        assert.deepEqual(playedIn(templateId, body, timeline), expected);
+      });
+    }
+  }
+});
+
+describe("exercise gates", () => {
+  const body = BODIES.midRange;
+
+  it("a jab is read from depth alone: the same arm at the shoulder's depth is not a punch", () => {
+    const flat = { leftArm: { wrist: [0.05, 0.1, 0], elbow: [0, 0.4] }, rightArm: JAB.rightArm };
+    assert.deepEqual(playedIn("pads", body, oneArm("leftArm", FISTS, flat, 120, 200)), []);
+  });
+
+  it("two punches count twice", () => {
+    const punch = oneArm("leftArm", FISTS, JAB, 120, 200, 400);
+    assert.deepEqual(playedIn("bout", body, [...punch, hold(300, REST), ...punch]).filter((name) => name === "punch_left"), ["punch_left", "punch_left"]);
+  });
+
+  it("holding a punch out counts once", () => {
+    const out = { ...REST, leftArm: JAB.leftArm };
+    const start = { ...REST, leftArm: FISTS.leftArm };
+    const names = playedIn("pads", body, [moveOne(900, REST, "leftArm", FISTS.leftArm), move(120, start, out), hold(3000, out), move(200, out, start), move(900, start, REST)]);
+    assert.deepEqual(names, ["punch_left"]);
+  });
+
+  it("holding a guard counts once", () => {
+    assert.deepEqual(playedIn("bout", body, [move(900, REST, FISTS), hold(3000, FISTS), move(900, FISTS, REST)]), ["guard"]);
+  });
+
+  it("a held squat reports going down and coming up once each", () => {
+    const names = playedIn("hop", body, [move(900, REST, FISTS), [350, (p) => dropWith(FISTS, 0.6, p)], hold(3000, { ...FISTS, drop: 0.6 }), [350, (p) => dropWith(FISTS, 0.6, 1 - p)], move(900, FISTS, REST)]);
+    assert.deepEqual(names, ["squat_down", "squat_up"]);
+  });
+
+  it("a shallow dip is not a squat", () => {
+    assert.deepEqual(playedIn("hop", body, squat(0.2)), []);
+  });
+
+  it("raising the arms is not a flap; the beat down is", () => {
+    // hearAll() always ends at rest, so the arms do come down, but only after this timeline is over.
+    const flaps = hearAll(body, [move(400, REST, WINGS_UP), hold(1000, WINGS_UP)]).events.filter((event) => event.gesture === "flap");
+    assert.equal(flaps.length, 1);
+    assert.ok(flaps[0].t > 1800);
+    const beats = [move(400, REST, WINGS_UP), move(250, WINGS_UP, WINGS_DOWN), move(300, WINGS_DOWN, WINGS_UP), move(250, WINGS_UP, WINGS_DOWN), move(300, WINGS_DOWN, REST)];
+    assert.deepEqual(playedIn("flyer", body, beats), ["flap", "flap"]);
+  });
+
+  it("pumping one arm alone counts once, because a rep has to alternate", () => {
+    const names = playedIn("reps", body, [move(300, REST, PUMP_DOWN), move(200, PUMP_DOWN, PUMP_LEFT), move(200, PUMP_LEFT, PUMP_DOWN), move(200, PUMP_DOWN, PUMP_LEFT), move(300, PUMP_LEFT, REST)]);
+    assert.deepEqual(names, ["pump_left"]);
+  });
+
+  it("a low-confidence wrist never punches", () => {
+    const timeline = oneArm("leftArm", FISTS, JAB, 120, 200).map(([ms, pose]) => [ms, typeof pose === "function" ? (p) => ({ ...pose(p), hide: [LM.leftWrist] }) : { ...pose, hide: [LM.leftWrist] }]);
+    assert.deepEqual(playedIn("pads", body, timeline), []);
+  });
+
+  it("every gesture the engine can report is in the contract", () => {
+    const known = new Set(GESTURES.map((gesture) => gesture.id));
+    for (const [, timeline] of Object.values(EXERCISES)) {
+      for (const name of hearAll(body, timeline).names) assert.ok(known.has(name), name);
+    }
+  });
+});
+
+describe("poses", () => {
+  for (const pose of POSES) {
+    for (const [bodyName, body] of Object.entries(BODIES)) {
+      it(`${pose.id} counts once on ${bodyName}`, () => {
+        assert.deepEqual(playedIn("poses", body, strike(pose)), [`pose_${pose.id}`]);
+      });
+    }
+
+    it(`${pose.id} held for five seconds with noisy sensors counts once`, () => {
+      assert.deepEqual(playedIn("poses", BODIES.midRange, strike(pose, 5000), { noise: 0.006 }), [`pose_${pose.id}`]);
+    });
+  }
+
+  it("a pose only counts once it has been held", () => {
+    const [airplane] = POSES;
+    const arms = armsOf(airplane);
+    assert.deepEqual(playedIn("poses", BODIES.midRange, [move(90, REST, arms), hold(60, arms), move(90, arms, REST)]), []);
+  });
+
+  it("leaving a pose and striking it again counts twice", () => {
+    const [airplane] = POSES;
+    const names = playedIn("poses", BODIES.midRange, [...strike(airplane, 600), hold(300, REST), ...strike(airplane, 600)]);
+    assert.deepEqual(names, ["pose_airplane", "pose_airplane"]);
+  });
+
+  it("moving from one pose to another counts each", () => {
+    const [from, to] = POSES.map((pose) => armsOf(pose));
+    const names = playedIn("poses", BODIES.midRange, [move(350, REST, from), hold(600, from), move(350, from, to), hold(600, to), move(350, to, REST)]);
+    assert.deepEqual(names, ["pose_airplane", "pose_touchdown"]);
+  });
+
+  it("a hand flickering out of confidence during a hold does not count again", () => {
+    const [airplane] = POSES;
+    const arms = armsOf(airplane);
+    const flicker = (p) => ({ ...arms, hide: Math.floor(p * 12) % 2 ? [LM.leftWrist] : [] });
+    assert.deepEqual(playedIn("poses", BODIES.midRange, [move(350, REST, arms), hold(500, arms), [2000, flicker], move(350, arms, REST)]), ["pose_airplane"]);
+  });
+});
+
+describe("moves that used to be missed or double counted", () => {
+  const body = BODIES.midRange;
+  const legs = [LM.leftKnee, LM.rightKnee, LM.leftAnkle, LM.rightAnkle];
+  const hips = [LM.leftHip, LM.rightHip];
+  const hide = [...legs, ...hips];
+
+  it("a squat with the arms hanging is a squat", () => {
+    const down = [[350, ramp("drop", 0, 0.6)], [500, { drop: 0.6 }], [350, ramp("drop", 0.6, 0)]];
+    assert.deepEqual(playedIn("hop", body, down), ["squat_down", "squat_up"]);
+  });
+
+  it("an upper-body player with hips out of view can slip", () => {
+    const slip = [[260, (p) => ({ lean: -0.5 * p, hide })], [300, { lean: -0.5, hide }], [260, (p) => ({ lean: -0.5 * (1 - p), hide })]];
+    assert.deepEqual(playedIn("bout", body, slip, { framing: "upper", hide }), ["lean_left"]);
+  });
+
+  it("an upper-body player with hips out of view can duck", () => {
+    const low = (p) => ({ ...FISTS, drop: 0.6 * p, hide });
+    const names = playedIn("bout", body, [move(900, REST, FISTS), [350, low], [500, () => low(1)], [350, (p) => low(1 - p)]], { framing: "upper", hide });
+    assert.ok(names.includes("squat_down"));
+  });
+
+  it("one bad frame during a held pose does not count again", () => {
+    const [airplane] = POSES;
+    const arms = armsOf(airplane);
+    const glitch = (p) => (Math.abs(p - 0.5) < 0.01 ? { ...arms, leftArm: { wrist: [-0.3, 1, 0], elbow: [-0.1, 0.5] } } : arms);
+    assert.deepEqual(playedIn("poses", body, [move(350, REST, arms), hold(500, arms), [2000, glitch], hold(500, arms), move(350, arms, REST)]), ["pose_airplane"]);
+  });
+
+  it("hovering at the edge of a pose counts once", () => {
+    const [airplane] = POSES;
+    const arms = armsOf(airplane);
+    // The forearm tips about 30 to 42 degrees from level, either side of the 37 degree limit.
+    const tip = (p) => {
+      const degrees = 36 + 6 * Math.sin(p * Math.PI * 8);
+      const dy = 0.55 * Math.sin((degrees * Math.PI) / 180);
+      const dx = 0.55 * Math.cos((degrees * Math.PI) / 180);
+      return { ...arms, leftArm: { elbow: arms.leftArm.elbow, wrist: [-0.55 - dx, -dy, 0] } };
+    };
+    assert.deepEqual(playedIn("poses", body, [move(350, REST, arms), hold(500, arms), [4000, tip], move(350, arms, REST)]), ["pose_airplane"]);
+  });
+});
+
+describe("upper-body framing", () => {
+  const legs = [LM.leftKnee, LM.rightKnee, LM.leftAnkle, LM.rightAnkle];
+  const hips = [LM.leftHip, LM.rightHip];
+  const options = { framing: "upper", hide: legs };
+  const withHidden = (timeline, hide) => timeline.map(([ms, pose]) => [ms, typeof pose === "function" ? (p) => ({ ...pose(p), hide }) : { ...pose, hide }]);
+
+  it("calibrates with the legs out of view, where full framing asks you to step back", () => {
+    assert.ok(calibrate(BODIES.closeUp, options).torso > 0);
+    const calibrator = new Calibrator({ framing: "full" });
+    let message = "";
+    playTimeline(BODIES.midRange, [[200, { hide: legs }]], (points, t) => {
+      message = calibrator.push(points, t).message;
+    });
+    assert.match(message, /feet are in frame/);
+  });
+
+  it("invisible legs still track as good, and the arms still play", () => {
+    const { tracking, names } = hearAll(BODIES.midRange, withHidden(EXERCISES.reach_up_left[1], legs), options);
+    assert.ok(tracking.length > 0);
+    assert.ok(tracking.every((state) => state === "good"), [...new Set(tracking)].join());
+    assert.ok(names.includes("reach_up_left"));
+  });
+
+  it("the same view in a full-body game is only partial", () => {
+    const body = BODIES.midRange;
+    const engine = new GestureEngine(calibrate(body), { moves: "all" });
+    const states = new Set();
+    playTimeline(body, [[500, { hide: legs }]], (points, t) => states.add(engine.push(points, t).tracking));
+    assert.deepEqual([...states], ["partial"]);
+  });
+
+  it("hips out of view still track as good, because the shoulders anchor an upper-body game", () => {
+    const { tracking } = hearAll(BODIES.midRange, [[800, { hide: [...legs, ...hips] }]], { framing: "upper", hide: [...legs, ...hips] });
+    assert.ok(tracking.every((state) => state === "good"));
+  });
+
+  it("losing the shoulders is lost", () => {
+    const hide = [...legs, LM.leftShoulder, LM.rightShoulder];
+    const { tracking } = hearAll(BODIES.midRange, [[1200, { hide }]], options);
+    assert.equal(tracking.at(-1), "good");
+    assert.ok(tracking.includes("lost"));
+  });
+
+  it("leg moves cannot fire from legs nobody can see", () => {
+    const { names } = hearAll(BODIES.midRange, withHidden(MOVES.kick_left, legs), options);
+    assert.ok(!names.includes("kick_left"));
   });
 });
