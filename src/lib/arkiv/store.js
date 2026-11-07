@@ -4,7 +4,7 @@ import { createPublicClient, createWalletClient, ExpirationTime, NoEntityFoundEr
 import { rabdi } from "@arkiv-network/sdk/chains";
 import { desc, eq, gt } from "@arkiv-network/sdk/query";
 import { i32 } from "@arkiv-network/sdk/schema";
-import { http } from "viem";
+import { http, nonceManager } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { pickEarliest } from "../daily/daily.js";
 import { DEFAULT_WRITER, Daily, ENTITY_KEY, Games, SCORE_DAYS, Scores, dailyValues, daysLeft, gameValues, plainRow, readSpecBytes, scoreValues } from "./schema.js";
@@ -66,7 +66,10 @@ export function connect() {
   const transport = http(undefined, { timeout: 8000, retryCount: 0 });
   let account = null;
   try {
-    if (process.env.ARKIV_PRIVATE_KEY) account = privateKeyToAccount(process.env.ARKIV_PRIVATE_KEY);
+    // Rival decisions arrive every 4 to 6 s and each write takes about 8 s, so writes overlap. Without
+    // the nonce manager two of them read the same nonce and one fails ("Execution error without
+    // revert data"). viem hands out nonces in order within this process.
+    if (process.env.ARKIV_PRIVATE_KEY) account = privateKeyToAccount(process.env.ARKIV_PRIVATE_KEY, { nonceManager });
   } catch {
     console.error("ARKIV_PRIVATE_KEY is not a valid private key, so Arkiv writes are off.");
   }
