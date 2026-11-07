@@ -5,7 +5,7 @@ import { cursorTrial } from "@/lib/game/cursor-lesson";
 import { practiceMoves } from "@/lib/game/practice";
 import { playCue } from "@/lib/game/sound";
 import { GestureEngine, MOVE_READINGS, personalLevel } from "@/lib/motion/gestures";
-import { clearCanvas, drawDemo, drawLesson, pushTrail } from "@/lib/motion/lesson-draw";
+import { clearCanvas, drawDemo, drawLesson, mirrorPlacer, pushTrail } from "@/lib/motion/lesson-draw";
 import { drawGhost, drawSkeleton } from "@/lib/motion/overlay";
 import { templateInfo } from "@/lib/templates";
 import MoveCoach from "./MoveCoach";
@@ -19,9 +19,9 @@ const NEAR_MISS = 0.6; // below this the player was doing something else, and th
 // Said when a hand reached the target without doing it.
 const CURSOR_NOTES = { slow: "Faster! Swipe right through it.", wrong: "Other hand for this one." };
 const CURSOR_HINTS = {
-  aim: "Yellow is you. Small hand moves go a long way, so raise each hand in front of its shoulder.",
-  slice: "Yellow is you. Raise your hands in front of you. A slow hand goes through, a fast one cuts.",
-  slide: "Yellow is you. Only side to side counts, so raise your hands a little and slide them.",
+  aim: "Each ring sits on its hand. The dashed box is the whole screen, so reach to the box's edge to reach the screen's.",
+  slice: "Each ring sits on its hand. The dashed box is the whole screen. A slow hand goes through, a fast one cuts.",
+  slide: "Each ring sits on its hand. Only side to side counts, so raise your hands a little and slide them.",
 };
 
 // A cursor game's move on a loop, drawn as the ring the player will see, with no character.
@@ -87,9 +87,9 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
     const trial = move.dots ? cursorTrial(move, template, spec) : null;
     const trails = {};
     let said = null;
-    const cursorFrame = (canvas, cursors, t, aspect) => {
+    const cursorFrame = (canvas, cursors, t, aspect, at) => {
       const dot = move.dots[done];
-      drawLesson(canvas, move, cursors, dot, pushTrail(trails, cursors, t));
+      drawLesson(canvas, move, cursors, dot, pushTrail(trails, cursors, t), at);
       const now = trial.push(cursors, t, aspect, dot);
       if (now === "hit") landed();
       else if (now && now !== said) setNote(CURSOR_NOTES[now]);
@@ -106,7 +106,7 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
         }
         const result = engine.push(points, t);
         if (move.dots) {
-          if (result.features && overlay.current) cursorFrame(overlay.current, result.features.cursor, t, aspect);
+          if (result.features && overlay.current) cursorFrame(overlay.current, result.features.cursor, t, aspect, mirrorPlacer(overlay.current, aspect, result.features.reach));
           return;
         }
         for (const event of result.events) if (event.gesture === move.gesture && !event.returning && done < reps) landed();

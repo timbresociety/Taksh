@@ -3,7 +3,7 @@ import { LM, SKELETON } from "./landmarks.js";
 export const HAND_COLOURS = { left: "#39d0c6", right: "#ff2d78" };
 
 // object-fit: cover, matching the video element underneath.
-function projection(canvas, aspect) {
+export function projection(canvas, aspect) {
   const scale = Math.max(canvas.width / aspect, canvas.height);
   const offsetX = (canvas.width - aspect * scale) / 2;
   const offsetY = (canvas.height - scale) / 2;

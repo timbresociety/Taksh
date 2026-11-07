@@ -179,18 +179,58 @@ describe("hand cursors", () => {
     assert.deepEqual(hit({}), [false, false]);
   });
 
-  it("each hand has its own cursor, and a comfortable reach gets to the edge", () => {
-    const cursors = new HandCursors().push({ left: { x: -0.85, y: 0 }, right: { x: 0.2, y: 0.85 } }, seen);
+  it("each hand has its own cursor, and it stops at the screen's edge", () => {
+    const cursors = new HandCursors().push({ left: { x: -1.4, y: 0 }, right: { x: 0.2, y: 1.3 } }, seen);
     assert.equal(cursors.left.x, -1);
     assert.equal(cursors.right.y, 1);
-    assert.ok(cursors.right.x > 0.2 && cursors.right.x < 0.3);
+    assert.equal(cursors.right.x, 0.2);
   });
 
   it("a still hand holds its place through tracker noise, and a moving one follows at once", () => {
     const cursors = new HandCursors();
     const start = cursors.push({ left: { x: 0, y: 0 }, right: { x: 0, y: 0 } }, seen).left;
     assert.deepEqual(cursors.push({ left: { x: 0.004, y: -0.004 }, right: { x: 0, y: 0 } }, seen).left, start);
-    assert.equal(cursors.push({ left: { x: 0.2, y: 0 }, right: { x: 0, y: 0 } }, seen).left.x, 0.25);
+    assert.equal(cursors.push({ left: { x: 0.2, y: 0 }, right: { x: 0, y: 0 } }, seen).left.x, 0.2);
+  });
+
+  // The right hand's cursor at the end of each stretch of a timeline, and the box the screen stands for.
+  const cursorsAfter = (timeline) => {
+    const engine = new GestureEngine(calibrate(), { framing: "full", moves: [] });
+    const smoother = new LandmarkSmoother();
+    const ends = [];
+    let frames = 0;
+    const lastFrames = timeline.map(([ms]) => (frames += Math.round(ms / 33)) - 1); // as playTimeline steps
+    let frame = 0;
+    playTimeline(body, timeline, (points, t) => {
+      const { features } = engine.push(smoother.push(points, t), t);
+      if (lastFrames.includes(frame++)) ends.push({ ...features.cursor.right, box: features.reach });
+    });
+    return ends;
+  };
+  const hand = (wrist, extra = {}) => ({ rightArm: { wrist }, ...extra });
+
+  it("a cursor moves the way its hand does: the same on screen whichever way the hand goes", () => {
+    const [start, across, up] = cursorsAfter([[600, hand([0.3, 0.3])], [600, hand([0.5, 0.3])], [600, hand([0.5, 0.1])]]);
+    const screen = (from, to) => ({ x: (to.x - from.x) * (16 / 9), y: to.y - from.y });
+    assert.ok(across.x > start.x && Math.abs(across.y - start.y) < 0.03, "right is right, and only right");
+    assert.ok(up.y > across.y && Math.abs(up.x - across.x) < 0.03, "up is up, and only up");
+    const [sideways, upwards] = [screen(start, across).x, screen(across, up).y];
+    assert.ok(Math.abs(sideways - upwards) / upwards < 0.1, `a fifth of a torso moves the cursor ${sideways.toFixed(2)} across and ${upwards.toFixed(2)} up`);
+  });
+
+  // A hand just above the head is the top, so nobody has to stretch an arm straight up to get there.
+  it("a comfortable reach, not a full stretch, gets a hand to the screen's side and top", () => {
+    const [side, top, chest] = cursorsAfter([[600, hand([1.1, 0.3])], [600, hand([0.2, -0.6])], [600, hand([-0.45, 0.3])]]);
+    assert.equal(side.x, 1);
+    assert.equal(top.y, 1);
+    assert.ok(Math.abs(chest.x) < 0.15 && Math.abs(chest.y) < 0.15, "a hand at the middle of the chest is the middle of the screen");
+  });
+
+  it("a lean carries the cursor with the hand, and a step to a new spot re-centres it", () => {
+    const [still, leaning, stepped, settled] = cursorsAfter([[600, hand([0.3, 0.3])], [300, hand([0.3, 0.3], { lean: 0.3 })], [300, hand([0.3, 0.3], { x: 0.6 })], [6000, hand([0.3, 0.3], { x: 0.6 })]]);
+    assert.ok(leaning.x - still.x > 0.15, "the hand went right with the body, so the cursor did too");
+    assert.ok(stepped.x - still.x > 0.25, "just after a step the hand is somewhere new");
+    assert.ok(Math.abs(settled.x - still.x) < 0.05, "a few seconds on, the screen is centred on the player again");
   });
 
   it("a hand the tracker has lost reads as gone rather than frozen", () => {

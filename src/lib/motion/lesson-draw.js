@@ -2,9 +2,11 @@
 // mirror, and a looping demo of the move. The demo is a ring, not a character, because a cursor goes
 // where the hand goes, whatever the arm does to get it there. Colours are the game's own rings.
 import { HAND_COLOURS } from "../stage/views/cursors.js";
+import { projection } from "./overlay.js";
 
 const EITHER = "#ffffff";
 const TRAIL_MS = 160;
+const DOT_SIZE = 0.22; // of the field's half height, as wide as practice's reach test (DOT_REACH)
 const SIDES = ["left", "right"];
 const colourOf = (hand) => (hand ? HAND_COLOURS[hand] : EITHER);
 
@@ -19,8 +21,32 @@ export function clearCanvas(canvas) {
   return ctx;
 }
 
-// The field runs -1 to 1 each way with y up, the same as a hand's aim, across the whole canvas.
-const placer = (canvas) => ({ x, y }) => [((x + 1) / 2) * canvas.width, ((1 - y) / 2) * canvas.height];
+// The field runs -1 to 1 each way with y up, the same as a hand's aim, across the whole canvas. unitX
+// and unitY are how many pixels one field unit is, for anything sized in the field's own units.
+function placer(canvas) {
+  const at = ({ x, y }) => [((x + 1) / 2) * canvas.width, ((1 - y) / 2) * canvas.height];
+  return Object.assign(at, { unitX: canvas.width / 2, unitY: canvas.height / 2 });
+}
+
+// Over the mirror the field is the engine's reach box, so a ring sits on the hand that drives it and a
+// target sits where that hand has to go.
+export function mirrorPlacer(canvas, aspect, reach) {
+  const onCamera = projection(canvas, aspect);
+  const at = ({ x, y }) => onCamera({ x: reach.x + x * reach.halfWidth, y: reach.y - y * reach.halfHeight });
+  const scale = Math.max(canvas.width / aspect, canvas.height);
+  return Object.assign(at, { unitX: reach.halfWidth * scale, unitY: reach.halfHeight * scale, box: true });
+}
+
+// The box the screen stands for, faint, so the player sees how far a hand has to go.
+function screenBox(ctx, at) {
+  const [left, top] = at({ x: -1, y: 1 });
+  const [right, bottom] = at({ x: 1, y: -1 });
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 8]);
+  ctx.strokeRect(left, top, right - left, bottom - top);
+  ctx.setLineDash([]);
+}
 
 // Keeps the last moments of each hand, so a fast hand leaves a streak and a slow one hardly any.
 export function pushTrail(trails, cursors, t) {
@@ -86,12 +112,12 @@ function fruit(ctx, [x, y], radius, halo, { split = 0, angle = 0, fade = 1 } = {
   ctx.restore();
 }
 
-function floorLine(ctx, canvas, y) {
+function floorLine(ctx, canvas, at, y) {
   ctx.strokeStyle = "rgba(255,255,255,0.5)";
   ctx.lineWidth = Math.max(2, canvas.height * 0.006);
   ctx.beginPath();
-  ctx.moveTo(canvas.width * 0.05, y);
-  ctx.lineTo(canvas.width * 0.95, y);
+  ctx.moveTo(...at({ x: -0.9, y }));
+  ctx.lineTo(...at({ x: 0.9, y }));
   ctx.stroke();
 }
 
@@ -108,7 +134,7 @@ function mark(ctx, [x, y], size, colour) {
 // A tray on the floor under its hand, joined to the ring so the player sees which drives which.
 function tray(ctx, canvas, at, x, floorY, half, colour, ringAt) {
   const [cx, cy] = at({ x, y: floorY });
-  const width = half * canvas.width;
+  const width = 2 * half * at.unitX;
   const height = canvas.height * 0.03;
   if (ringAt) {
     ctx.strokeStyle = colour;
@@ -127,21 +153,21 @@ function tray(ctx, canvas, at, x, floorY, half, colour, ringAt) {
 }
 
 // Over the mirror, after drawSkeleton: the target the player is on, then each hand's streak and ring.
-export function drawLesson(canvas, move, cursors, dot, trails = {}) {
+// Pass mirrorPlacer's at over the camera, so all of it lines up with the player's own hands.
+export function drawLesson(canvas, move, cursors, dot, trails = {}, at = placer(canvas)) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  const at = placer(canvas);
   const size = canvas.height * 0.03;
+  if (at.box) screenBox(ctx, at);
   if (move.gesture === "slide") {
-    const [, floorY] = at(move.dots[0]);
-    floorLine(ctx, canvas, floorY);
+    floorLine(ctx, canvas, at, move.dots[0].y);
     if (dot) mark(ctx, at(dot), size, colourOf(dot.hand));
     for (const side of SIDES) if (cursors[side]) tray(ctx, canvas, at, cursors[side].x, move.dots[0].y, move.half ?? 0.19, HAND_COLOURS[side], at(cursors[side]));
-  } else if (dot && move.gesture === "slice") fruit(ctx, at(dot), (dot.radius * canvas.height) / 2, colourOf(dot.hand));
+  } else if (dot && move.gesture === "slice") fruit(ctx, at(dot), dot.radius * at.unitY, colourOf(dot.hand));
   else if (dot) {
     ctx.fillStyle = colourOf(dot.hand);
     ctx.beginPath();
-    ctx.arc(...at(dot), canvas.height * 0.11, 0, Math.PI * 2);
+    ctx.arc(...at(dot), DOT_SIZE * at.unitY, 0, Math.PI * 2);
     ctx.fill();
   }
   for (const side of SIDES) {
@@ -207,7 +233,7 @@ function demoSlide(ctx, canvas, at, seconds, sides) {
   const x = 0.45 * Math.sin(u * Math.PI * 2);
   const side = sides.length > 1 ? (x < 0 ? "left" : "right") : sides[0];
   const floorY = -0.7;
-  floorLine(ctx, canvas, at({ x: 0, y: floorY })[1]);
+  floorLine(ctx, canvas, at, floorY);
   for (const markX of [-0.4, 0.4]) mark(ctx, at({ x: markX, y: floorY }), canvas.height * 0.03, Math.abs(x - markX) < 0.08 ? "#ffffff" : "rgba(255,255,255,0.35)");
   const ringAt = at({ x, y: 0.1 });
   tray(ctx, canvas, at, x, floorY, 0.19, HAND_COLOURS[side], ringAt);

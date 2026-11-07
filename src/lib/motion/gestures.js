@@ -58,6 +58,11 @@ const SPEED_WINDOW_MS = 1500;
 const JAB_ARMED_MS = 1000; // how long after being up and inside the shoulder a fist going out still counts as a jab
 const JAB_INSIDE = 0.25; // torso lengths outside the shoulder; a fist nearer the middle than this is loaded
 const REST_DEPTH_MS = 600; // how quickly an arm's resting depth catches up with wherever it is held
+// The screen stands for a box at the player's chest, so a cursor goes where its hand goes, only bigger.
+const REACH = 0.85; // of an arm out past each shoulder reaches the screen's side, without a full stretch
+const REACH_DROP = 0.25; // of the torso below the shoulders is the screen's middle, where raised hands rest
+const REACH_SETTLE_MS = 2000; // the box trails the body: a lean carries the cursor, a step re-centres it
+const SCREEN_RATIO = 16 / 9; // the game field's shape, so the hand moves the cursor alike every way
 const GUARD_ZONE = 0.6; // torso lengths from the nose
 const SQUAT_JUMP_MS = 900; // a jump this soon after a squat grew out of it
 const PAIRED_SLASH_MS = 120; // two hands arriving this close together moved as one
@@ -317,6 +322,7 @@ export class GestureEngine {
     this.beats = { legs: [], flap: [], arms: [] };
     this.guardedAt = { left: -Infinity, right: -Infinity };
     this.restDepth = { left: null, right: null, t: null };
+    this.reachAt = null;
     this.loadedAt = { left: -Infinity, right: -Infinity };
     this.elbowTrail = { left: [], right: [] };
     this.squatAt = -Infinity;
@@ -623,6 +629,19 @@ export class GestureEngine {
     }
   }
 
+  // The part of the camera's picture the screen stands for, in its mirrored units: the screen's shape,
+  // as wide as a comfortable reach, centred on the chest, and trailing the shoulders by a second or two.
+  reachBox(shoulder, u, armLength) {
+    const halfWidth = (this.cal.shoulderWidth ?? 0.65 * u) / 2 + REACH * armLength;
+    const target = { x: shoulder.x, y: shoulder.y + REACH_DROP * u };
+    const last = this.reachAt;
+    const keep = last ? Math.exp(-Math.max(0, this.frameT - last.t) / REACH_SETTLE_MS) : 0;
+    const x = last ? target.x + (last.x - target.x) * keep : target.x;
+    const y = last ? target.y + (last.y - target.y) * keep : target.y;
+    this.reachAt = { x, y, t: this.frameT };
+    return { x, y, halfWidth, halfHeight: halfWidth / SCREEN_RATIO };
+  }
+
   measure(points) {
     const { cal } = this;
     const u = cal.torso;
@@ -711,7 +730,8 @@ export class GestureEngine {
       left: { x: velocity("left", "x"), y: velocity("left", "y"), seconds, at: handAt(leftWrist) },
       right: { x: velocity("right", "x"), y: velocity("right", "y"), seconds, at: handAt(rightWrist) },
     };
-    const aimAt = (wrist) => ({ x: clampUnit((wrist.x - shoulder.x) / (armLength * 1.2)), y: clampUnit((shoulder.y + 0.3 * u - wrist.y) / (armLength * 1.2)) });
+    const box = this.reachBox(shoulder, u, armLength);
+    const aimAt = (wrist) => ({ x: clampUnit((wrist.x - box.x) / box.halfWidth), y: clampUnit((box.y - wrist.y) / box.halfHeight) });
     const legLift = (knee, foot, otherFoot) => (otherFoot < THRESHOLDS.lift.otherMax ? Math.max(knee, foot) : 0);
     const rising = (side, other, wrist) => (Math.abs(wrist.x - shoulder.x) < 0.9 * u && wrist.y < shoulder.y + 0.5 * u && -velocity(other, "y") < BOTH_HANDS_RISING ? -velocity(side, "y") : 0);
     const upper = this.framing !== "full"; // the hips may be below the frame, so the shoulders stand in
@@ -797,6 +817,7 @@ export class GestureEngine {
       cadence: 0,
       handSpeed,
       aim: { left: aimAt(leftWrist), right: aimAt(rightWrist) },
+      reach: box,
       hipRise,
       feetLifted: Math.min(leftFootRise, rightFootRise) >= THRESHOLDS.jump.feet,
       shoulderDrop,
