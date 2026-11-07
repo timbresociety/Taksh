@@ -31,9 +31,19 @@ export default function RivalEpisode({ episode }) {
       {!stored && <p>Saving this round to 0G Storage…</p>}
       {stored?.txHash && (
         <p>
-          Saved on 0G Storage. Root <code>{stored.rootHash.slice(0, 12)}…</code>{" "}
-          <a href={`${EXPLORER}/tx/${stored.txHash}`} target="_blank" rel="noreferrer">See the transaction</a>
+          Saved on 0G Storage. <a href={`${EXPLORER}/tx/${stored.txHash}`} target="_blank" rel="noreferrer">See the transaction</a>
         </p>
+      )}
+      {stored?.txHash && (
+        // The root in full, because the replay needs all of it.
+        <details className="rival-episode__check">
+          <summary>Check this score yourself</summary>
+          <p>
+            Every move and every 0G decision in this round is stored on 0G. Download it and play it again, move for move, and you get the same
+            score. In the Taksh repo, run:
+          </p>
+          <code className="rival-episode__root" data-testid="rival-root">npm run replay-episode -- {stored.rootHash}</code>
+        </details>
       )}
       {stored?.txHash && stored.ledger && (
         <p data-testid="rival-ledger">

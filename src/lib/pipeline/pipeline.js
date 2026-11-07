@@ -4,7 +4,8 @@ import { compareSpecs } from "../spec/compare.js";
 import { validateSpec } from "../spec/validate.js";
 import { GAME_SPEC_SCHEMA } from "../spec/contract.js";
 import { TEMPLATES, templateInfo } from "../templates/index.js";
-import { INTENT_SCHEMA, PROMPT_VERSIONS, REVISION_SCHEMA, loadPrompt } from "./prompts.js";
+import { INTENT_SCHEMA, LEVEL_SCHEMA, PROMPT_VERSIONS, REVISION_SCHEMA, loadPrompt } from "./prompts.js";
+import { brainFor, cleanObservation } from "../agent/rival.js";
 
 const tag = (name, value) => `<${name}>\n${value}\n</${name}>`;
 
@@ -131,6 +132,85 @@ export async function reviseGame({ spec, request }, provider) {
     changeKind: data.changeKind,
     changeSummary: data.changeSummary,
     comparison: outcome.comparison,
+    ...meta(provider, startedAt, attempts, replies),
+  };
+}
+
+// A player's earlier runs of one game, as the browser kept them. Only numbers, known moves and the
+// stats the template really reports get through, so the route can't carry free text to a paid model.
+const MAX_RUNS = 5;
+const OUTCOMES = ["win", "lose", "complete"];
+
+export function cleanRuns(spec, raw) {
+  const template = templateInfo(spec.template);
+  const labels = template.result(template.create(spec)).stats.map((stat) => stat.label);
+  const brain = brainFor(spec.template);
+  const whole = (value, max) => (Number.isFinite(value) ? Math.min(max, Math.max(0, Math.round(value))) : 0);
+  return (Array.isArray(raw) ? raw : []).slice(-MAX_RUNS).map((run) => {
+    const stats = Object.fromEntries((Array.isArray(run?.stats) ? run.stats : []).map((stat) => [stat?.label, Number(stat?.value)]));
+    const sides = brain && run?.observed ? cleanObservation(brain, run.observed)?.lastShots : null;
+    return {
+      level: Math.max(1, whole(run?.level, 99)),
+      outcome: OUTCOMES.includes(run?.outcome) ? run.outcome : "complete",
+      score: whole(run?.score, 10_000_000),
+      seconds: whole(run?.ms / 1000, 3600),
+      stats: Object.fromEntries(labels.map((label) => [label, whole(stats[label], 1_000_000)])),
+      moves: Object.fromEntries(template.actions.map(({ id }) => [id, whole(run?.moves?.[id], 100_000)])),
+      ...(sides?.length && { lastShots: sides }),
+    };
+  });
+}
+
+// The next level: the same game and look, with tuning the model picked from the player's runs. Every
+// changed field needs the model's reason, and the before and after numbers come from code.
+export async function designLevel({ spec, runs }, provider) {
+  const startedAt = Date.now();
+  const template = templateInfo(spec.template);
+  const system = await loadPrompt("level");
+  const fields = Object.entries(template.tuning).map(([key, field]) => ({
+    key, label: field.label, unit: field.unit, min: field.min, max: field.max, higherIsHarder: field.higherIsHarder, value: spec.tuning[key],
+  }));
+  const message = [
+    tag("game", JSON.stringify({ name: template.name, rules: template.pitch, title: spec.title })),
+    tag("tuning", JSON.stringify(fields)),
+    tag("runs", JSON.stringify(runs)),
+  ].join("\n\n");
+  const input = { spec, runs };
+
+  // A field the model left out keeps its value rather than falling back to the default.
+  const review = (data) => {
+    const check = validateSpec({ ...spec, tuning: [...Object.entries(spec.tuning).map(([key, value]) => ({ key, value })), ...(data.tuning ?? [])] });
+    if (!check.ok) return { errors: check.errors };
+    const { changes } = compareSpecs(spec, check.spec);
+    if (!changes.length) return { errors: ["Nothing in tuning changed, so this would be the same level."] };
+    const reasons = new Map((data.changes ?? []).map((change) => [change.key, change.why]));
+    const missing = changes.filter((change) => !/\p{L}/u.test(reasons.get(change.key) ?? ""));
+    if (missing.length) return { errors: missing.map((change) => `changes has no reason for ${change.key}.`) };
+    return { errors: [], spec: check.spec, changes: changes.map((change) => ({ ...change, why: reasons.get(change.key) })) };
+  };
+
+  const first = await provider.complete({ stage: "level", system, user: message, schema: LEVEL_SCHEMA, input });
+  let data = first.data;
+  let outcome = review(data);
+  let attempts = 1;
+  const replies = [first];
+  if (outcome.errors.length) {
+    attempts = 2;
+    const repaired = await provider.complete({ stage: "level", system, user: repairMessage(message, data, outcome.errors), schema: LEVEL_SCHEMA, input: { ...input, repair: true } });
+    replies.push(repaired);
+    data = repaired.data;
+    outcome = review(data);
+  }
+
+  const ok = outcome.errors.length === 0;
+  // A new seed too, so the next level isn't the same layout with new numbers.
+  return {
+    ok,
+    spec: ok ? { ...outcome.spec, seed: (spec.seed + 1) % 2_147_483_647 } : null,
+    changes: ok ? outcome.changes : [],
+    headline: ok && /\p{L}/u.test(data.headline ?? "") ? data.headline : "",
+    errors: outcome.errors,
+    runs: runs.length,
     ...meta(provider, startedAt, attempts, replies),
   };
 }

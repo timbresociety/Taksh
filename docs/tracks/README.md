@@ -8,7 +8,7 @@ Each sponsor Taksh enters gets a file here, `docs/tracks/<sponsor>.md`, so anyon
 
 | Sponsor | Lines | Taksh status |
 | --- | --- | --- |
-| 0G | 220-396 | Entering. Inference is in the main flow, plus the rival's decisions |
+| 0G | 220-396 | Entering 2 of 4: Private Computer and Physical AI. Done: `0g.md` |
 | Arkiv | 719-939 | Entering Build on Arkiv (from scratch). Done: `arkiv.md` |
 | ENS | 1280-1337 | Entering. Done: `ens.md` |
 

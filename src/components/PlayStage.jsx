@@ -127,7 +127,11 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
         rivalBrain?.stop();
         // A 0G-rival round carries its whole episode, so the result screen can store it on 0G.
         const episode = rivalBrain && { spec, options: session.options, roundId: rivalBrain.roundId, ...session.recording, decisions: rivalBrain.decisions };
-        setTimeout(() => onEnd({ ...session.result(), ...(episode && { episode }) }), 1100);
+        // How often each move was made and the template's own read of the run, for the next level's design.
+        const moves = {};
+        for (const [, kind, value] of session.recording.log) if (kind === "act") moves[value] = (moves[value] ?? 0) + 1;
+        const observed = session.template.observe?.(session.state);
+        setTimeout(() => onEnd({ ...session.result(), moves, ...(observed && { observed }), ...(episode && { episode }) }), 1100);
       }
       raf = requestAnimationFrame(frame);
     }

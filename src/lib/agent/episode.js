@@ -18,7 +18,7 @@ const MAX_LOG = 5000;
 const MAX_DT_MS = 50; // PlayStage never steps further than this
 const CLOCK_SLACK_MS = 1500; // network and frame jitter between the server clock and the game clock
 const UPLOAD_WINDOW_MS = 5 * 60 * 1000; // a failed upload can be retried, for a while
-const IN_TIME_MS = 5000; // the browser gives up on a decision after 6 s; one served faster was played
+const IN_TIME_MS = 8000; // the browser gives up on a decision after 9 s; one served faster was played
 const LAST_PLAN_MS = 3000; // a plan served this close to the upload may have landed after the bell
 const HUMAN_REACTION_MS = 120; // simple visual reaction is about 200 ms; under 120 is not a person
 const FAST_DODGES_ALLOWED = 2; // a lucky early lean happens, a run of them doesn't
@@ -59,15 +59,19 @@ export function checkEpisode(raw, spec, round, now = Date.now()) {
   });
 
   // Real time. Game time at each plan is the sum of the steps before it, which the browser can't
-  // shrink without also changing the score. It can't be more than the server time since the round opened.
+  // shrink without also changing the score. Counted from the first plan played: game time since then
+  // can't be more than server time since 0G served it. Not from the round's opening, because when the
+  // first decision is lost the next one opens the round seconds into the game. Before the first plan
+  // the rival only guards, so nothing can be gained there.
   const gameMsAt = (step) => dts.slice(0, step).reduce((sum, dt) => sum + dt, 0);
   const endMs = gameMsAt(dts.length);
+  const firstPlanMs = gameMsAt(plans[0][0]);
+  const firstServedAt = issued[0].issuedAt;
   plans.forEach(([step], index) => {
-    const served = issued[index].issuedAt - round.startedAt;
-    if (gameMsAt(step) > served + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
-    if (index > 0 && served < issued[index - 1].issuedAt - round.startedAt) throw refuse("The 0G decisions are out of order.");
+    if (gameMsAt(step) - firstPlanMs > issued[index].issuedAt - firstServedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
+    if (index > 0 && issued[index].issuedAt < issued[index - 1].issuedAt) throw refuse("The 0G decisions are out of order.");
   });
-  if (endMs > now - round.startedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
+  if (endMs - firstPlanMs > now - firstServedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
   if (now - round.startedAt > endMs + UPLOAD_WINDOW_MS) throw refuse("This round is too old to store.");
 
   // Every plan 0G served in time to be played has to be in the round. Only two kinds may be missing:

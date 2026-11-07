@@ -1627,6 +1627,20 @@ kbd {
 .rival-episode p {
   margin: 0 0 8px;
 }
+.rival-episode__check {
+  margin: 0 0 8px;
+}
+.rival-episode__check summary {
+  cursor: pointer;
+}
+.rival-episode__check p {
+  margin: 6px 0;
+}
+.rival-episode__root {
+  display: block;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
 .rival-episode__error {
   color: var(--volt);
 }
@@ -1703,7 +1717,8 @@ kbd {
 }
 
 .ens-name a:not(.button),
-.source-note a {
+.source-note a,
+.rival-episode a {
   color: var(--volt);
 }
 
@@ -1915,4 +1930,34 @@ kbd {
   margin: 6px 0 0;
   font-size: 0.72rem;
   opacity: 0.7;
+}
+
+/* A level the model designed from the player's runs, on the brief. */
+.level-card {
+  max-width: 34rem;
+  margin: 14px 0 18px;
+  padding: 12px 16px;
+  border: 2px dashed rgb(247 246 240 / 0.4);
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+.level-card p {
+  margin: 0 0 6px;
+}
+.level-card__title {
+  font-family: var(--display);
+  font-weight: 800;
+  color: var(--volt);
+}
+.level-card ul {
+  margin: 0 0 6px;
+  padding-left: 1.1em;
+}
+.level-card li {
+  margin: 0 0 4px;
+}
+.level-card__id {
+  font-size: 0.72rem;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
 }
