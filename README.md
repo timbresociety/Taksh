@@ -81,13 +81,13 @@ The camera only works on `http://localhost` or an HTTPS address. The `Network` a
 
 ## Model and prompts
 
-Games are generated on **0G Private Computer** with `glm-5.3`, on the `private` trust tier. Only TeeML providers can serve those requests, so the model runs inside a TEE and the prompt never leaves the enclave. The provider is `src/lib/pipeline/provider-0g.js`. It calls the 0G Router (`https://router-api.0g.ai/v1`, OpenAI-compatible) with plain `fetch` and needs no SDK.
+Games are generated on **0G Private Computer** with `glm-5.3`, on the `private` trust tier. Request IDs, root hashes and a line-by-line check against the 0G prize text are in `docs/0g-judging.md`. Only TeeML providers can serve those requests, so the model runs inside a TEE and the prompt never leaves the enclave. The provider is `src/lib/pipeline/provider-0g.js`. It calls the 0G Router (`https://router-api.0g.ai/v1`, OpenAI-compatible) with plain `fetch` and needs no SDK.
 
 The idea can also be spoken. "Say it" records up to 15 s in the browser, and `/api/transcribe` sends it to `whisper-large-v3` on the same private tier. The words land in the idea box to read and fix before "Make my game". A 4 s idea costs $0.00052. The button shows only when 0G is the provider. The route refuses non-audio and anything over 1 MB, and allows 20 a minute.
 
-- **Order.** The app picks 0G when `OG_API_KEY` is set, then Claude, then labelled fixtures. `TAKSH_PROVIDER=0g|claude|fixture` forces one. `OG_MODEL` changes the model, which must have a TeeML provider.
+- **Order.** The app picks 0G when `OG_API_KEY` is set, then Claude, then labelled fixtures. `TAKSH_PROVIDER=0g|claude|fixture` forces one. `OG_MODEL` changes the model, which must have a TeeML provider. If 0G is set up but its check fails, `/api/status` says why in `fallbackReason`, and the app tries 0G again a minute later.
 - **Receipts.** Every reply carries `x_0g_trace` with a request ID, the provider's on-chain address and the cost. The pipeline returns these as `traces`, and the brief and result screens show the call count, total cost and last request ID.
-- **Request shape.** Strict JSON schema output, thinking off, and a price ceiling on every call (`X-0G-Provider-Max-Price-Usd-*`). A `402` (empty balance), `429` or `503` becomes a message the player can act on. `429` and `5xx` are retried once.
+- **Request shape.** Strict JSON schema output, thinking off, and a price ceiling on every call (`X-0G-Provider-Max-Price-Usd-*`). A `402` (empty balance), `429` or `503` becomes a message the player can act on. `429`, `502` and `503` are retried once.
 - **Today's challenge.** The first request of each UTC day sends that day's theme through the same generate pipeline on the private tier, validates the spec and stores it on Arkiv with 0G's request ID. The home card shows that ID. Everyone plays that one game and posts to that day's board. Code: `src/lib/daily/`.
 - **What breaks without 0G.** Taksh can't turn an idea into a game. You're left with 13 starter games and keyword fixtures. Today's challenge becomes a starter game picked from the date, the card says so, and no request ID is shown.
 
