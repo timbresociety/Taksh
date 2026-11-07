@@ -71,6 +71,17 @@ In round 1 the rival safe-stopped twice. The first was the dev server compiling 
 | Not a generic chat wrapper, and the AI can't be removed unnoticed | ✅ | The model's output is the game: template, world, style and tuning, validated in code (`src/lib/spec/validate.js`) |
 | Submission: repo, README, video, live link, team | ⏳ | Repo `timbresociety/Taksh` is public. Video, live link and team contacts belong in the submission form |
 
+Also on the private tier: the next level. After a run, the result screen offers "Next level, designed by 0G" (`src/components/ResultStage.jsx:95`). It sends the game and up to 5 of the player's runs to `/api/level`. Each run carries outcome, score, time, the game's own stats, move counts and the last shots. `glm-5.3` returns new tuning and one reason per changed setting (`prompts/level.v1.md`). Code checks the tuning against the template's ranges and works out before and after itself, so only the reasons are the model's words (`src/lib/pipeline/pipeline.js:166`). The brief then shows each change, its reason and the full request ID. Checked on 2026-11-07, Counter Bout:
+
+| Runs sent | What 0G changed | Request | Time |
+| --- | --- | --- | --- |
+| 1 win, in Chrome | Level 2: faster shots, tougher rival | `d588993f-a789-47a6-ae3c-3613833202e8` | 7.0 s |
+| 2 wins, in Chrome | Level 3, reasons cite both runs | `054a081e-dae7-4dc1-96ed-865451d1067c` | 4.0 s |
+| 1 win, scripted | Longer round, less warning, shorter rests, more rival health | `a0de7b79-778b-4717-a090-d4347552d1b6` | 6.5 s |
+| A win, then a loss with 0 dodges and 13 hits, scripted | Easier: warning 600 to 1200 ms, rest 700 to 1400 ms, rival health 200 to 120 | `836bb8cf-fced-420b-a7c1-9777833fb4ad` | 18.0 s |
+
+The prompt asks for reasons under 16 words. On the loss case `glm-5.3` wrote about 40, and the screen shows them as written.
+
 Also on the private tier: speech to text with `whisper-large-v3` (`provider-0g.js:126`, `src/app/api/transcribe/route.js:24`) and changing a game (`src/app/api/revise/route.js:9`).
 
 ## Physical AI: Agents with a Body
