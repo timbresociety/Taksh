@@ -682,6 +682,24 @@ describe("punches at the camera", () => {
     assert.deepEqual(struck(BODIES.midRange, timeline), ["hook_left"]);
   });
 
+  // The elbow comes straight up from guard to shoulder height here, with no wind-up out to the side, and
+  // for a moment the forearm points at the camera, which is the shape the punch reading looks for.
+  it("a hook with the elbow lifted straight up from guard is still a hook, not a punch", () => {
+    const guard = { leftArm: guardArm("left", { depth: false }), rightArm: guardArm("right", { depth: false }) };
+    const lifted = { wrist: [0.3, 0.05, 0], elbow: [-0.25, 0.1] };
+    const hookEnd = { wrist: [1.1, 0.1, 0], elbow: [0.3, 0.15] };
+    const mix = (from, to, p) => ({ wrist: from.wrist.map((v, i) => v + (to.wrist[i] - v) * p), elbow: from.elbow.map((v, i) => v + (to.elbow[i] - v) * p) });
+    const timeline = [
+      [900, (p) => ({ leftArm: mix({ wrist: [-0.08, 1.15, 0], elbow: [-0.04, 0.57] }, guard.leftArm, p), rightArm: mix({ wrist: [0.08, 1.15, 0], elbow: [0.04, 0.57] }, guard.rightArm, p) })],
+      [300, guard],
+      [150, (p) => ({ ...guard, leftArm: mix(guard.leftArm, lifted, p) })],
+      [200, (p) => ({ ...guard, leftArm: mix(lifted, hookEnd, p) })],
+      [300, (p) => ({ ...guard, leftArm: mix(hookEnd, guard.leftArm, p) })],
+      [400, guard],
+    ];
+    for (const body of Object.values(BODIES)) assert.deepEqual(struck(body, timeline), ["hook_left"]);
+  });
+
   it("an uppercut from guard is still an uppercut, not a punch", () => {
     const guard = { leftArm: guardArm("left", { depth: false }), rightArm: guardArm("right", { depth: false }) };
     const dip = { wrist: [0.1, 0.5, 0], elbow: [-0.1, 0.8] };
