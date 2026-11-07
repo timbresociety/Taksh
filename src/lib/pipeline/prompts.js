@@ -6,7 +6,7 @@ import { GAME_SPEC_SCHEMA, STYLES, WORLDS, contractText } from "../spec/contract
 import { AVOID_WORDS, FOCUS_WORDS } from "../templates/focus.js";
 import { TEMPLATES } from "../templates/index.js";
 
-export const PROMPT_VERSIONS = { intent: "v3", generate: "v2", revise: "v2" };
+export const PROMPT_VERSIONS = { intent: "v3", generate: "v3", revise: "v2" };
 
 export async function loadPrompt(stage, versions = PROMPT_VERSIONS) {
   const file = path.join(process.cwd(), "prompts", `${stage}.${versions[stage]}.md`);

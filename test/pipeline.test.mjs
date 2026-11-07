@@ -390,7 +390,7 @@ describe("fixture revisions", () => {
 
 describe("prompts", () => {
   it("are on their current versions, with the contract injected and no leftovers from v1", async () => {
-    assert.deepEqual(PROMPT_VERSIONS, { intent: "v3", generate: "v2", revise: "v2" });
+    assert.deepEqual(PROMPT_VERSIONS, { intent: "v3", generate: "v3", revise: "v2" });
     for (const stage of Object.keys(PROMPT_VERSIONS)) {
       const prompt = await loadPrompt(stage);
       assert.doesNotMatch(prompt, /\{\{/);

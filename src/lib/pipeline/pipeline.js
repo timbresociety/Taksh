@@ -1,5 +1,6 @@
 // The idea-to-game pipeline. Each stage asks a provider for structured data, then validates it in
 // code. A provider is anything with complete(); see provider-claude.js and provider-fixture.js.
+import { castFor, namesSomeone } from "../spec/cast.js";
 import { compareSpecs } from "../spec/compare.js";
 import { validateSpec } from "../spec/validate.js";
 import { GAME_SPEC_SCHEMA } from "../spec/contract.js";
@@ -91,6 +92,14 @@ export async function generateGame({ idea, clarification, brief }, provider) {
     });
     replies.push(repaired);
     check = validateSpec(repaired.data);
+  }
+
+  // When the player said who they want to be, hold the model to it; otherwise its own casting stands.
+  const said = [idea, clarification].filter(Boolean).join(" ");
+  if (check.ok && namesSomeone(said)) {
+    const cast = castFor({ text: said, template: check.spec.template });
+    if (check.spec.skin.hero.body !== cast.hero.body) check.spec.skin.hero = cast.hero;
+    if (check.spec.skin.rival.body === check.spec.skin.hero.body) check.spec.skin.rival = cast.rival;
   }
 
   return { ok: check.ok, spec: check.spec, errors: check.errors, firstErrors, ...meta(provider, startedAt, attempts, replies) };

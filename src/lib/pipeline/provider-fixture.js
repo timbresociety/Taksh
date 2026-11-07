@@ -1,7 +1,8 @@
 // Fixture provider: canned stand-ins for the model, used when no credentials are configured.
 // It exists to exercise the runtime and the UI. Keyword matching here says nothing about how well
 // a real model reads intent, and every response is labelled source: "fixture" all the way to the UI.
-import { DEFAULT_HERO, DEFAULT_RIVAL, SPEC_VERSION, WORLDS } from "../spec/contract.js";
+import { castFor } from "../spec/cast.js";
+import { SPEC_VERSION, WORLDS } from "../spec/contract.js";
 import { templateInfo } from "../templates/index.js";
 import { WORLD_WORDS, bestTemplate, clarifyOptions } from "./match.js";
 
@@ -84,7 +85,7 @@ function fixtureSpec({ idea, clarification, brief: gameBrief }) {
     title: `${world.label} ${template.name}`,
     objective: template.pitch,
     seed: seedFrom(text),
-    skin: { world: world.id, style: pickStyle(`${text} ${gameBrief?.style ?? ""}`), hero: DEFAULT_HERO, rival: DEFAULT_RIVAL },
+    skin: { world: world.id, style: pickStyle(`${text} ${gameBrief?.style ?? ""}`), ...castFor({ text, template: template.id }) },
     tuning: [],
   };
 }
