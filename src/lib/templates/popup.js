@@ -116,7 +116,15 @@ export default {
     };
   },
 
-  aimsByReaching: true,
+  handCursors: {
+    lesson: {
+      kind: "aim",
+      cue: "Each hand moves its own ring, and a ring that reaches a monkey shoos it. Reach each dot with the ring of the same colour.",
+      mouseCue: "The mouse moves your ring. Reach each dot, the way you shoo monkeys.",
+    },
+    keys: { shoo: "Space shoos the monkey next to your ring." },
+    controls: { shoo: "Reach the monkey with a hand" },
+  },
   aim: aimCursors,
 
   // With no hand on screen the one nearest to hiding goes. With one, a swipe only reaches what is near it,

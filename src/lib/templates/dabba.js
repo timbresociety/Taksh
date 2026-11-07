@@ -111,7 +111,15 @@ export default {
     };
   },
 
-  aimsByReaching: true,
+  handCursors: {
+    lesson: {
+      kind: "aim",
+      cue: "Each hand moves its own ring. Reach each dot with the ring of the same colour, the way you catch tiffins.",
+      mouseCue: "The mouse moves your ring. Reach each dot, the way you catch tiffins.",
+    },
+    keys: { scoop: "Space catches what is next to your ring." },
+    controls: { scoop: "Reach it with the hand of its colour" },
+  },
   aim: aimCursors,
 
   // With no hand on screen the lowest thing worth having is taken. With one, a swipe only reaches what is

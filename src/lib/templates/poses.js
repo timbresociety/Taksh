@@ -18,6 +18,8 @@ export default {
   length: "30 s",
   framing: "upper",
   score: "poses",
+  // Each pose is shown on the character as the game calls it, so there is nothing to practise first.
+  teachesItsOwnMoves: true,
   actions: POSES.map((pose, index) => ({ id: `pose_${pose.id}`, label: pose.label, key: String((index + 1) % 10), keyLabel: String((index + 1) % 10) })),
   bindings: POSES.map((pose) => ({ gesture: `pose_${pose.id}`, action: `pose_${pose.id}`, exercise: pose.label })),
   tuning: {

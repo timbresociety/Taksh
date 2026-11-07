@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { onDot, practiceMoves } from "@/lib/game/practice";
+import { cursorTrial } from "@/lib/game/cursor-lesson";
+import { practiceMoves } from "@/lib/game/practice";
 import { playCue } from "@/lib/game/sound";
 import { GestureEngine, MOVE_READINGS, personalLevel } from "@/lib/motion/gestures";
-import { drawAim, drawGhost, drawSkeleton } from "@/lib/motion/overlay";
+import { clearCanvas, drawDemo, drawLesson, pushTrail } from "@/lib/motion/lesson-draw";
+import { drawGhost, drawSkeleton } from "@/lib/motion/overlay";
 import { templateInfo } from "@/lib/templates";
 import MoveCoach from "./MoveCoach";
 
@@ -14,6 +16,30 @@ const RANGE_CHECK_MS = 5000;
 const NEXT_MOVE_MS = 650;
 const NEAR_MISS = 0.6; // below this the player was doing something else, and their range is not known
 
+// Said when a hand reached the target without doing it.
+const CURSOR_NOTES = { slow: "Faster! Swipe right through it.", wrong: "Other hand for this one." };
+const CURSOR_HINTS = {
+  aim: "Yellow is you. Small hand moves go a long way, so raise each hand in front of its shoulder.",
+  slice: "Yellow is you. Raise your hands in front of you. A slow hand goes through, a fast one cuts.",
+  slide: "Yellow is you. Only side to side counts, so raise your hands a little and slide them.",
+};
+
+// A cursor game's move on a loop, drawn as the ring the player will see, with no character.
+function CursorDemo({ kind, mouse }) {
+  const canvas = useRef(null);
+  useEffect(() => {
+    const start = performance.now();
+    let raf = 0;
+    const frame = (now) => {
+      drawDemo(canvas.current, kind, (now - start) / 1000, { mouse });
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [kind, mouse]);
+  return <canvas ref={canvas} className="practice__demo" data-testid="cursor-demo" data-kind={kind} aria-hidden="true" />;
+}
+
 export default function PracticeStage({ spec, mode, feed, calibration, onDone }) {
   const template = templateInfo(spec.template);
   const usesCamera = mode === "camera";
@@ -21,6 +47,7 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
 
   const video = useRef(null);
   const overlay = useRef(null);
+  const pad = useRef(null);
   const fill = useRef(null);
   const coach = useRef(null);
   const personal = useRef({});
@@ -56,6 +83,19 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
       if (done >= reps) advancing = setTimeout(() => setIndex((current) => current + 1), NEXT_MOVE_MS);
     };
 
+    // A cursor step is scored the way its game plays, from the camera's hands or from the mouse.
+    const trial = move.dots ? cursorTrial(move, template, spec) : null;
+    const trails = {};
+    let said = null;
+    const cursorFrame = (canvas, cursors, t, aspect) => {
+      const dot = move.dots[done];
+      drawLesson(canvas, move, cursors, dot, pushTrail(trails, cursors, t));
+      const now = trial.push(cursors, t, aspect, dot);
+      if (now === "hit") landed();
+      else if (now && now !== said) setNote(CURSOR_NOTES[now]);
+      said = now;
+    };
+
     let unsubscribe = () => {};
     if (usesCamera && feed.current?.running) {
       const engine = new GestureEngine(calibration, { framing: template.framing, moves: move.dots ? [] : [move.gesture], personal: personal.current });
@@ -66,10 +106,7 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
         }
         const result = engine.push(points, t);
         if (move.dots) {
-          if (!result.features) return;
-          const dot = move.dots[done];
-          drawAim(overlay.current, result.features.cursor, dot);
-          if (dot && onDot(result.features.cursor[dot.hand], dot, aspect)) landed();
+          if (result.features && overlay.current) cursorFrame(overlay.current, result.features.cursor, t, aspect);
           return;
         }
         for (const event of result.events) if (event.gesture === move.gesture && !event.returning && done < reps) landed();
@@ -93,6 +130,21 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
       });
     }
 
+    // Without a camera the mouse is the right hand, as it is in the game, across the pad here.
+    const canvas = pad.current;
+    const onPointer = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = 1 - ((event.clientY - rect.top) / rect.height) * 2;
+      clearCanvas(canvas);
+      cursorFrame(canvas, { left: null, right: { x, y } }, event.timeStamp, rect.width / rect.height);
+    };
+    if (!usesCamera && move.dots && canvas) {
+      clearCanvas(canvas);
+      drawLesson(canvas, move, { left: null, right: null }, move.dots[0]);
+      canvas.addEventListener("pointermove", onPointer);
+    }
+
     const onKey = (event) => {
       if (event.repeat || event.key.toLowerCase() !== move.action?.key.toLowerCase()) return;
       event.preventDefault();
@@ -106,20 +158,30 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
     return () => {
       clearTimeout(advancing);
       unsubscribe();
+      canvas?.removeEventListener("pointermove", onPointer);
       window.removeEventListener("keydown", onKey);
     };
-  }, [move, reps, usesCamera, feed, calibration, template]);
+  }, [move, reps, usesCamera, feed, calibration, template, spec]);
 
   if (!move) return null;
 
   return (
     <main className="practice" data-testid="practice" data-gesture={move.gesture}>
       <section className="practice__teach">
-        {!move.dots && <MoveCoach gesture={move.demo ?? move.gesture} look={spec.skin.hero} replay={replay} coachRef={coach} />}
+        {move.dots ? (
+          <CursorDemo kind={move.gesture} mouse={!usesCamera} />
+        ) : move.keyOnly ? (
+          <div className="practice__bigkey" aria-hidden="true">
+            <kbd>{move.action.keyLabel}</kbd>
+          </div>
+        ) : (
+          <MoveCoach gesture={move.demo ?? move.gesture} look={spec.skin.hero} replay={replay} coachRef={coach} />
+        )}
         <div className="practice__move">
           <h1>{move.label}</h1>
           <p>{move.cue}</p>
-          {!move.dots && <p className="practice__hint">Copy it like a mirror. The thick white limb is the one that moves, and the thin line is the path it takes.</p>}
+          {move.dots && <p className="practice__hint">Watch the ring. {usesCamera ? "Your hands" : "Your mouse"} will do the same.</p>}
+          {!move.dots && !move.keyOnly && <p className="practice__hint">Copy it like a mirror. The thick white limb is the one that moves, and the thin line is the path it takes.</p>}
           {move.action && (
             <p className="practice__key">
               <kbd>{move.action.keyLabel}</kbd> on the keyboard
@@ -135,7 +197,14 @@ export default function PracticeStage({ spec, mode, feed, calibration, onDone })
               <video ref={video} playsInline muted />
               <canvas ref={overlay} />
             </div>
-            <p className="practice__hint">{move.dots ? "Yellow is you. Small hand moves go a long way, so raise each hand in front of its shoulder." : "Yellow is you. Match the white skeleton."}</p>
+            <p className="practice__hint">{move.dots ? CURSOR_HINTS[move.gesture] : "Yellow is you. Match the white skeleton."}</p>
+          </>
+        ) : move.dots ? (
+          <>
+            <div className="mirror practice__pad">
+              <canvas ref={pad} data-testid="practice-pad" />
+            </div>
+            <p className="practice__hint">The ring is your mouse.</p>
           </>
         ) : (
           <p className="practice__prompt">Press <kbd>{move.action?.keyLabel}</kbd> to try it.</p>
