@@ -9,14 +9,15 @@ import CreditReceipt from "./CreditReceipt";
 const SUGGESTIONS = ["Give me more time", "Make it harder", "Switch it to neon"];
 
 const HEADLINES = { win: "You did it", lose: "Not this time", complete: "Round over" };
+export const LEVEL_BUSY = "Designing your next level…";
 
-function formatValue(value, unit) {
+export function formatValue(value, unit) {
   if (typeof value === "string") return value;
   if (unit === "ms") return `${(value / 1000).toFixed(1)} s`;
   return `${Number(value.toFixed(2))}${unit ? ` ${unit}` : ""}`;
 }
 
-export default function ResultStage({ game, result, revision, busy, error, mode, paidByYou, onRevise, onPlay, onNew }) {
+export default function ResultStage({ game, result, revision, busy, error, mode, paidByYou, levelBy, onRevise, onPlay, onNextLevel, onNew }) {
   const [request, setRequest] = useState("");
   const { spec } = game;
 
@@ -90,7 +91,12 @@ export default function ResultStage({ game, result, revision, busy, error, mode,
         )}
 
         <div className="answers">
-          <button type="button" className="button button--go" onClick={() => onPlay(mode)}>
+          {levelBy && (
+            <button type="button" className="button button--go" data-testid="next-level" disabled={Boolean(busy)} onClick={onNextLevel}>
+              {busy === LEVEL_BUSY ? busy : `Next level, designed by ${levelBy}`}
+            </button>
+          )}
+          <button type="button" className={levelBy ? "button" : "button button--go"} onClick={() => onPlay(mode)}>
             {revision ? "Play the new version" : "Play again"}
           </button>
           <button type="button" className="text-button" onClick={onNew}>

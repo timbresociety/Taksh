@@ -1908,3 +1908,33 @@ kbd {
   font-size: 0.72rem;
   opacity: 0.7;
 }
+
+/* A level the model designed from the player's runs, on the brief. */
+.level-card {
+  max-width: 34rem;
+  margin: 14px 0 18px;
+  padding: 12px 16px;
+  border: 2px dashed rgb(247 246 240 / 0.4);
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+.level-card p {
+  margin: 0 0 6px;
+}
+.level-card__title {
+  font-family: var(--display);
+  font-weight: 800;
+  color: var(--volt);
+}
+.level-card ul {
+  margin: 0 0 6px;
+  padding-left: 1.1em;
+}
+.level-card li {
+  margin: 0 0 4px;
+}
+.level-card__id {
+  font-size: 0.72rem;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}

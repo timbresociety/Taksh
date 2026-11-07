@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { BODIES, CLOTH_COLOURS, HAIR, HAIR_COLOURS, SKIN_TONES, STYLES, WORLDS } from "@/lib/spec/contract";
 import { createStage } from "@/lib/stage/stage";
 import { templateInfo } from "@/lib/templates";
+import LevelCard from "./LevelCard";
 
 const HAIR_LABELS = { "simple-parted": "Parted", long: "Long", buns: "Buns", buzzed: "Buzzed", "buzzed-female": "Cropped", none: "None" };
 
@@ -140,6 +141,7 @@ export default function BriefStage({ game, onChangeSkin, onPlay, onBack, onCover
       <section className="look__panel">
         <h1 data-testid="game-title">{spec.title}</h1>
         <p className="brief__objective">{spec.objective}</p>
+        {game.level && <LevelCard level={game.level} />}
         <div className="answers">
           <button type="button" className="button button--go" onClick={() => onPlay("camera")}>
             Play with camera

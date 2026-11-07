@@ -12,7 +12,7 @@ import BriefStage from "./BriefStage";
 import CalibrateStage from "./CalibrateStage";
 import PlayStage from "./PlayStage";
 import PracticeStage from "./PracticeStage";
-import ResultStage from "./ResultStage";
+import ResultStage, { LEVEL_BUSY } from "./ResultStage";
 
 // With a signed-in player's 0G session attached, the server bills their iAI credits instead of the app.
 async function post(path, body) {
@@ -38,6 +38,9 @@ export default function Studio({ initialGame = null }) {
   const [result, setResult] = useState(null);
   const [revision, setRevision] = useState(null);
   const [playCount, setPlayCount] = useState(0);
+  // This player's runs of the current game, oldest first, so the model can design the next level from them.
+  // ponytail: in memory only, so a reload starts the history again. Keep it in localStorage if reruns span visits.
+  const [runs, setRuns] = useState([]);
   const feed = useRef(null);
   const og = useOgAccount();
   // Where 0G sign-in works, building a game runs on the player's own iAI credits, so it needs sign-in.
@@ -74,6 +77,7 @@ export default function Studio({ initialGame = null }) {
     const generated = await call("/api/generate", { idea, clarification, brief });
     if (!generated.ok) throw new Error(`The generated game failed validation after a repair: ${generated.errors[0]}`);
     setGame({ ...generated, traces: [...earlier, ...(generated.traces ?? [])] });
+    setRuns([]);
     setRevision(null);
     setStage("brief");
   }
@@ -99,6 +103,7 @@ export default function Studio({ initialGame = null }) {
 
   const pickGame = (id) => {
     setGame({ spec: starterSpec(id), source: "template" });
+    setRuns([]);
     setRevision(null);
     setStage("brief");
   };
@@ -133,7 +138,32 @@ export default function Studio({ initialGame = null }) {
       setGame((current) => ({ ...current, spec: revised.spec, source: revised.source, model: revised.model, traces: [...(current.traces ?? []), ...(revised.traces ?? [])] }));
     });
 
+  // Same game, new tuning, chosen by the model from this player's runs. Each change comes with its reason.
+  const nextLevel = () =>
+    attempt(LEVEL_BUSY, async () => {
+      const level = await call("/api/level", { spec: game.spec, runs });
+      if (!level.ok) throw new Error(`The next level didn't come together: ${level.errors[0]}`);
+      setGame((current) => ({
+        ...current,
+        spec: level.spec,
+        model: current.model ?? level.model,
+        traces: [...(current.traces ?? []), ...(level.traces ?? [])],
+        level: {
+          number: (current.level?.number ?? 1) + 1,
+          headline: level.headline,
+          changes: level.changes,
+          runs: level.runs,
+          source: level.source,
+          model: level.model,
+          requestId: level.traces?.at(-1)?.requestId ?? null,
+        },
+      }));
+      setRevision(null);
+      setStage("brief");
+    });
+
   const restart = () => {
+    setRuns([]);
     setStage("idea");
     setIntent(null);
     setGame(null);
@@ -195,6 +225,8 @@ export default function Studio({ initialGame = null }) {
           }}
           onQuit={() => setStage("brief")}
           onEnd={(outcome) => {
+            const { outcome: end, score, ms, stats, moves, observed } = outcome;
+            setRuns((earlier) => [...earlier, { outcome: end, score, ms, stats, moves, observed, level: game.level?.number ?? 1 }]);
             setResult(outcome);
             setStage("result");
           }}
@@ -209,6 +241,8 @@ export default function Studio({ initialGame = null }) {
           busy={busy}
           error={error}
           mode={mode}
+          levelBy={runs.length > 0 && !fixture ? (on0g ? "0G" : status?.model) : null}
+          onNextLevel={nextLevel}
           onRevise={reviseGame}
           onPlay={startPlay}
           onNew={restart}
@@ -233,7 +267,7 @@ function SourceNote({ status, game }) {
     const last = traces.at(-1);
     return (
       <p className="source-note source-note--0g" data-testid="source-note" title={traces.map((trace) => trace.requestId).join("\n")}>
-        Built on 0G with {game.model} in a private TEE{game.payer === "user" ? ", paid from your 0G credits" : ""}. {traces.length} {traces.length === 1 ? "call" : "calls"}, ${cost.toFixed(4)}.
+        {["template", "ens", "arkiv"].includes(game.source) ? "Retuned" : "Built"} on 0G with {game.model} in a private TEE{game.payer === "user" ? ", paid from your 0G credits" : ""}. {traces.length} {traces.length === 1 ? "call" : "calls"}, ${cost.toFixed(4)}.
         Request <code>{last.requestId.slice(0, 8)}</code>
       </p>
     );
