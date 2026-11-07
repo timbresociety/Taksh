@@ -1,7 +1,7 @@
 // Last Line: the goal seen from behind the keeper, cut into nine zones that each show the move saving
 // them. The zone a shot is going to lights up while the striker lines it up.
 import * as THREE from "three";
-import { ZONES } from "../../templates/keeper.js";
+import keeperRules, { ZONES } from "../../templates/keeper.js";
 import { createCharacter } from "../character.js";
 import { MOVE_POSES, applyPose } from "../coach.js";
 import { damp, gloves } from "./shared.js";
@@ -188,6 +188,7 @@ export const keeper = {
     let turn = 0;
     let lastStriker = 0;
     const spot = new THREE.Vector3();
+    const thinking = { x: 0, bob: 0, turn: 0 }; // the striker's sway while 0G plans
 
     const footOf = (striker, out) => out.set(striker.x * 0.96, SHOT_FROM_Y, striker.z + 0.7);
     const ballPath = (from, [tx, ty], p, out) => {
@@ -214,6 +215,11 @@ export const keeper = {
 
     return {
       update(state, dt, elapsed) {
+        const think = keeperRules.thinking(state);
+        for (const key of ["x", "bob", "turn"]) thinking[key] = damp(thinking[key], think?.[key] ?? 0, 6, dt);
+        const lead = strikers[0];
+        lead.character.root.position.set(lead.x + thinking.x, thinking.bob, lead.z);
+        lead.character.root.rotation.y = Math.atan2(-lead.x, 1.2 - lead.z) + thinking.turn;
         for (const striker of strikers) {
           if (striker.character !== rival) striker.character.update(dt);
           striker.kick = Math.max(0, striker.kick - dt);
