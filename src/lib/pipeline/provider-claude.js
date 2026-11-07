@@ -4,8 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 export const DEFAULT_MODEL = "claude-opus-5-5";
 
 // Low effort keeps the intent step fast. Generation needs enough thought to fit the idea to a template.
-const EFFORT = { intent: "low", generate: "medium", revise: "medium" };
-const MAX_TOKENS = { intent: 4000, generate: 16000, revise: 16000 };
+const EFFORT = { intent: "low", generate: "medium", revise: "medium", level: "low" };
+const MAX_TOKENS = { intent: 4000, generate: 16000, revise: 16000, level: 1500 };
 
 export function createClaudeProvider({ model = process.env.TAKSH_MODEL || DEFAULT_MODEL, effort = {}, client = new Anthropic() } = {}) {
   return {

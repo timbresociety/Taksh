@@ -187,12 +187,27 @@ function fixtureRevision({ spec, request }) {
   return { changeKind, changeSummary, spec: { ...next, tuning: Object.entries(next.tuning).map(([key, value]) => ({ key, value })) } };
 }
 
+// A rule, not a judgment: lost the last run, the first field gets a quarter easier; otherwise the first
+// two get a quarter harder. Enough to exercise the level screen without a model.
+function fixtureLevel({ spec, runs }) {
+  const template = templateInfo(spec.template);
+  const lost = runs.at(-1)?.outcome === "lose";
+  const fields = Object.entries(template.tuning).slice(0, lost ? 1 : 2);
+  const tuning = fields.map(([key, field]) => {
+    const step = ((field.max - field.min) / 4) * (field.higherIsHarder === lost ? -1 : 1);
+    const value = Math.min(field.max, Math.max(field.min, spec.tuning[key] + step));
+    return { key, value: field.whole ? Math.round(value) : value };
+  });
+  const why = lost ? "You lost the last run, so this eases off." : `You scored ${runs.at(-1)?.score ?? 0}, so this pushes harder.`;
+  return { headline: lost ? "A gentler level." : "A harder level.", tuning, changes: tuning.map(({ key }) => ({ key, why })) };
+}
+
 export function createFixtureProvider() {
   return {
     source: "fixture",
     model: FIXTURE_MODEL,
     async complete({ stage, input }) {
-      const data = { intent: fixtureIntent, generate: fixtureSpec, revise: fixtureRevision }[stage](input);
+      const data = { intent: fixtureIntent, generate: fixtureSpec, revise: fixtureRevision, level: fixtureLevel }[stage](input);
       return { data: structuredClone(data), ms: 0, usage: null };
     },
   };

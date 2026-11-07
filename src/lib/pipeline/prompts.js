@@ -5,7 +5,7 @@ import path from "node:path";
 import { GAME_SPEC_SCHEMA, STYLES, WORLDS, contractText } from "../spec/contract.js";
 import { TEMPLATES } from "../templates/index.js";
 
-export const PROMPT_VERSIONS = { intent: "v2", generate: "v2", revise: "v2" };
+export const PROMPT_VERSIONS = { intent: "v2", generate: "v2", revise: "v2", level: "v1" };
 
 export async function loadPrompt(stage, versions = PROMPT_VERSIONS) {
   const file = path.join(process.cwd(), "prompts", `${stage}.${versions[stage]}.md`);
@@ -34,4 +34,11 @@ export const REVISION_SCHEMA = object({
   changeKind: { type: "string", enum: ["gameplay", "look", "both"] },
   changeSummary: text,
   spec: GAME_SPEC_SCHEMA,
+});
+
+// The next level: the same game with new tuning, and a reason per changed field.
+export const LEVEL_SCHEMA = object({
+  headline: text,
+  tuning: { type: "array", items: object({ key: text, value: { type: "number" } }) },
+  changes: { type: "array", items: object({ key: text, why: text }) },
 });

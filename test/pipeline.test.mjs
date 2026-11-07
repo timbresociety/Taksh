@@ -399,13 +399,18 @@ describe("fixture revisions", () => {
 
 describe("prompts", () => {
   it("are on v2, with the contract injected and no leftovers from v1", async () => {
-    for (const stage of Object.keys(PROMPT_VERSIONS)) {
+    for (const stage of ["intent", "generate", "revise"]) {
       assert.equal(PROMPT_VERSIONS[stage], "v2");
       const prompt = await loadPrompt(stage);
       assert.doesNotMatch(prompt, /\{\{/);
       for (const template of TEMPLATES) assert.ok(prompt.includes(template.id), `${stage} lacks ${template.id}`);
       assert.doesNotMatch(prompt, /telegraph|movementBindings|artStyle|palette/);
     }
+  });
+
+  it("the level prompt loads with nothing left to fill in", async () => {
+    assert.equal(PROMPT_VERSIONS.level, "v1");
+    assert.doesNotMatch(await loadPrompt("level"), /\{\{/);
   });
 
   it("the schemas only offer ids from the contract", () => {
