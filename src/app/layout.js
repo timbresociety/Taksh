@@ -4,9 +4,18 @@ import "./globals.css";
 const display = Anybody({ subsets: ["latin"], variable: "--font-display", axes: ["wdth"], weight: "variable" });
 const body = Hanken_Grotesk({ subsets: ["latin"], variable: "--font-body" });
 
+const description = "Turn the wait between prompts into a quick game you play with your whole body. Just a webcam, no controller.";
+
+// The share images in this folder need an absolute address: the public domain in production, and
+// each preview's own address, so a preview's card shows that preview's image.
+const site = process.env.VERCEL_ENV === "production" ? "https://taksh.vercel.app" : process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
+
 export const metadata = {
+  metadataBase: new URL(site),
   title: "Taksh",
-  description: "Turn an idea into a short fitness game you play with your body.",
+  description,
+  openGraph: { title: "Taksh: Your prompt is running. So are you.", description, siteName: "Taksh", type: "website" },
+  twitter: { card: "summary_large_image", title: "Taksh: Your prompt is running. So are you.", description },
 };
 
 export default function RootLayout({ children }) {
