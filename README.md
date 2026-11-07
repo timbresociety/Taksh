@@ -85,12 +85,12 @@ A laptop camera often sees only your head and shoulders. An iPhone across the ro
 
 1. Sign in to the same Apple ID on both, with Wi-Fi and Bluetooth on.
 2. Stand the phone up in landscape about two metres away, rear camera facing you, and lock it. macOS only shows the phone to browsers while it is in this pose, so a phone in your hand or flat on the desk won't appear.
-3. On the calibrate screen, choose the iPhone under **Camera**. The list updates by itself when the phone appears. The choice is saved in this browser, and if that camera is gone next time, Taksh opens the default one.
+3. Open Taksh in Safari. On the calibrate screen, choose the iPhone under **Camera**. The list updates by itself when the phone appears. The choice is saved in this browser, and if that camera is gone next time, Taksh opens the default one.
 
 | Browser | iPhone camera |
 |---|---|
-| Chrome on macOS 13+ | Yes, through Continuity Camera |
-| Safari on macOS 13+ | Yes, through Continuity Camera |
+| Safari on macOS 13+ | Yes, through Continuity Camera. Tested |
+| Chrome on macOS | Not reliably. On the build Mac (macOS 26.5, Chrome 156) Chrome listed only the FaceTime camera while macOS and Safari had the iPhone. Use Safari |
 | Any browser on Windows or Linux | No. Continuity Camera is Mac only |
 | Safari on the iPhone itself | Not supported yet. The screen is too small to read from two metres back |
 

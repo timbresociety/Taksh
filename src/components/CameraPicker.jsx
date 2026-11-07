@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 
 // Lists the cameras the browser can see. Names stay empty until the player allows the camera, so the
 // list is read again once one is open (current changes), and whenever a camera comes or goes. An
-// iPhone only appears through Continuity Camera once it is on a stand, in landscape and locked.
+// iPhone only appears through Continuity Camera once it is on a stand, in landscape and locked. On the
+// build Mac, Safari listed it and Chrome 156 did not, though macOS had it.
 export default function CameraPicker({ current, onPick }) {
   const [cameras, setCameras] = useState([]);
 
@@ -32,7 +33,7 @@ export default function CameraPicker({ current, onPick }) {
           ))}
         </select>
       </label>
-      <p className="calibrate__hint">To use an iPhone on a Mac, stand it up in landscape about two metres away and lock it. It then shows up here.</p>
+      <p className="calibrate__hint">To use an iPhone on a Mac, stand it up in landscape about two metres away and lock it. It then shows up here. Safari lists it more reliably than Chrome.</p>
     </div>
   );
 }
