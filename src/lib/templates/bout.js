@@ -22,6 +22,9 @@ const KNOCKDOWNS_TO_WIN = 3;
 const GUARD_RECHECK_MS = 250; // a rival waiting on its brain looks again this often
 const HISTORY = 8;
 
+// A 0G rival with nothing planned and nothing in the air, between the bell and the end.
+const waitingOnPlan = (state) => state.rival === "0g" && state.status === "playing" && !state.attack && !state.plan.length && state.downMs <= 0 && state.openMs <= 0;
+
 export default {
   id: "bout",
   name: "Counter Bout",
@@ -167,7 +170,7 @@ export default {
   hud: (state) => ({
     score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`,
     bars: [{ label: "You", value: Math.max(0, state.health) / 100 }, { label: "Rival", value: Math.max(0, state.rivalHealth) / state.rivalMax }],
-    extra: state.attack ? null : state.openMs > 0 ? "Hit now! x2" : state.guarding ? "Guard up" : null,
+    extra: state.attack ? null : state.openMs > 0 ? "Hit now! x2" : waitingOnPlan(state) ? "Rival thinking on 0G…" : null,
     cue: state.attack ? answerCue(state.attack) : null,
     tone: state.attack ? "danger" : state.openMs > 0 ? "open" : null,
     keys: ["jab", "cross", "hook", "uppercut", "slip_left", "slip_right", "duck"],
@@ -192,6 +195,10 @@ export default {
   plan(state, sides) {
     state.plan = sides.filter((side) => side in ATTACKS).slice(0, 4);
   },
+
+  // While 0G's next plan is on its way the rival keeps its feet moving: footwork, a bob and a slow
+  // circle, with its guard up. Motion only, for the stage. It never throws or picks a shot.
+  thinking: (state) => (waitingOnPlan(state) ? { x: Math.sin(state.t / 650) * 0.35, bob: Math.abs(Math.sin(state.t / 320)) * 0.06, turn: Math.sin(state.t / 1300) * 0.2 } : null),
 
   // The brain asks again while one shot is still queued, so the next plan lands before the queue runs dry.
   needsPlan: (state) => state.plan.length <= 1 && !state.attack,

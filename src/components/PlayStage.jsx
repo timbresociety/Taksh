@@ -220,7 +220,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
         {hud?.extra && <p className="hud__call" data-testid="call" data-tone={hud.tone ?? undefined}>{hud.extra}</p>}
         {brain && (
           <p className="hud__rival" data-testid="rival-brain" data-status={brain.status}>
-            {{ thinking: "0G rival is reading you", planned: brain.taunt ? `“${brain.taunt}”` : "0G rival has a plan", lost: "0G signal lost. The rival waits for a plan" }[brain.status]}
+            {{ thinking: "0G rival is reading you", planned: brain.taunt ? `“${brain.taunt}”` : "0G rival has a plan", lost: "Rival thinking on 0G… The last answer was too slow, so it asked again" }[brain.status]}
             <small>{brain.decisions} decisions on 0G</small>
           </p>
         )}

@@ -1,6 +1,7 @@
 // The browser half of the 0G rival. While a round runs it keeps the rival's plan topped up from
 // /api/rival/decide, and logs every decision with its 0G request ID. A call that fails or runs past
-// the timeout is logged as a safe stop: no plan arrives, so the rival holds its guard.
+// the timeout is logged as a safe stop: no plan arrives, so the rival keeps its guard up and its feet
+// moving (template thinking()), and throws nothing until 0G answers.
 import { ogHeaders } from "../og/session.js";
 
 // A decision took 2.3 to 6.4 s over 20 calls on 2026-11-07 (median 3.5 s), and 8 to 9 s in a slow
