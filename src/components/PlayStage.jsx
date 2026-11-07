@@ -5,12 +5,26 @@ import { startRivalBrain } from "@/lib/agent/rival-brain";
 import { GameSession } from "@/lib/game/session";
 import { playCue } from "@/lib/game/sound";
 import { GestureEngine } from "@/lib/motion/gestures";
-import { drawSkeleton } from "@/lib/motion/overlay";
+import { drawRange, drawSkeleton } from "@/lib/motion/overlay";
+import { cueGestures, rangeOf } from "@/lib/motion/range";
+import { gestureInfo } from "@/lib/spec/contract";
 import { createStage } from "@/lib/stage/stage";
 import { templateInfo } from "@/lib/templates";
 
 const HUD_INTERVAL_MS = 80;
 const MAX_FRAME_MS = 50;
+const FILL_FADE = 0.88; // a speed move's meter is a flash, so the guide's fill lets go of it slowly
+
+// What the guide shows for a cue: each move's range of motion, drawn from its demo pose, and the
+// keys that make it, so keyboard players still see the body move.
+function guideFor(template, cue) {
+  const gestures = cueGestures(cue);
+  const bindings = gestures.map((gesture) => template.bindings.find((binding) => binding.gesture === gesture));
+  const ranges = gestures.map((gesture, index) => rangeOf(bindings[index]?.demo ?? gesture));
+  const shown = gestures.filter((_, index) => ranges[index]);
+  const keys = [...new Set(bindings.map((binding) => template.actions.find((action) => action.id === binding?.action)?.keyLabel).filter(Boolean))];
+  return { gestures: shown, ranges: ranges.filter(Boolean), keys, label: cue?.label ?? gestureInfo(gestures[0])?.label ?? null };
+}
 
 const EVENT_CUES = {
   coin: "hit", catch: "hit", gate: "hit", land: "hit", perfect: "hit", hit: "hit", match: "hit",
@@ -32,6 +46,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
   const host = useRef(null);
   const video = useRef(null);
   const overlay = useRef(null);
+  const guideCanvas = useRef(null);
   const [hud, setHud] = useState(null);
   const [failure, setFailure] = useState(null);
   const [brain, setBrain] = useState(null);
@@ -51,6 +66,26 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
     let scaleDrift = false;
     let tracking = usesCamera ? "searching" : "keyboard";
     let unsubscribe = () => {};
+    // The move the round wants now, set from the HUD and drawn on every frame without a re-render.
+    let cue = null;
+    let cueKey = "";
+    let guide = guideFor(template, null);
+    let fills = [];
+    let painted = false;
+    const setCue = (next) => {
+      const key = next ? cueGestures(next).join() : "";
+      cue = next;
+      if (key === cueKey) return;
+      cueKey = key;
+      guide = guideFor(template, next);
+      fills = guide.gestures.map(() => 0);
+    };
+    const paintGuide = (t, points = null, features = null, engine = null) => {
+      if (!guideCanvas.current || (!guide.ranges.length && !painted)) return;
+      painted = guide.ranges.length > 0;
+      if (engine) fills = guide.gestures.map((gesture, index) => Math.max(Math.min(1, engine.meter(gesture, features)), fills[index] * FILL_FADE));
+      drawRange(guideCanvas.current, { ranges: guide.ranges, fills, points, calibration, urgency: cue?.urgency ?? 0, t });
+    };
 
     if (usesCamera && feed.current?.running) {
       const engine = new GestureEngine(calibration, { framing: template.framing, moves: template.bindings.map((binding) => binding.gesture), personal });
@@ -64,6 +99,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
         if (template.drive && result.features) session.handleDrive({ speed: result.features.speed, tilt: result.features.tilt });
         stage?.follow(points, calibration.torso);
         if (overlay.current) drawSkeleton(overlay.current, points, aspect, "#e9ff3a");
+        paintGuide(t, points, result.features, engine);
         if (result.features && template.framing === "full") scaleDrift = result.features.scale < 0.72 || result.features.scale > 1.32;
       });
     }
@@ -118,8 +154,12 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
 
       if (now - lastHud > HUD_INTERVAL_MS) {
         lastHud = now;
-        setHud({ ...session.hud(), phase: session.phase, count, movements: session.movements, tracking, scaleDrift });
+        const shown = session.hud();
+        setCue(session.phase === "playing" ? shown.cue ?? null : null);
+        setHud({ ...shown, cue, phase: session.phase, count, movements: session.movements, tracking, scaleDrift });
       }
+      // Without a camera the guide plays the move on a loop, here; with one, the feed draws it per frame.
+      if (!usesCamera) paintGuide(now);
 
       if (session.phase === "ended" && !ended) {
         ended = true;
@@ -155,6 +195,8 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
       stage?.dispose();
     };
   }, [spec, template, usesCamera, feed, calibration, personal, rival, onEnd]);
+
+  const shownGuide = hud?.cue && hud.phase === "playing" ? guideFor(template, hud.cue) : null;
 
   return (
     <main className="play" data-testid="play" data-template={spec.template} data-phase={hud?.phase ?? "loading"} data-score={hud?.score}>
@@ -207,6 +249,17 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
           </li>
         ))}
       </ol>
+
+      {/* The move to make, as a body to copy rather than words to read. The word under it is for anyone who can't see it well. */}
+      <figure className="guide" data-testid="guide" data-active={Boolean(shownGuide)} data-urgent={(hud?.cue?.urgency ?? 0) > 0.7} aria-hidden={!shownGuide}>
+        <canvas ref={guideCanvas} />
+        {shownGuide && (
+          <figcaption>
+            {shownGuide.label}
+            {!usesCamera && shownGuide.keys.map((key) => <kbd key={key}>{key}</kbd>)}
+          </figcaption>
+        )}
+      </figure>
 
       {usesCamera && (
         <div className="pip" data-tracking={hud?.tracking} data-large={spec.template === "poses"}>

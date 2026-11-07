@@ -444,8 +444,8 @@ export const bossPreview = (number) => ({
   parts: BOSSES[number - 1].parts.map(([x, y], id) => ({ id, x, y, hp: 1, maxHp: 1 })),
 });
 
-// A word and a ring around the player's feet for what must be defended, closing as the blow comes.
-// The one word that has to be read over anything, so it brings its own plate.
+// A warning plate that has to be read over anything. It marks danger; the guide by the player says
+// which move answers it.
 export function alarmCard(word) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -471,7 +471,8 @@ export function alarmCard(word) {
   return sprite;
 }
 
-export function makeTelegraph({ scene, target }) {
+// A ring around the player's feet for a blow that must be defended, closing as it comes.
+export function makeTelegraph({ scene }) {
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 56), new THREE.MeshBasicMaterial({ color: "#ff3b4e", transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, fog: false, toneMapped: false }));
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.06;
@@ -482,14 +483,9 @@ export function makeTelegraph({ scene, target }) {
   floor.position.y = 0.05;
   floor.userData.keepMaterial = true;
   scene.add(floor);
-  const word = alarmCard(target.word);
-  word.scale.set(2.2, 0.9, 1);
-  word.visible = false;
-  scene.add(word);
   return {
     update(attack, at) {
       const live = attack?.answer === "defend";
-      word.visible = Boolean(live);
       ring.material.opacity = live ? 0.95 : 0;
       floor.material.opacity = live ? 0.28 : 0;
       if (!live) return;
@@ -499,7 +495,6 @@ export function makeTelegraph({ scene, target }) {
       ring.position.z = at.z;
       floor.position.x = at.x;
       floor.position.z = at.z;
-      word.position.set(at.x, at.y, at.z);
     },
   };
 }
@@ -511,7 +506,7 @@ function slashArc(world) {
 }
 
 const ARC_TURN = { left: Math.PI, right: 0, up: Math.PI / 2, down: -Math.PI / 2 };
-const HEAVY_WORD = "GUARD";
+const HEAVY_MARK = "!"; // a heavy raider is marked, and the guide shows the guard that stops it
 
 export const blades = {
   usesRival: true,
@@ -536,8 +531,8 @@ export const blades = {
       scene.add(sprite);
       return sprite;
     });
-    const guardWord = alarmCard(HEAVY_WORD);
-    guardWord.scale.set(1.6, 0.65, 1);
+    const guardWord = alarmCard(HEAVY_MARK);
+    guardWord.scale.set(1.1, 0.45, 1);
     guardWord.visible = false;
     scene.add(guardWord);
 
@@ -556,7 +551,7 @@ export const blades = {
     target.renderOrder = 7;
     target.visible = false;
     scene.add(target);
-    const telegraph = makeTelegraph({ scene, target: { word: "GUARD" } });
+    const telegraph = makeTelegraph({ scene });
     const missile = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 1), new THREE.MeshBasicMaterial({ color: "#ff8a1f", fog: false, toneMapped: false }));
     missile.userData.keepMaterial = true;
     missile.visible = false;

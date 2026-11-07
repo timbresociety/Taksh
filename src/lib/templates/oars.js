@@ -1,7 +1,7 @@
 // Koli Race: fishing boats race down a channel. Pumping arms pull the oars, a side bend steers, and the
 // shoals give a surge. The course comes from the seed, and the rival crews row it at their own pace.
 import { addBeat, botSteer, clearLine, createDriver, readBody, steerKey, steering, stepDriver } from "./drive.js";
-import { clamp, createRandom } from "./shared.js";
+import { clamp, createRandom, moveCue } from "./shared.js";
 
 export const CHANNEL = 3.4; // how far from the middle a boat can go
 const BOAT_HALF = 0.62;
@@ -44,12 +44,12 @@ function layCourse(state) {
 const placeOf = (state) => 1 + state.rivals.filter((rival) => rival.distance > state.distance).length;
 const aheadOf = (state, distance, reach) => state.hazards.filter((item) => !item.hit && item.at > distance && item.at < distance + reach);
 
-// The word that matters most: the turn to make, or the arms if the boat has stopped.
+// The move that matters most, for the guide: the turn to make, or the arms if the boat has stopped.
 function callOut(state) {
   const reach = (state.speed * CALL_MS) / 1000;
   const block = aheadOf(state, state.distance, reach).find((item) => Math.abs(item.x - state.x) < item.half + BOAT_HALF);
-  if (block) return block.x > state.x ? "Lean left" : "Lean right";
-  return state.speed < state.top * 0.4 ? "Pump your arms" : null;
+  if (block) return moveCue(block.x > state.x ? "lean_left" : "lean_right", 1 - (block.at - state.distance) / Math.max(reach, 1));
+  return state.speed < state.top * 0.4 ? moveCue("arm_pump") : null;
 }
 
 export default {
@@ -183,7 +183,8 @@ export default {
 
   hud: (state) => ({
     score: Math.floor(state.score), label: "Score", clock: `${WORDS[state.place - 1]} · ${Math.max(0, Math.ceil(state.finishM - state.distance))} m`,
-    meter: Math.min(1, state.speed / state.top), extra: state.finished ? (state.won ? "First home" : `${WORDS[state.place - 1]} home`) : callOut(state),
+    meter: Math.min(1, state.speed / state.top), extra: state.finished ? (state.won ? "First home" : `${WORDS[state.place - 1]} home`) : null,
+    cue: state.finished ? null : callOut(state),
   }),
 
   result: (state) => ({

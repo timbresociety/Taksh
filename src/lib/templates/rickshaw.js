@@ -1,7 +1,7 @@
 // Auto Rally: an auto rickshaw on a stage rally through traffic. Running on the spot is the throttle, a
 // side bend steers, and each checkpoint buys the clock another leg. Fares on the road buy a little more.
 import { addBeat, botSteer, clearLine, createDriver, readBody, steerKey, steering, stepDriver } from "./drive.js";
-import { clamp, createRandom } from "./shared.js";
+import { clamp, createRandom, moveCue } from "./shared.js";
 
 export const ROAD = 3.5; // how far from the middle the auto can go
 export const LANE_X = [-3.3, -1.1, 1.1, 3.3];
@@ -55,10 +55,11 @@ function comingUp(state, seconds) {
 const blocks = (items) => items.map((item) => ({ x: item.x, half: SIZES[item.kind][0] }));
 const crashes = (item) => item.moving || item.kind === "wall";
 
+// The move that matters most, for the guide: the turn to make, or the legs if the auto has stopped.
 function callOut(state) {
   const block = comingUp(state, CALL_MS / 1000).find((item) => Math.abs(item.x - state.x) < SIZES[item.kind][0] + AUTO_HALF);
-  if (block) return block.x > state.x ? "Lean left" : "Lean right";
-  return state.speed < state.top * 0.3 ? "Run on the spot" : `Leg ${Math.min(state.legs, state.leg + 1)} of ${state.legs}`;
+  if (block) return moveCue(block.x > state.x ? "lean_left" : "lean_right", 0.6);
+  return state.speed < state.top * 0.3 ? moveCue("run_step") : null;
 }
 
 export default {
@@ -204,7 +205,8 @@ export default {
 
   hud: (state) => ({
     score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil(state.clockMs / 1000))} s`, lives: state.lives, maxLives: state.startLives,
-    meter: Math.min(1, state.speed / state.top), extra: state.won ? "Rally done" : callOut(state),
+    meter: Math.min(1, state.speed / state.top), extra: state.won ? "Rally done" : `Leg ${Math.min(state.legs, state.leg + 1)} of ${state.legs}`,
+    cue: state.won ? null : callOut(state),
   }),
 
   result: (state) => ({

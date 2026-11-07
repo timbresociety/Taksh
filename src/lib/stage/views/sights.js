@@ -254,7 +254,7 @@ export const sights = {
       return out;
     };
     const figure = await makeBossFigure(number, { scene, world, boss: bossPreview(number), hero, fx, z: BOSS_Z, pin });
-    const telegraph = makeTelegraph({ scene, target: { word: "JUMP" } });
+    const telegraph = makeTelegraph({ scene });
     const missile = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 1), new THREE.MeshBasicMaterial({ color: "#ff8a1f", fog: false, toneMapped: false }));
     missile.userData.keepMaterial = true;
     missile.visible = false;

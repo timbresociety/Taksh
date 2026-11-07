@@ -536,14 +536,15 @@ describe("Dahi Handi", () => {
     }
   });
 
-  it("a jump climbs a tier and sets the tower wobbling, and the call turns to hands up", () => {
+  it("a jump climbs a tier and sets the tower wobbling, and the guide turns to hands up", () => {
     const state = handi.create(specOf(handi));
-    assert.equal(handi.hud(state).extra, "Jump to climb");
+    assert.equal(handi.hud(state).cue.gesture, "jump");
+    assert.equal(handi.hud(state).extra, null, "the guide shows the move, not words");
     assert.equal(types(handi.act(state, "climb"))[0], "climb");
     assert.equal(state.tier, 1);
     assert.ok(wobbling(state));
     assert.ok(Math.abs(state.sway) < LEAN_AT, "a climb alone never sets off the shout");
-    assert.equal(handi.hud(state).extra, "Hands up to steady");
+    assert.equal(handi.hud(state).cue.gesture, "hands_up");
   });
 
   it("a jump while it wobbles climbs nothing and costs nothing", () => {
@@ -560,7 +561,7 @@ describe("Dahi Handi", () => {
     assert.equal(state.sway, 0);
     run(handi, state, 20000);
     assert.equal(state.sway, 0);
-    assert.equal(handi.hud(state).extra, "Jump to climb");
+    assert.equal(handi.hud(state).cue.gesture, "jump");
     handi.act(state, "climb");
     assert.equal(state.tier, 2);
   });
@@ -587,6 +588,7 @@ describe("Dahi Handi", () => {
     assert.equal(state.tier, 0);
     assert.equal(state.lives, state.startLives - 1);
     assert.equal(handi.hud(state).extra, "Tower fell. Regroup");
+    assert.equal(handi.hud(state).cue, null);
     assert.ok(state.t - warned >= MIN_WARNING_MS, `${state.t - warned} ms`);
   });
 
@@ -604,13 +606,14 @@ describe("Dahi Handi", () => {
   it("a jump from the top smashes the pot, the hero comes down, and the next pot hangs a tier higher", () => {
     const state = handi.create(specOf(handi, { pots: 2, tiers: 2 }));
     state.tier = 2;
-    assert.equal(handi.hud(state).extra, "Jump to smash the pot");
+    assert.equal(handi.hud(state).cue.gesture, "jump");
     const events = handi.act(state, "climb");
     assert.deepEqual(types(events), ["leap", "smash"]);
     assert.equal(events[1].last, false);
     assert.deepEqual([state.broken, state.tier, state.pot, state.won], [1, 0, 1, false]);
     assert.equal(potHeight(state), 3);
     assert.equal(handi.hud(state).extra, "Pot smashed!");
+    assert.equal(handi.hud(state).cue, null);
     assert.deepEqual(handi.act(state, "climb"), [], "the crew is still building the next tower");
     assert.ok(types(run(handi, state, 3000)).includes("ready"));
     state.tier = 3;
@@ -639,13 +642,13 @@ describe("Dahi Handi", () => {
     assert.equal(handi.result(state).outcome, "win");
   });
 
-  it("the call on screen always names the move the bot would make", () => {
+  it("the guide on screen always shows the move the bot would make", () => {
     const state = handi.create(specOf(handi));
     run(handi, state, 60000, (live) => {
       const wanted = handi.bot(live, "quick");
-      const call = handi.hud(live).extra;
-      if (wanted === "climb") assert.match(call, /^Jump/);
-      if (wanted === "steady") assert.match(call, /^Hands up/);
+      const cue = handi.hud(live).cue;
+      if (wanted === "climb") assert.equal(cue.gesture, "jump");
+      if (wanted === "steady") assert.equal(cue.gesture, "hands_up");
       if (wanted) handi.act(live, wanted);
     });
     assert.equal(handi.result(state).outcome, "win");
