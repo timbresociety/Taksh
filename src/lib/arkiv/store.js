@@ -4,13 +4,13 @@ import { createPublicClient, createWalletClient, ExpirationTime, NoEntityFoundEr
 import { rabdi } from "@arkiv-network/sdk/chains";
 import { desc, eq, gt } from "@arkiv-network/sdk/query";
 import { i32 } from "@arkiv-network/sdk/schema";
-import { http } from "viem";
+import { http, nonceManager } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { pickEarliest } from "../daily/daily.js";
-import { DEFAULT_WRITER, Daily, ENTITY_KEY, Games, Scores, dailyValues, gameValues, plainRow, readSpecBytes, scoreValues } from "./schema.js";
+import { DEFAULT_WRITER, Daily, ENTITY_KEY, Games, SCORE_DAYS, Scores, dailyValues, daysLeft, gameValues, plainRow, readSpecBytes, scoreValues } from "./schema.js";
 
 export const BOARD_SIZE = 10;
-const SCORE_LIFETIME = () => ExpirationTime.fromDays(30); // a rolling monthly board
+const SCORE_LIFETIME = () => ExpirationTime.fromDays(SCORE_DAYS); // a rolling monthly board
 const GAME_LIFETIME = () => ExpirationTime.max(); // about 182 days, extendable
 // Today's and yesterday's games are the ones the app reads. Eight days keeps a week of past
 // challenges readable from the RPC, plus a day of slack.
@@ -23,30 +23,53 @@ let clients;
 export const READ_MS = 10_000;
 export const WRITE_MS = 25_000;
 
-const unavailable = (message) => Object.assign(new Error(message), { status: 503, expose: true });
+const unavailable = (message, reason) => Object.assign(new Error(message), { status: 503, expose: true, reason });
 
 // Rejects with an exposed 503 carrying message once ms pass. The call it wraps keeps running.
-export function withDeadline(promise, ms, message) {
+export function withDeadline(promise, ms, message, reason) {
   let timer;
   const late = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(unavailable(message)), ms);
+    timer = setTimeout(() => reject(unavailable(message, reason)), ms);
   });
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
-export const late = (what, ms) => `Arkiv took longer than ${ms / 1000} s to ${what}, so this is unavailable right now.`;
-export const arkiv = (promise, what, ms = READ_MS) => withDeadline(promise, ms, late(what, ms));
+export function arkiv(promise, what, ms = READ_MS) {
+  const reason = `Arkiv took longer than ${ms / 1000} s to ${what}`;
+  return withDeadline(promise, ms, `${reason}, so this is unavailable right now.`, reason);
+}
 export const read = (query, what = "answer") => arkiv(query.fetch(), what);
+
+const accessKey = () => process.env.ARKIV_ACCESS_KEY?.trim() ?? "";
+
+// viem wraps the HTTP error, so its status is somewhere down the cause chain.
+const httpStatus = (error) => (error ? (error.name === "HttpRequestError" ? error.status : httpStatus(error.cause)) : undefined);
+
+// Why an Arkiv call failed, as a clause the caller finishes with what the player loses.
+// Never the error's own message: viem prints the RPC URL, and the access key is in its path.
+export function arkivCause(error) {
+  if (error?.reason) return error.reason;
+  const status = httpStatus(error);
+  if (status === 429) return accessKey() ? "Arkiv is rate limiting this server's access key" : "Arkiv's public endpoint is rate limiting this server, which has no ARKIV_ACCESS_KEY";
+  if (status === 401 || status === 403) return "Arkiv refused this server's ARKIV_ACCESS_KEY";
+  return "Arkiv did not respond";
+}
+
+export const arkivMessage = (error, outcome = "this is unavailable right now") =>
+  error?.expose && !error.reason ? error.message : `${arkivCause(error)}, so ${outcome}.`;
 
 // The public endpoint answers 429 with Retry-After in minutes (761 s on 2026-11-06) once its quota
 // is used. viem sleeps that long before a retry, past its own timeout, so the transport doesn't retry.
 export function connect() {
   if (clients) return clients;
-  const chain = rabdi({ accessKey: process.env.ARKIV_ACCESS_KEY ?? "" });
+  const chain = rabdi({ accessKey: accessKey() });
   const transport = http(undefined, { timeout: 8000, retryCount: 0 });
   let account = null;
   try {
-    if (process.env.ARKIV_PRIVATE_KEY) account = privateKeyToAccount(process.env.ARKIV_PRIVATE_KEY);
+    // Rival decisions arrive every 4 to 6 s and each write takes about 8 s, so writes overlap. Without
+    // the nonce manager two of them read the same nonce and one fails ("Execution error without
+    // revert data"). viem hands out nonces in order within this process.
+    if (process.env.ARKIV_PRIVATE_KEY) account = privateKeyToAccount(process.env.ARKIV_PRIVATE_KEY, { nonceManager });
   } catch {
     console.error("ARKIV_PRIVATE_KEY is not a valid private key, so Arkiv writes are off.");
   }
@@ -61,7 +84,7 @@ export function connect() {
 // scope: { template, world?, style?, hash?, mode? } or { daily, mode? }. Every condition is an indexed column.
 export function scoreQuery(reader, owner, scope) {
   let query = reader
-    .select({ $key: true, player: true, score: true, world: true, style: true, mode: true, outcome: true, actions: true, durationMs: true })
+    .select({ $key: true, $expiresAt: true, player: true, score: true, world: true, style: true, mode: true, outcome: true, actions: true, durationMs: true })
     .from(Scores)
     .ownedBy(owner)
     .where(scope.daily ? eq("daily", scope.daily) : eq("template", scope.template));
@@ -72,20 +95,26 @@ export function scoreQuery(reader, owner, scope) {
   return query.orderBy(desc("score")).limit(BOARD_SIZE).withCount();
 }
 
-export function gamesQuery(reader, owner, { template, limit = 30 } = {}) {
+export function gamesQuery(reader, owner, { template, world, limit = 30 } = {}) {
   let query = reader
-    .select({ $key: true, title: true, template: true, world: true, style: true, author: true, source: true, specHash: true, publishedAt: true, swarmRef: true })
+    .select({ $key: true, $expiresAt: true, title: true, template: true, world: true, style: true, author: true, source: true, specHash: true, publishedAt: true, swarmRef: true })
     .from(Games)
     .ownedBy(owner);
   if (template) query = query.where(eq("template", template));
+  if (world) query = query.where(eq("world", world));
   return query.orderBy(desc("publishedAt")).limit(limit).withCount();
 }
+
+const withDaysLeft = (entity, block) => {
+  const { expiresAt, ...row } = plainRow(entity);
+  return { ...row, daysLeft: daysLeft(expiresAt, block) };
+};
 
 export async function topScores(scope) {
   const { reader, owner } = connect();
   const query = scoreQuery(reader, owner, scope);
   const page = await read(query, "read the board");
-  return { rows: page.entities.map(plainRow), count: Number(page.count), block: Number(page.blockNumber), query: query.toString(), owner };
+  return { rows: page.entities.map((entity) => withDaysLeft(entity, page.blockNumber)), count: Number(page.count), block: Number(page.blockNumber), query: query.toString(), owner };
 }
 
 function requireWriter() {
@@ -108,16 +137,23 @@ async function create(schema, values, expiration) {
 }
 
 // Rank is one more than the scores that beat it: on the same template, or on the same day's challenge.
+// The score is on chain once create returns. If the count then fails (a 429 hits queries, not
+// transactions), say so instead of failing the post, or a retry would post it twice.
 export async function postScore(input) {
   const { reader, owner } = connect();
   const values = scoreValues(input);
   const { entityKey, txHash } = await create(Scores, values, SCORE_LIFETIME());
+  const posted = { key: entityKey, txHash, daily: values.daily ?? null };
   const scope = values.daily ? eq("daily", values.daily) : eq("template", values.template);
-  const [better, total] = await Promise.all([
-    read(reader.count().from(Scores).ownedBy(owner).where(scope).where(gt("score", i32(values.score))), "count the board"),
-    read(reader.count().from(Scores).ownedBy(owner).where(scope), "count the board"),
-  ]);
-  return { key: entityKey, txHash, rank: Number(better) + 1, total: Number(total), daily: values.daily ?? null };
+  try {
+    const [better, total] = await Promise.all([
+      read(reader.count().from(Scores).ownedBy(owner).where(scope).where(gt("score", i32(values.score))), "count the board"),
+      read(reader.count().from(Scores).ownedBy(owner).where(scope), "count the board"),
+    ]);
+    return { ...posted, rank: Number(better) + 1, total: Number(total) };
+  } catch (error) {
+    return { ...posted, rank: null, total: null, rankError: arkivMessage(error, "your rank can't be counted right now") };
+  }
 }
 
 // Every challenge our writer stored for a date. Usually one; two if instances raced.
@@ -144,7 +180,7 @@ export const canWrite = () => Boolean(connect().writer);
 export async function listGames(options) {
   const { reader, owner } = connect();
   const page = await read(gamesQuery(reader, owner, options), "list games");
-  return { games: page.entities.map(plainRow), count: Number(page.count) };
+  return { games: page.entities.map((entity) => withDaysLeft(entity, page.blockNumber)), count: Number(page.count) };
 }
 
 // The same spec published twice points at the first entity instead of paying for a second.

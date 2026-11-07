@@ -3,6 +3,7 @@ import { listGames, publishGame } from "@/lib/arkiv/store";
 import { validateSpec } from "@/lib/spec/validate";
 import { cleanCover, gameFiles, swarmOn, swarmUrl, uploadCollection } from "@/lib/swarm/bee";
 import { createBudget } from "@/lib/agent/budget";
+import { WORLDS } from "@/lib/spec/contract";
 import { templateInfo } from "@/lib/templates";
 import { arkivRoute, badRequest, readBody, throttle } from "../_route";
 
@@ -12,11 +13,13 @@ const swarmBudget = createBudget(20);
 
 export const dynamic = "force-dynamic";
 
-// GET /api/arkiv/games[?template=hop] lists published games, newest first.
+// GET /api/arkiv/games[?template=hop][&world=moon] lists published games, newest first.
 export const GET = arkivRoute(async (request) => {
   const template = request.nextUrl.searchParams.get("template") || undefined;
+  const world = request.nextUrl.searchParams.get("world") || undefined;
   if (template && !templateInfo(template)) throw badRequest(`Unknown template "${template}".`);
-  return { available: true, ...(await listGames({ template })) };
+  if (world && !WORLDS.some((w) => w.id === world)) throw badRequest(`Unknown world "${world}".`);
+  return { available: true, ...(await listGames({ template, world })) };
 });
 
 // Stores the validated spec, so whoever opens it plays exactly what was published.

@@ -1,7 +1,7 @@
 // Server-only. Today's challenge: read it from Arkiv, or make it on 0G, store it and read again, so
 // every instance serves the earliest stored game for the date.
 import { specHash } from "../arkiv/schema.js";
-import { canWrite, readDaily, withDeadline, writeDaily } from "../arkiv/store.js";
+import { arkivCause, canWrite, readDaily, withDeadline, writeDaily } from "../arkiv/store.js";
 import { generateGame } from "../pipeline/pipeline.js";
 import { getProvider } from "../pipeline/provider.js";
 import { addDays, dayKey, fallbackSpec, themeFor } from "./daily.js";
@@ -16,8 +16,8 @@ export async function resolveDaily(date, { read, write, make, create }) {
   let found;
   try {
     found = await read(date);
-  } catch {
-    return fallback("Arkiv did not respond, so this is the starter game for today.");
+  } catch (error) {
+    return fallback(`${arkivCause(error)}, so this is the starter game for today.`);
   }
   if (found) return stored(found);
   if (!create) return fallback("No 0G challenge was stored for this date, so this was the starter game.");

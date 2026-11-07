@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { EXPLORER as ARKIV_EXPLORER } from "@/lib/arkiv/schema";
 
 const EXPLORER = "https://chainscan-galileo.0g.ai";
 const sent = new WeakMap(); // one upload per episode, even when React mounts this twice
@@ -32,6 +33,26 @@ export default function RivalEpisode({ episode }) {
         <p>
           Saved on 0G Storage. Root <code>{stored.rootHash.slice(0, 12)}…</code>{" "}
           <a href={`${EXPLORER}/tx/${stored.txHash}`} target="_blank" rel="noreferrer">See the transaction</a>
+        </p>
+      )}
+      {stored?.txHash && stored.ledger && (
+        <p data-testid="rival-ledger">
+          {stored.ledger.read > 0 ? (
+            <>
+              Before storing it, the server checked the round&apos;s {stored.ledger.checked} 0G plans against the {stored.ledger.read} decisions it
+              had written to Arkiv for this round. Arkiv now marks the round stored, so no server will store it twice.
+              {stored.ledger.key && (
+                <>
+                  {" "}
+                  <a href={`${ARKIV_EXPLORER}/entity/${stored.ledger.key}`} target="_blank" rel="noreferrer" data-testid="rival-ledger-entity">
+                    See a decision on Arkiv
+                  </a>
+                </>
+              )}
+            </>
+          ) : (
+            <>{stored.ledger.reason ?? "Arkiv had none of this round's decisions yet"}, so the server checked the round against its own memory.</>
+          )}
         </p>
       )}
       {stored?.rival && (

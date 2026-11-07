@@ -9,6 +9,13 @@ import { isDate } from "../daily/daily.js";
 export const DEFAULT_WRITER = "0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30";
 export const EXPLORER = "https://rabdi.explorer.arkiv.network";
 export const MAX_NAME = 24;
+// A score lives 30 days, so every board is the last month of play. The UI says so.
+export const SCORE_DAYS = 30;
+const BLOCK_SECONDS = 2; // Rabdi's block time, the SDK's BLOCK_TIME
+
+// Days until an entity expires, to the nearest day, from its $expiresAt block and the block the read
+// was made at. Rounded, so a score posted a minute ago shows its 30 days, not 29.
+export const daysLeft = (expiresAt, block) => Math.max(0, Math.round(((Number(expiresAt) - Number(block)) * BLOCK_SECONDS) / 86400));
 const MAX_STR_BYTES = 128;
 
 // Only the columns a query filters on are indexed. Sorting works on any column but bytes.
@@ -29,9 +36,9 @@ export const Scores = defineSchema("taksh.scores.v1", {
 });
 
 export const Games = defineSchema("taksh.games.v1", {
-  template: str().indexed(),
-  world: str().indexed(),
-  style: str().indexed(),
+  template: str().indexed(), // the gallery's game filter
+  world: str().indexed(), // the gallery's world filter
+  style: str(), // shown on the card, not filtered on
   specHash: str().indexed(),
   title: str(),
   author: str(),

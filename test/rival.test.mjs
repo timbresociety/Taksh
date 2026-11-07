@@ -303,6 +303,13 @@ describe("0G rival episodes", async () => {
     assert.throws(() => checkEpisode(round.raw, round.raw.spec, loaded, round.endsAt), /more 0G decisions than the server can check/);
   });
 
+  it("says what Arkiv returned for a round, so the result screen can show it", async () => {
+    const round = playRound();
+    const loaded = await loadRound(round.roundId);
+    assert.ok(loaded.records.length > 0, "served from this instance's memory");
+    assert.deepEqual(loaded.arkiv, { read: 0, key: null, reason: "Arkiv writes are off on this server" });
+  });
+
   it("the browser keeps the round ID it was given, and junk gets a fresh one", () => {
     const id = roundIdFor(null);
     assert.match(id, /^[0-9a-f-]{36}$/);

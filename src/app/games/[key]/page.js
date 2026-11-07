@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Studio from "@/components/Studio";
-import { readGame } from "@/lib/arkiv/store";
+import { arkivMessage, readGame } from "@/lib/arkiv/store";
 import { validateSpec } from "@/lib/spec/validate";
 
 export const dynamic = "force-dynamic";
@@ -10,11 +10,11 @@ export const metadata = { title: "Shared game" };
 export default async function Page({ params }) {
   const { key } = await params;
   let game = null;
-  let failed = false;
+  let failed = null;
   try {
     game = await readGame(key);
   } catch (error) {
-    failed = true;
+    failed = arkivMessage(error, "this game can't load right now");
     console.error("Arkiv game read failed:", error.shortMessage ?? error.message);
   }
   const checked = game ? validateSpec(game.spec) : null;
@@ -25,7 +25,7 @@ export default async function Page({ params }) {
         <header className="court__mark">
           <Link href="/">Taksh</Link>
         </header>
-        <p role="alert">{failed ? "Arkiv did not respond, so this game can't load right now." : "No live game has that key. It may have expired."}</p>
+        <p role="alert">{failed ?? "No live game has that key. It may have expired."}</p>
         <Link className="button" href="/games">All shared games</Link>
       </main>
     );

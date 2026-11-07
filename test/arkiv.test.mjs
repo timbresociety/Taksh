@@ -4,7 +4,7 @@ import { createPublicClient, createWalletClient, ExpirationTime, SchemaMismatchE
 import { rabdi } from "@arkiv-network/sdk/chains";
 import { custom, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Games, Scores, cleanName, fitStr, gameValues, plainRow, readScope, readSpecBytes, scoreValues, specHash, stableJson } from "../src/lib/arkiv/schema.js";
+import { Games, SCORE_DAYS, Scores, cleanName, daysLeft, fitStr, gameValues, plainRow, readScope, readSpecBytes, scoreValues, specHash, stableJson } from "../src/lib/arkiv/schema.js";
 import { gamesQuery, scoreQuery } from "../src/lib/arkiv/store.js";
 import { starterSpec } from "../src/lib/spec/starter.js";
 
@@ -97,6 +97,7 @@ describe("arkiv queries", () => {
   it("lists games newest first, optionally for one template", () => {
     assert.equal(gamesQuery(reader, OWNER).toString(), `arkiv.schema = str('taksh.games.v1') AND $owner = addr(${OWNER}) ORDER BY publishedAt:u64 DESC`);
     assert.match(gamesQuery(reader, OWNER, { template: "pads" }).toString(), /template = str\('pads'\)/);
+    assert.match(gamesQuery(reader, OWNER, { template: "pads", world: "moon" }).toString(), /template = str\('pads'\) AND world = str\('moon'\)/);
   });
 });
 
@@ -120,6 +121,18 @@ describe("arkiv write throttle", async () => {
   });
 });
 
+describe("arkiv lifetimes", () => {
+  it("counts days left from 2 s blocks, to the nearest day, never below zero", () => {
+    const day = 86400 / 2;
+    assert.equal(daysLeft(1000 + SCORE_DAYS * day, 1000), 30);
+    assert.equal(daysLeft(1000 + SCORE_DAYS * day - 30, 1030), 30); // read a minute after posting
+    assert.equal(daysLeft(1000 + day / 2 - 1, 1000), 0);
+    assert.equal(daysLeft(10n, 500), 0); // read after it expired, before the node dropped it
+    // ExpirationTime.max() on a game, as read on 2026-11-06: about six months.
+    assert.equal(daysLeft(8167433, 308735), 182);
+  });
+});
+
 describe("arkiv deadline", async () => {
   const { READ_MS, arkiv, withDeadline } = await import("../src/lib/arkiv/store.js");
   // A node that accepts the request and never answers, like the public endpoint sleeping on a 429.
@@ -134,6 +147,28 @@ describe("arkiv deadline", async () => {
       return true;
     });
     assert.ok(Date.now() - started < 1000);
+  });
+
+  it("names a 429, a refused key and a timeout, and never prints the RPC URL", async () => {
+    const { arkivMessage } = await import("../src/lib/arkiv/store.js");
+    const { HttpRequestError } = await import("viem");
+    // How the SDK throws: its own error, with viem's HTTP error as the cause. The key sits in the URL.
+    const http = (status) => Object.assign(new Error("query failed"), { cause: new HttpRequestError({ status, url: "https://rpc.example/secret-key" }) });
+    const saved = process.env.ARKIV_ACCESS_KEY;
+    try {
+      delete process.env.ARKIV_ACCESS_KEY;
+      assert.match(arkivMessage(http(429)), /public endpoint is rate limiting this server, which has no ARKIV_ACCESS_KEY, so this is unavailable/);
+      process.env.ARKIV_ACCESS_KEY = "secret-key";
+      assert.match(arkivMessage(http(429)), /rate limiting this server's access key/);
+      assert.match(arkivMessage(http(401), "the board is off"), /^Arkiv refused this server's ARKIV_ACCESS_KEY, so the board is off\.$/);
+      assert.equal(arkivMessage(new Error("socket hang up")), "Arkiv did not respond, so this is unavailable right now.");
+      for (const status of [401, 429, 500]) assert.doesNotMatch(arkivMessage(http(status)), /secret-key|rpc\.example/);
+    } finally {
+      if (saved === undefined) delete process.env.ARKIV_ACCESS_KEY;
+      else process.env.ARKIV_ACCESS_KEY = saved;
+    }
+    const timedOut = await arkiv(new Promise(() => {}), "read the board", 20).catch((error) => error);
+    assert.equal(arkivMessage(timedOut, "this is the starter game"), "Arkiv took longer than 0.02 s to read the board, so this is the starter game.");
   });
 
   it("passes a value through and keeps reads at about 10 s", async () => {

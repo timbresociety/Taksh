@@ -56,7 +56,7 @@ export async function POST(request) {
           .catch((error) => console.error("rival ENS write failed:", error.shortMessage ?? error.message)));
       }
       // The score here is the server's replay. Show this one, not the browser's.
-      return Response.json({ ...stored, replayed: episode.replayed, rival, round: rival && roundName(ens, stored.rootHash) });
+      return Response.json({ ...stored, replayed: episode.replayed, rival, round: rival && roundName(ens, stored.rootHash), ledger: { checked: episode.decisions.length, ...round.arkiv } });
     } catch (error) {
       releaseRound(episode.roundId);
       throw error;
