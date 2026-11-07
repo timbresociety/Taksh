@@ -2,7 +2,7 @@
 
 Arkiv holds what in Taksh has to outlive one browser tab or one server instance: the scores people post, the games they share, the day's challenge, and the 0G rival's ledger. The app keeps no other database. Column-by-column schemas are in `schema.md`, and `why-arkiv.md` covers what we kept off Arkiv.
 
-Live on Rabdi at 22:24 UTC on 2026-11-06, from `npm run arkiv:probe`: 4 scores, 6 published games, 1 daily challenge, 8 rival decisions and 1 spent round, all owned by the writer `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30`. Each query took 267 to 693 ms.
+Live on Rabdi at 00:11 UTC on 2026-11-07, from `npm run arkiv:probe`: 8 scores, 8 published games, 2 daily challenges, 38 rival decisions and 6 spent rounds, all owned by the writer `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30`. Each query took 456 to 1,905 ms through an access key.
 
 ## Every Arkiv feature we use, and what the player sees
 
@@ -80,7 +80,7 @@ Where a player should be able to edit, we used something else. A game's ENS name
 | Score | 30 days | A rolling monthly board. Arkiv drops old scores itself, so there's no cleanup job. | "Expires in N d" on each row, and "this board is the last month of play". |
 | Published game | About 182.5 days, the most Arkiv allows (`ExpirationTime.max()`) | A shared link should work for months. | "N days left" on each gallery card. An expired key opens "No live game has that key. It may have expired." |
 | Daily challenge | 8 days | The app reads today and yesterday. `/daily/<date>` reads up to 8 days back, with a day of slack. | Older dates say "This challenge has expired from Arkiv, so this is the date's starter game." The scores outlive it, so an old board still reads. |
-| Rival decision | 1 hour | A round has to be uploaded within 5 minutes of ending. After that its decisions have no use. | Nothing directly. A round stored on 0G Storage was checked against them. |
+| Rival decision | 1 hour | A round has to be uploaded within 5 minutes of ending. After that its decisions have no use. | The rival's result screen says how many of the round's decisions the server read back from Arkiv to check it, and links one on the explorer. If Arkiv couldn't be read, it says why. |
 | Spent round | 2 hours | Longer than the decisions it guards. | A second upload of the same round is refused. |
 
 One mismatch we know of: nothing extends a game. A game people still play on day 183 stops loading. `extendEntity` on each open would keep popular games alive, at the cost of a write per play. We haven't needed it yet: the oldest game was published at 08:10 UTC on 2026-11-06.

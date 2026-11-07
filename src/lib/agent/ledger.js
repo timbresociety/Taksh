@@ -38,9 +38,11 @@ export async function loadRound(roundId) {
   const local = [...issued].filter(([, decision]) => decision.roundId === roundId).map(([requestId, decision]) => ({ requestId, ...decision }));
   const none = { records: [], spent: false, full: false };
   // An Arkiv outage or 429 leaves this instance's own memory, so a round served here still stores.
+  let reason = onArkiv() ? null : "Arkiv writes are off on this server";
   const remote = onArkiv()
     ? await readRound(roundId).catch((error) => {
-        console.error("rival ledger read failed:", arkivCause(error));
+        reason = arkivCause(error);
+        console.error("rival ledger read failed:", reason);
         return none;
       })
     : none;
@@ -50,6 +52,8 @@ export async function loadRound(roundId) {
     records,
     spent: remote.spent || rounds.get(roundId) === "spent",
     full: remote.full,
+    // What the player is shown: how many decisions came back from Arkiv, one to open, or why none did.
+    arkiv: { read: remote.records.length, key: remote.records.find((record) => record.key)?.key ?? null, reason },
     startedAt: records.length ? Math.min(...records.map((record) => record.askedAt)) : null,
   };
 }

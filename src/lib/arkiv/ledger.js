@@ -37,7 +37,7 @@ export async function readRound(roundId) {
   // 100 is the node maximum. A 120 s round asks 0G about 30 times, so a round that fills the page is
   // refused rather than checked against part of its decisions.
   const [decisions, spent] = await Promise.all([
-    read(reader.select({ requestId: true, askedAt: true, issuedAt: true, record: true }).from(Decisions).ownedBy(owner).where(eq("roundId", roundId)).limit(100), "read the round"),
+    read(reader.select({ $key: true, requestId: true, askedAt: true, issuedAt: true, record: true }).from(Decisions).ownedBy(owner).where(eq("roundId", roundId)).limit(100), "read the round"),
     read(reader.count().from(Spent).ownedBy(owner).where(eq("roundId", roundId)), "read the round"),
   ]);
   const records = decisions.entities.map((entity) => ({
@@ -46,6 +46,7 @@ export async function readRound(roundId) {
     askedAt: Number(valueOf(entity.askedAt)),
     issuedAt: Number(valueOf(entity.issuedAt)),
     ...readSpecBytes(valueOf(entity.record)), // bytes come back as hex JSON
+    key: entity.$key,
   }));
   return { records, spent: Number(spent) > 0, full: decisions.entities.length >= 100 };
 }
