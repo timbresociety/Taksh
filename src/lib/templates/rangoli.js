@@ -213,7 +213,8 @@ export default {
       cue: "Each hand has a tray on the floor. Slide it left and right to the mark of its colour.",
       mouseCue: "The tray follows the mouse. Slide it to each mark.",
       half: 0.19, // the default tray
-      dots: [{ hand: "left", x: -0.4, y: TRAY_Y }, { hand: "right", x: 0.4, y: TRAY_Y }, { hand: null, x: 0, y: TRAY_Y }],
+      // Inside where a hanging arm leaves each tray, so every mark takes a slide to reach.
+      dots: [{ hand: "left", x: -0.2, y: TRAY_Y }, { hand: "right", x: 0.2, y: TRAY_Y }, { hand: null, x: 0, y: TRAY_Y }],
     },
     keys: { left: "← slides the tray left.", right: "→ slides the tray right." },
     controls: { left: "Slide a hand left", right: "Slide a hand right" },

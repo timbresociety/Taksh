@@ -135,6 +135,21 @@ describe("the rangoli tray lesson", () => {
   it("on the keyboard every mark takes the mouse", () => {
     const [mouse] = practiceMoves(rangoli, false);
     const trial = cursorTrial(mouse, rangoli, specOf(rangoli));
-    assert.equal(trial.push({ left: null, right: { x: mouse.dots[0].x, y: 0.3 } }, 1000, 1.4, mouse.dots[0]), "hit");
+    assert.equal(trial.push({ left: null, right: { x: 0.6, y: 0.3 } }, 1000, 1.4, mouse.dots[0]), null);
+    assert.equal(trial.push({ left: null, right: { x: mouse.dots[0].x, y: 0.3 } }, 1033, 1.4, mouse.dots[0]), "hit");
+  });
+
+  it("a tray already on its mark has to slide off and back, so no mark is done by standing still", () => {
+    const [left] = step.dots;
+    const trial = cursorTrial(step, rangoli, specOf(rangoli));
+    const at = (x, t) => trial.push({ left: { x, y: -0.9 }, right: { x: 0.43, y: -0.9 } }, t, 16 / 9, left);
+    for (let t = 1000; t < 3000; t += 33) assert.equal(at(left.x, t), null);
+    assert.equal(at(left.x - 0.25, 3033), null);
+    assert.equal(at(left.x, 3066), "hit");
+  });
+
+  it("no mark sits where a hanging arm leaves its tray", () => {
+    // About a shoulder out from the middle, as the hand cursor reads an arm at rest.
+    for (const dot of step.dots) for (const rest of [-0.43, 0.43]) assert.ok(!onTray({ x: rest, y: -1 }, dot), `${dot.x}`);
   });
 });
