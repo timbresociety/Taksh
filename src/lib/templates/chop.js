@@ -94,6 +94,21 @@ export default {
     lives: { label: "Lives", unit: "", min: 1, max: 5, default: 3, higherIsHarder: false, whole: true },
   },
 
+  // How practice and the brief teach the hands. The slashes above only stand in for Space, so the lesson
+  // is aim()'s rule: a fast hand through a fruit cuts it, whichever way it goes. Each hand gets a fruit
+  // of its colour, then the white one takes either.
+  handCursors: {
+    lesson: {
+      kind: "slice",
+      label: "Slice",
+      cue: "Swipe a hand fast through the fruit, any direction. Use the ring of the same colour.",
+      mouseCue: "Move the mouse fast through the fruit to cut it.",
+      dots: [{ hand: "left", x: -0.4, y: 0.25 }, { hand: "right", x: 0.4, y: 0.25 }, { hand: null, x: 0, y: 0.4 }].map((dot) => ({ ...dot, kind: "watermelon", radius: FRUIT.watermelon.radius })),
+    },
+    keys: { slice: "Space cuts the nearest fruit." },
+    controls: { slice: "Move a hand fast through the fruit" },
+  },
+
   create(spec) {
     const { durationS, tossMs, bombChance, handSpeed, lives } = spec.tuning;
     return {

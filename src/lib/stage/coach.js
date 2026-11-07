@@ -381,7 +381,7 @@ export const MOVE_POSES = {
 };
 
 // Clips that say a move better than a pose can.
-const MOVE_CLIPS = { run_step: "Jog_Fwd_Loop" };
+export const MOVE_CLIPS = { run_step: "Jog_Fwd_Loop" };
 
 // Call after the character's own update, so the pose lands on top of whatever clip is playing.
 export function applyPose(character, pose, { flip = false } = {}) {

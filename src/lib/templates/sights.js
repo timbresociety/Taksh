@@ -296,8 +296,15 @@ export default {
     };
   },
 
-  aimsByReaching: true,
-  aimCue: "Your left hand's ring takes the left side, and your right hand's the right. Reach each dot with the ring of the same colour.",
+  handCursors: {
+    lesson: {
+      kind: "aim",
+      cue: "Your left hand's ring takes the left side, and your right hand's the right. Hold a ring on a ghoul to shoot it. Reach each dot with the ring of the same colour.",
+      mouseCue: "The mouse moves your sight. Hold it on a ghoul to shoot it. Reach each dot.",
+    },
+    keys: { snap: "F locks on to the ghoul nearest your sight." },
+    controls: { snap: "Hold a hand's circle on a ghoul" },
+  },
   aim(state, hands) {
     aimCursors(state, hands);
     if (handsOnScreen(state).length === 2) state.twoHanded = true;
