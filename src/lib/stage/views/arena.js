@@ -184,15 +184,18 @@ function fightingStance(character, facing, weight) {
 }
 
 // The trainer holds each pad out at arm's length, on the side the punch goes to, so it sits in the open
-// beside the player rather than behind their own head. The player's left is the trainer's right.
+// beside the player rather than behind their own head. The player's left is the trainer's right. A jab or
+// a cross goes at the screen, so its pad is held right in front of the player instead.
 const TRAINER_X = 0.2;
+const PLAYER_X = -0.3; // where the hero stands
 const PAD_Z = -1.05;
 const PAD_OUT = 0.42;
-const padSpot = (pad) => new THREE.Vector3(TRAINER_X + pad.side * PAD_OUT, pad.height, PAD_Z);
+const IN_FRONT = new Set(["jab", "cross"]);
+const padSpot = (pad) => new THREE.Vector3((IN_FRONT.has(pad.punch) ? PLAYER_X : TRAINER_X) + pad.side * PAD_OUT, pad.height, PAD_Z);
 const shoulderTo = new THREE.Vector3();
 
 function holdPad(trainer, pad) {
-  const side = pad.side < 0 ? "r" : "l";
+  const side = padSpot(pad).x < TRAINER_X ? "r" : "l";
   const upper = trainer.bones.get(`upperarm_${side}`);
   if (!upper) return;
   const reach = padSpot(pad).sub(upper.getWorldPosition(shoulderTo));
@@ -208,7 +211,7 @@ export const pads = {
     gloves(hero, "#ff3b4e", world);
     gloves(rival, "#f1ece0", world);
     hero.root.rotation.y = Math.PI;
-    hero.root.position.set(-0.3, 0, 1);
+    hero.root.position.set(PLAYER_X, 0, 1);
     rival.root.position.set(TRAINER_X, 0, -1.5);
     hero.play("Idle_Loop");
     rival.play("Idle_Loop");

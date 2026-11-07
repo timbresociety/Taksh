@@ -132,3 +132,39 @@ export function playTimeline(body, timeline, sink, { noise = 0.0025, seed = 7, s
   }
   return t;
 }
+
+// A boxing guard and straight punches thrown at the camera, as leftArm / rightArm offsets for rawPose.
+// side is "left" or "right"; inward is toward the body's middle. In a guard the fist is up by the chin with
+// the elbow tucked under it. In a punch at the camera the fist stays in front of its shoulder (a jab) or
+// comes in toward the middle (a cross), and the elbow comes up behind it, so the arm looks short.
+// depth: false leaves out every depth cue, so only what the image shows can read the punch.
+const inward = (side, x) => (side === "left" ? x : -x);
+const deep = (z, depth) => (depth ? z : 0);
+export const guardArm = (side, { depth = true } = {}) => ({ wrist: [inward(side, 0.3), -0.2, deep(-0.6, depth)], elbow: [inward(side, 0.1), 0.35] });
+export const straightArm = (side, kind, { depth = true } = {}) => (kind === "cross"
+  ? { wrist: [inward(side, 0.35), 0, deep(-1.05, depth)], elbow: [inward(side, 0.15), 0.07] }
+  : { wrist: [inward(side, 0.05), 0, deep(-1.1, depth)], elbow: [inward(side, 0.03), 0.05] });
+
+const hanging = (side) => ({ wrist: [inward(side, -0.08), 1.15, 0], elbow: [inward(side, -0.04), 0.57] });
+const between = (from, to, p) => ({
+  wrist: from.wrist.map((value, i) => value + (to.wrist[i] - value) * p),
+  elbow: from.elbow.map((value, i) => value + (to.elbow[i] - value) * p),
+});
+const arms = (left, right, extra = {}) => ({ leftArm: left, rightArm: right, ...extra });
+
+// Both fists come up to guard slowly, one punch goes out and back, and both drop again. A cross turns the
+// shoulders as it goes. Timings are a real punch's: about 150 ms out.
+export function punchTimeline(side, kind = "jab", { depth = true, outMs = 150, holdMs = 200, backMs = 180, turn = kind === "cross" ? 0.2 : 0 } = {}) {
+  const guard = { left: guardArm("left", { depth }), right: guardArm("right", { depth }) };
+  const out = straightArm(side, kind, { depth });
+  const pose = (punchArm, share) => (side === "left" ? arms(punchArm, guard.right, { turn: -turn * share }) : arms(guard.left, punchArm, { turn: turn * share }));
+  return [
+    [900, (p) => arms(between(hanging("left"), guard.left, p), between(hanging("right"), guard.right, p))],
+    [400, arms(guard.left, guard.right)],
+    [outMs, (p) => pose(between(guard[side], out, p), p)],
+    [holdMs, pose(out, 1)],
+    [backMs, (p) => pose(between(out, guard[side], p), 1 - p)],
+    [400, arms(guard.left, guard.right)],
+    [900, (p) => arms(between(guard.left, hanging("left"), p), between(guard.right, hanging("right"), p))],
+  ];
+}

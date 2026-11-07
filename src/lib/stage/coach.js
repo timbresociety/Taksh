@@ -16,6 +16,9 @@ const MOVING_SHARE = 0.5;
 const STILL_M = 0.01;
 const CARRIED_M = 0.15;
 const TURNED = 0.3;
+const NEAR_EYE_M = 0.9; // depth is drawn as if seen from this close, so a fist coming forward visibly grows
+const MOST_AHEAD_M = 0.6;
+const VIEW_EASE = 5; // how fast the coach's camera swings to a new view, per second
 
 // The tracker's joints on the rig, so the demonstration is drawn exactly like the player's own skeleton.
 // The player's left is the rig's right, because it faces them.
@@ -44,6 +47,8 @@ const blend = (a, b, t) => a.map((value, i) => lerp(value, b[i], t));
 const smooth = (t) => t * t * (3 - 2 * Math.min(1, Math.max(0, t)));
 // Rests, strikes fast, holds a beat, then eases home.
 const strike = (p) => (p < 0.25 ? 0 : p < 0.36 ? smooth((p - 0.25) / 0.11) : p < 0.56 ? 1 : p < 0.82 ? 1 - smooth((p - 0.56) / 0.26) : 0);
+// Rests, drives out fast, holds a beat, and comes straight back almost as fast, as a straight punch does.
+const snap = (p) => (p < 0.25 ? 0 : p < 0.34 ? smooth((p - 0.25) / 0.09) : p < 0.48 ? 1 : p < 0.62 ? 1 - smooth((p - 0.48) / 0.14) : 0);
 const rise = (p) => (p < 0.2 ? 0 : p < 0.4 ? smooth((p - 0.2) / 0.2) : p < 0.7 ? 1 : p < 0.9 ? 1 - smooth((p - 0.7) / 0.2) : 0);
 
 // The player's left is on the left of the screen, which is the right arm of a rig facing them.
@@ -59,21 +64,54 @@ function leg(side, thigh, calf, weight = 1) {
   return [[`thigh_${bone}`, thigh, weight], [`calf_${bone}`, calf, weight]];
 }
 
-const guardUpper = (out) => [out * 0.28, -0.9, 0.35];
-const guardLower = (out) => [-out * 0.38, 0.85, 0.35];
+// Upper arm and forearm as shares of the whole arm, near enough for any rig the poses drive.
+const UPPER = 0.52;
+const LOWER = 0.48;
+const add = (a, b) => a.map((value, i) => value + b[i]);
+const scale = (a, by) => a.map((value) => value * by);
+const dot = (a, b) => a.reduce((sum, value, i) => sum + value * b[i], 0);
+const normalise = (a) => scale(a, 1 / Math.max(1e-6, Math.hypot(...a)));
+const sideways = (out, [x, y, z]) => [out * x, y, z];
+
+// Bends an arm so the fist lands on a spot, in arm lengths from the shoulder, with the elbow bowed toward
+// the pole. Moving the spot along a line moves the fist along that line, which blending angles cannot.
+export function reachFor(fist, pole) {
+  const along = normalise(fist);
+  const reach = Math.min(Math.hypot(...fist), 0.995 * (UPPER + LOWER));
+  const toElbow = (UPPER * UPPER - LOWER * LOWER + reach * reach) / (2 * reach);
+  const bow = normalise(add(pole, scale(along, -dot(pole, along))));
+  const elbow = add(scale(along, toElbow), scale(bow, Math.sqrt(Math.max(0, UPPER * UPPER - toElbow * toElbow))));
+  return [normalise(elbow), normalise(add(scale(along, reach), scale(elbow, -1)))];
+}
+
+// A boxing guard: the fist just inside the shoulder and up by the chin, a forearm in front of it, the
+// elbow tucked down and forward rather than hanging at the ribs. Spots are in arm lengths, out is +x.
+const GUARD_FIST = [-0.07, 0.12, 0.54];
+const ELBOW_POLE = [0.25, -1, 0.05];
+const guardUpper = (out) => reachFor(sideways(out, GUARD_FIST), sideways(out, ELBOW_POLE))[0];
+const guardLower = (out) => reachFor(sideways(out, GUARD_FIST), sideways(out, ELBOW_POLE))[1];
 const guardArm = (side) => {
   const { out } = facing(side);
   return arm(side, guardUpper(out), guardLower(out));
 };
 const other = (side) => (side === "left" ? "right" : "left");
 
-function punch(side, p) {
+// A straight punch goes at the screen. The jab drives the lead fist straight ahead and back on the same
+// line; the cross turns the hips and shoulders and sends the rear fist ahead and in toward the middle.
+// The elbow stays under and behind the fist. From the front that is hard to see, so the coach watches
+// these from a three-quarter view on the punching side.
+const STRAIGHTS = {
+  jab: { fist: [-0.04, 0.03, 0.95], turn: 0.15 },
+  cross: { fist: [-0.26, 0.03, 0.92], turn: 0.5 },
+};
+const PUNCH_VIEW = 0.5;
+
+function punch(side, p, kind) {
   const { out } = facing(side);
-  const t = strike(p);
-  return {
-    aims: [...arm(side, blend(guardUpper(out), [out * 0.55, -0.05, 0.85], t), blend(guardLower(out), [out * 0.55, 0, 0.85], t)), ...guardArm(other(side))],
-    turn: -out * 0.45 * t,
-  };
+  const { fist, turn } = STRAIGHTS[kind];
+  const t = snap(p);
+  const [upper, lower] = reachFor(sideways(out, blend(GUARD_FIST, fist, t)), sideways(out, ELBOW_POLE));
+  return { aims: [...arm(side, upper, lower), ...guardArm(other(side))], turn: -out * turn * t, view: out * PUNCH_VIEW };
 }
 
 function hook(side, p) {
@@ -333,8 +371,8 @@ export const MOVE_POSES = {
   lift_right: (p) => lift("right", p),
   lean_left: (p) => lean("left", p),
   lean_right: (p) => lean("right", p),
-  punch_left: (p) => punch("left", p),
-  punch_right: (p) => punch("right", p),
+  punch_left: (p) => punch("left", p, "jab"),
+  punch_right: (p) => punch("right", p, "cross"),
   hook_left: (p) => hook("left", p),
   hook_right: (p) => hook("right", p),
   uppercut_left: (p) => uppercut("left", p),
@@ -382,6 +420,9 @@ export const MOVE_POSES = {
 
 // Clips that say a move better than a pose can.
 export const MOVE_CLIPS = { run_step: "Jog_Fwd_Loop" };
+
+// How much bigger to draw a point this far ahead of the body, in metres, as if seen from close by.
+export const nearness = (ahead) => NEAR_EYE_M / (NEAR_EYE_M - Math.min(MOST_AHEAD_M, Math.max(0, ahead)));
 
 // Call after the character's own update, so the pose lands on top of whatever clip is playing.
 export function applyPose(character, pose, { flip = false } = {}) {
@@ -452,6 +493,8 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
   let trails = new Map();
   let loopAt = 0;
   let unit = 1;
+  let distance = 4.9;
+  let view = 0;
   character.play(clip);
 
   // Joints in metres, y down, with x and y on the same scale as the tracker's.
@@ -511,6 +554,9 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
     ctx.stroke();
   }
 
+  // How far a point is toward the coach's camera, which can swing round to the side.
+  const toward = (point) => point.x * Math.sin(view) + point.z * Math.cos(view);
+
   // The player's own skeleton is drawn the same way, so what they see here is what they are matching.
   function drawLines(points) {
     const ratio = Math.min(devicePixelRatio, 2);
@@ -541,12 +587,17 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
         strokeChain(ctx, [trail[i - 1], trail[i]], [0, 1], width, height);
       }
       ctx.globalAlpha = 1;
-      ctx.lineWidth = stroke * 1.7;
-      strokeChain(ctx, points, LIMB_CHAINS[end], width, height);
+      // Nearer the viewer is drawn bigger, so a fist driven at the camera grows on its way.
+      const chain = LIMB_CHAINS[end];
+      const grow = (index) => nearness(toward(points[index]) - toward(points[chain[0]]));
+      for (let i = 1; i < chain.length; i += 1) {
+        ctx.lineWidth = stroke * 1.7 * grow(chain[i]);
+        strokeChain(ctx, points, [chain[i - 1], chain[i]], width, height);
+      }
       const [x, y] = onScreen(points[end], width, height);
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(x, y, stroke * 1.7, 0, Math.PI * 2);
+      ctx.arc(x, y, stroke * 1.7 * grow(end), 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -557,10 +608,15 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     // A narrow panel backs the camera off, so a raised arm never leaves the frame.
-    const distance = Math.max(4.9, 4.2 / camera.aspect);
-    camera.position.set(0, 1.25, distance);
-    camera.lookAt(0, 1.14, 0);
+    distance = Math.max(4.9, 4.2 / camera.aspect);
+    aim();
     camera.updateProjectionMatrix();
+  }
+
+  // Front on, or swung round the rig by view radians when a move reads better from the side.
+  function aim() {
+    camera.position.set(distance * Math.sin(view), 1.25, distance * Math.cos(view));
+    camera.lookAt(0, 1.14, 0);
   }
 
   function frame() {
@@ -572,6 +628,7 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
     const root = character.root;
     root.position.set(0, 0, 0);
     root.rotation.y = 0;
+    let wanted = 0;
     if (body) mirrorArms(character, body.points, { torso: body.torso });
     else if (gesture && MOVE_POSES[gesture]) {
       const pose = MOVE_POSES[gesture](((elapsed - started) % LOOP_S) / LOOP_S);
@@ -579,6 +636,12 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
       root.rotation.y = pose.turn ?? 0;
       root.updateMatrixWorld(true);
       applyPose(character, pose);
+      wanted = pose.view ?? 0;
+    }
+    if (view !== wanted) {
+      view += (wanted - view) * Math.min(1, dt * VIEW_EASE);
+      if (Math.abs(wanted - view) < 0.001) view = wanted;
+      aim();
     }
     const points = readJoints();
     if (Math.floor((elapsed - started) / LOOP_S) !== loopAt) {
@@ -604,6 +667,7 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
   const standingShoulders = middle(standing[LM.leftShoulder], standing[LM.rightShoulder]);
   const standingHips = middle(standing[LM.leftHip], standing[LM.rightHip]);
   unit = Math.hypot(standingShoulders.x - standingHips.x, standingShoulders.y - standingHips.y);
+  const standingZ = (standing[LM.leftShoulder].z + standing[LM.rightShoulder].z) / 2;
   let latest = standing;
 
   resize();
@@ -612,11 +676,12 @@ export async function createCoach(host, look, { accent = "#e9ff3a" } = {}) {
   return {
     resize,
     // The demonstration as a skeleton in torso lengths from the standing shoulders, for drawing over
-    // the player's own picture. lit names the joints doing the move.
+    // the player's own picture. lit names the joints doing the move, and scale is how much bigger a
+    // joint ahead of the body is drawn, so a punch at the camera shows as a growing fist.
     ghost() {
       const points = [];
       latest.forEach((point, index) => {
-        points[index] = { x: (point.x - standingShoulders.x) / unit, y: (point.y - standingShoulders.y) / unit };
+        points[index] = { x: (point.x - standingShoulders.x) / unit, y: (point.y - standingShoulders.y) / unit, scale: nearness(point.z - standingZ) };
       });
       return { points, lit: lit.flatMap((end) => LIMB_CHAINS[end]) };
     },
