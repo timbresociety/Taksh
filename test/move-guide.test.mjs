@@ -94,8 +94,13 @@ describe("range of motion", () => {
     assert.ok(finish(rangeOf("step_right"), BODY).x > 0.8);
     assert.ok(finish(rangeOf("jump"), BODY).y < begin(rangeOf("jump"), BODY).y - 0.4, "a jump lifts the hips");
     assert.ok(finish(rangeOf("squat_down"), BODY).y > begin(rangeOf("squat_down"), BODY).y + 0.3, "a squat drops them");
-    assert.ok(finish(rangeOf("punch_left"), LM.leftWrist).x < begin(rangeOf("punch_left"), LM.leftWrist).x - 0.3, "a jab goes out to its own side");
-    assert.ok(finish(rangeOf("punch_right"), LM.rightWrist).x > begin(rangeOf("punch_right"), LM.rightWrist).x + 0.3);
+    for (const [gesture, wrist] of [["punch_left", LM.leftWrist], ["punch_right", LM.rightWrist]]) {
+      const path = rangeOf(gesture).paths.find((item) => item.end === wrist);
+      assert.ok(path.toward > 0.3, `${gesture} comes at the screen`);
+      assert.ok(finish(rangeOf(gesture), wrist).z > begin(rangeOf(gesture), wrist).z + 0.3);
+    }
+    assert.ok(finish(rangeOf("punch_right"), LM.rightWrist).x < begin(rangeOf("punch_right"), LM.rightWrist).x - 0.1, "a cross comes in to the middle");
+    assert.equal(rangeOf("hook_left").paths.every((path) => !path.toward), true, "a hook swings across, not at you");
     for (const end of [LM.leftWrist, LM.rightWrist]) assert.ok(finish(rangeOf("hands_up"), end).y < -0.8, "both hands end above the head");
     assert.ok(finish(rangeOf("still_reach_up_left"), LM.leftWrist).x < -0.8, "the keeper's top corner is up and out");
     assert.ok(finish(rangeOf("kick_left"), LM.leftAnkle).x < -1);

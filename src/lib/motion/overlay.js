@@ -168,7 +168,10 @@ export function drawRange(canvas, { ranges = [], fills = [], points = null, cali
   // The arrows, each filled as far as the player has got.
   ranges.forEach((range, index) => {
     const share = points ? Math.min(1, Math.max(0, fills[index] ?? 0)) : (t % GUIDE_LOOP_MS) / GUIDE_LOOP_MS;
-    for (const path of range.paths) drawGuideArrow(ctx, path.points.map(at), share, { width, fast: range.fast, t, goal });
+    for (const path of range.paths) {
+      if (path.toward) drawTowardYou(ctx, path.points.map(at), share, { width, goal });
+      else drawGuideArrow(ctx, path.points.map(at), share, { width, fast: range.fast, t, goal });
+    }
   });
 
   // The player last, so they can see themselves against the shape they are making.
@@ -182,6 +185,33 @@ export function drawRange(canvas, { ranges = [], fills = [], points = null, cali
     ctx.globalAlpha = 0.95;
     bones(live, GUIDE_LIVE, width * 0.8);
     ctx.globalAlpha = 1;
+  }
+}
+
+// A punch at the screen hardly crosses it, so its path is a fist that grows as it comes at you: rings
+// along the way, a big ring where it lands, and a fill that grows out to it as the player gets there.
+function drawTowardYou(ctx, path, share, { width, goal }) {
+  if (!path.length) return;
+  const [x, y] = path.at(-1);
+  const steps = 4;
+  const radius = (i) => width * (1.4 + (i / steps) * 4.2);
+  const pointAt = (i) => path[Math.round((i / steps) * (path.length - 1))];
+  for (let i = 0; i <= steps; i += 1) {
+    const [px, py] = pointAt(i);
+    ctx.beginPath();
+    ctx.arc(px, py, radius(i), 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.lineWidth = width * 1.6;
+    ctx.stroke();
+    ctx.strokeStyle = i === steps ? goal : "rgba(255,255,255,0.45)";
+    ctx.lineWidth = width * (i === steps ? 1 : 0.6);
+    ctx.stroke();
+  }
+  if (share > 0.02) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius(steps) * Math.min(1, share), 0, Math.PI * 2);
+    ctx.fillStyle = share >= 0.98 ? GUIDE_FILL : "rgba(255,255,255,0.28)";
+    ctx.fill();
   }
 }
 

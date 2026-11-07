@@ -3,6 +3,7 @@
 // plain forward kinematics over the bone directions, with fixed bone lengths, so the play screen can
 // draw a move with no rig and no WebGL. Points are in torso lengths from the standing shoulders, y down,
 // the player's left on the screen's left: the convention coach.ghost() uses, so drawGhost places them.
+// Each point also keeps z, toward the camera, so a punch thrown at the screen still has a path to draw.
 import { MOVE_POSES } from "../stage/coach.js";
 import { LM } from "./landmarks.js";
 
@@ -58,45 +59,49 @@ export function skeletonOf(pose) {
 
   const turn = Math.cos(pose.turn ?? 0); // a turn toward the camera narrows the shoulders and hips
   const root = [(pose.x ?? 0) / RIG_TORSO_M, (pose.y ?? 0) / RIG_TORSO_M];
-  const hip = [root[0], -1 + root[1]];
+  const hip = [root[0], -1 + root[1], 0];
   const spine = aimed("spine_02", [0, 1, 0]);
   const tilt = Math.atan2(-spine[0], spine[1]);
   const rise = Math.hypot(spine[0], spine[1]);
-  const shoulder = [hip[0] + spine[0], hip[1] + spine[1]];
+  const plus = (a, b, scale = 1) => a.map((value, i) => value + b[i] * scale);
+  const shoulder = plus(hip, spine);
   const across = (half) => turnFlat([half * turn, 0, 0], tilt);
   const points = [];
-  const put = (index, [x, y]) => {
-    points[index] = { x, y: -y };
+  const put = (index, [x, y, z]) => {
+    points[index] = { x, y: -y, z };
   };
   const nose = turnFlat([0, NOSE_UP * Math.max(0.4, rise), 0], tilt);
-  put(LM.nose, [shoulder[0] + nose[0], shoulder[1] + nose[1]]);
+  put(LM.nose, plus(shoulder, nose));
 
   for (const side of ["r", "l"]) {
     const out = OUT[side];
     const [s, e, w] = ARMS[side];
-    const at = [shoulder[0] + across(SHOULDER_HALF)[0] * out, shoulder[1] + across(SHOULDER_HALF)[1] * out];
+    const at = plus(shoulder, across(SHOULDER_HALF), out);
     // Arms hang a little out at rest, and lean with the chest when nothing aims them.
     const upper = aimed(`upperarm_${side}`, turnFlat([out * 0.12, -1, 0], tilt));
     const lower = aimed(`lowerarm_${side}`, upper);
-    const elbow = [at[0] + upper[0] * UPPER_ARM, at[1] + upper[1] * UPPER_ARM];
+    const elbow = plus(at, upper, UPPER_ARM);
     put(s, at);
     put(e, elbow);
-    put(w, [elbow[0] + lower[0] * FOREARM, elbow[1] + lower[1] * FOREARM]);
+    put(w, plus(elbow, lower, FOREARM));
 
     const [h, k, a] = LEGS[side];
-    const hipAt = [hip[0] + HIP_HALF * turn * out, hip[1]];
+    const hipAt = plus(hip, [HIP_HALF * turn * out, 0, 0]);
     const thigh = aimed(`thigh_${side}`, [out * 0.03, -1, 0]);
     const calf = aimed(`calf_${side}`, thigh);
-    const knee = [hipAt[0] + thigh[0] * THIGH, hipAt[1] + thigh[1] * THIGH];
+    const knee = plus(hipAt, thigh, THIGH);
     put(h, hipAt);
     put(k, knee);
-    put(a, [knee[0] + calf[0] * SHIN, knee[1] + calf[1] * SHIN]);
+    put(a, plus(knee, calf, SHIN));
   }
   return points;
 }
 
-const hipsOf = (points) => ({ x: (points[LM.leftHip].x + points[LM.rightHip].x) / 2, y: (points[LM.leftHip].y + points[LM.rightHip].y) / 2 });
-const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const hipsOf = (points) => ({ x: (points[LM.leftHip].x + points[LM.rightHip].x) / 2, y: (points[LM.leftHip].y + points[LM.rightHip].y) / 2, z: (points[LM.leftHip].z + points[LM.rightHip].z) / 2 });
+// Travel counts depth too: a jab thrown at the screen barely moves across it, but it moves.
+const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z ?? 0) - (b.z ?? 0));
+const flatGap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const TOWARD = 1.5; // a path that comes this many times further toward the camera than across is drawn as coming at you
 const spread = (path) => Math.max(...path.map((point) => gap(point, path[0])));
 
 function poseFor(gesture) {
@@ -113,11 +118,19 @@ function build(gesture) {
   // What travels: the hips when the whole body goes, and each hand, foot or head that moves on its own.
   const body = loop.map(hipsOf);
   const carried = spread(body) >= CARRIED;
-  const travelOf = (joint) => spread(loop.map((points, i) => ({ x: points[joint].x - body[i].x, y: points[joint].y - body[i].y })));
+  const relative = (joint) => loop.map((points, i) => ({ x: points[joint].x - body[i].x, y: points[joint].y - body[i].y, z: points[joint].z - body[i].z }));
+  const travelOf = (joint) => spread(relative(joint));
+  const flatTravelOf = (joint) => Math.max(...relative(joint).map((point, _, all) => flatGap(point, all[0])));
   const own = LIMBS.map((chain) => {
     const joints = chain.length > 1 ? chain.slice(1) : chain;
-    const [joint, travel] = joints.map((index) => [index, travelOf(index)]).reduce((best, item) => (item[1] > best[1] + 0.02 ? item : best));
-    return { chain, joint, travel };
+    const scored = joints.map((index) => ({ index, flat: flatTravelOf(index), full: travelOf(index) }));
+    const best = (key) => scored.reduce((top, item) => (item[key] > top[key] + 0.02 ? item : top));
+    // An arm is shown by the joint that travels most, counting depth, so a jab at the screen shows the
+    // fist. A leg is shown by what crosses the screen most: a knee lift shows the knee rising, not the
+    // foot swinging toward the camera under it.
+    const leg = chain === LEGS.r || chain === LEGS.l;
+    const pick = leg && best("flat").flat >= STILL ? best("flat") : best("full");
+    return { chain, joint: pick.index, travel: Math.max(...scored.map((item) => item.full)) };
   });
   const most = Math.max(...own.map(({ travel }) => travel));
   let limbs = most < STILL ? [] : own.filter(({ travel }) => travel >= most * MOVING_SHARE);
@@ -155,9 +168,12 @@ function build(gesture) {
     const points = [];
     for (const frame of frames) {
       const point = where(frame, which);
-      if (!points.length || gap(point, points.at(-1)) > 0.01) points.push({ x: point.x, y: point.y });
+      if (!points.length || gap(point, points.at(-1)) > 0.01) points.push({ x: point.x, y: point.y, z: point.z });
     }
-    return { end: which, points };
+    const depth = points.length > 1 ? points.at(-1).z - points[0].z : 0;
+    const across = points.length > 1 ? flatGap(points.at(-1), points[0]) : 0;
+    const hand = which === LM.leftWrist || which === LM.rightWrist; // punches are the moves thrown at the screen
+    return { end: which, points, toward: hand && depth > 0.2 && depth > across * TOWARD ? depth : 0 };
   });
   const lit = [...new Set([...limbs.flatMap(({ chain }) => chain), ...(carried ? [...LEGS.r, ...LEGS.l] : [])])];
   const all = [...start, ...end, ...paths.flatMap((path) => path.points)].filter(Boolean);
