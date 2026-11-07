@@ -2,6 +2,8 @@
 
 Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. Games are generated on 0G Private Computer, inside a TEE. A published game is an ENSv2 name on Sepolia, and its records are the game. Scores, shared games and each day's challenge are stored on Arkiv (see [Arkiv](#arkiv)).
 
+Play it at https://taksh.vercel.app.
+
 ## Run it
 
 ```bash
