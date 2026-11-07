@@ -300,7 +300,7 @@ function signCard(text, colour, arrow = null, size = 1) {
   if (arrow) {
     pen.save();
     pen.translate(0, text ? 84 : 128);
-    pen.rotate({ left: Math.PI, right: 0, down: Math.PI / 2 }[arrow]);
+    pen.rotate({ left: Math.PI, right: 0, down: Math.PI / 2, up: -Math.PI / 2 }[arrow]);
     pen.beginPath();
     for (const [x, y] of [[-74, -24], [8, -24], [8, -62], [82, 0], [8, 62], [8, 24], [-74, 24]]) pen.lineTo(x, y);
     pen.closePath();
@@ -376,22 +376,18 @@ export const bout = {
     hero.play("Idle_Loop");
     rival.play("Idle_Loop");
 
-    // Where the shot lands: a red patch over the side of the head it is aimed at, and a ring that
-    // closes on it as the shot comes in. The arrow on the other side points the way out; the guide by
-    // the player shows the move.
+    // Where the shot lands: a red patch over the side of the head it is aimed at, deepening as the shot
+    // comes in. The arrow on the other side points the way out; the guide by the player shows the move.
     const danger = overlay(new THREE.PlaneGeometry(1, 1), DANGER_RED);
-    const closing = overlay(new THREE.RingGeometry(0.5, 0.62, 40), DANGER_RED);
     const signs = {
       slip_left: signCard("", "#ffffff", "left", 1.15),
       slip_right: signCard("", "#ffffff", "right", 1.15),
       duck: signCard("", "#ffffff", "down", 1.15),
     };
-    // After a dodge the rival is off balance: a gold ring round its feet drains as the chance runs out.
-    const openSign = signCard("HIT NOW  x2", OPEN_GOLD, null, 1.7);
-    const openRing = overlay(new THREE.RingGeometry(0.62, 0.8, 48), OPEN_GOLD);
-    openRing.rotation.x = -Math.PI / 2;
-    openRing.material.depthTest = true;
-    scene.add(danger, closing, openSign, openRing, ...Object.values(signs));
+    // After a dodge the rival is off balance: a gold arrow points from the player at it, and fades as
+    // the chance runs out. The gloves glow gold too.
+    const openSign = signCard("", OPEN_GOLD, "up", 1.5);
+    scene.add(danger, openSign, ...Object.values(signs));
 
     // The punch that landed and what it took, rising off the rival.
     const cards = new Map();
@@ -483,7 +479,6 @@ export const bout = {
 
         for (const sign of Object.values(signs)) sign.visible = false;
         danger.material.opacity = 0;
-        closing.material.opacity = 0;
         if (attack) {
           const progress = attack.ms / attack.windupMs;
           // Where the head was as the shot started, so stepping or ducking out of the patch reads.
@@ -501,10 +496,6 @@ export const bout = {
           danger.scale.set(high ? 1.15 : 0.5, high ? 0.3 : 0.8, 1);
           danger.material.opacity = (0.18 + 0.32 * progress) * pulse;
           danger.lookAt(camera.position);
-          closing.position.copy(danger.position);
-          closing.scale.setScalar(Math.max(0.35, 1.9 - progress * 1.5));
-          closing.material.opacity = 0.9;
-          closing.lookAt(camera.position);
 
           const sign = signs[high ? "duck" : SAFE[attack.side] > 0 ? "slip_right" : "slip_left"];
           sign.visible = true;
@@ -514,15 +505,13 @@ export const bout = {
         }
 
         openSign.visible = open;
-        openRing.material.opacity = 0;
         if (open) {
           const left = state.openMs / state.openMaxMs;
           const beat = 1 + Math.sin(elapsed * 14) * 0.06;
-          openSign.position.set(rivalX, 2.4, RIVAL_Z);
-          openSign.scale.set(1.7 * beat, 0.85 * beat, 1);
-          openRing.position.set(rivalX, 0.04, RIVAL_Z);
-          openRing.scale.setScalar(0.45 + 0.55 * left);
-          openRing.material.opacity = 0.95;
+          // Between the player and the rival, pointing at it: the way to throw.
+          openSign.position.set((HERO_X + rivalX) / 2, 1.35, (1 + RIVAL_Z) / 2);
+          openSign.scale.set(1.5 * beat, 0.75 * beat, 1);
+          openSign.material.opacity = 0.35 + 0.65 * left;
         }
 
         for (let index = floating.length - 1; index >= 0; index -= 1) {

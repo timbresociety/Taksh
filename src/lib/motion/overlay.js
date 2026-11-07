@@ -120,6 +120,7 @@ export function drawRange(canvas, { ranges = [], fills = [], points = null, cali
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!ranges.length || !canvas.width || !canvas.height) return;
+  ranges = ranges.map(threeQuarter);
 
   // One frame for every move shown, centred on the standing shoulders so the body never jumps sideways.
   const margin = 0.3;
@@ -168,10 +169,7 @@ export function drawRange(canvas, { ranges = [], fills = [], points = null, cali
   // The arrows, each filled as far as the player has got.
   ranges.forEach((range, index) => {
     const share = points ? Math.min(1, Math.max(0, fills[index] ?? 0)) : (t % GUIDE_LOOP_MS) / GUIDE_LOOP_MS;
-    for (const path of range.paths) {
-      if (path.toward) drawTowardYou(ctx, path.points.map(at), share, { width, goal });
-      else drawGuideArrow(ctx, path.points.map(at), share, { width, fast: range.fast, t, goal });
-    }
+    for (const path of range.paths) drawGuideArrow(ctx, path.points.map(at), share, { width, fast: range.fast, t, goal, grows: path.toward > 0 });
   });
 
   // The player last, so they can see themselves against the shape they are making.
@@ -188,34 +186,27 @@ export function drawRange(canvas, { ranges = [], fills = [], points = null, cali
   }
 }
 
-// A punch at the screen hardly crosses it, so its path is a fist that grows as it comes at you: rings
-// along the way, a big ring where it lands, and a fill that grows out to it as the player gets there.
-function drawTowardYou(ctx, path, share, { width, goal }) {
-  if (!path.length) return;
-  const [x, y] = path.at(-1);
-  const steps = 4;
-  const radius = (i) => width * (1.4 + (i / steps) * 4.2);
-  const pointAt = (i) => path[Math.round((i / steps) * (path.length - 1))];
-  for (let i = 0; i <= steps; i += 1) {
-    const [px, py] = pointAt(i);
-    ctx.beginPath();
-    ctx.arc(px, py, radius(i), 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(0,0,0,0.55)";
-    ctx.lineWidth = width * 1.6;
-    ctx.stroke();
-    ctx.strokeStyle = i === steps ? goal : "rgba(255,255,255,0.45)";
-    ctx.lineWidth = width * (i === steps ? 1 : 0.6);
-    ctx.stroke();
-  }
-  if (share > 0.02) {
-    ctx.beginPath();
-    ctx.arc(x, y, radius(steps) * Math.min(1, share), 0, Math.PI * 2);
-    ctx.fillStyle = share >= 0.98 ? GUIDE_FILL : "rgba(255,255,255,0.28)";
-    ctx.fill();
-  }
+// A punch at the screen hardly crosses it seen from the front, so a move that comes at the screen is
+// drawn turned three-quarters, as the coach shows it: depth becomes travel to the side, and the arrow
+// along the fist's path is a real arrow. The player's skeleton stays front-on over it.
+const TURN = 0.55; // radians: enough to see the reach, not so much the body reads side-on
+const DEPTH = 2.4; // the forward reach is short; drawn longer so the arrow reads from 3 m
+function threeQuarter(range) {
+  if (!range.paths.some((path) => path.toward)) return range;
+  const turn = (point) => (point ? { ...point, x: point.x * Math.cos(TURN) - (point.z ?? 0) * DEPTH * Math.sin(TURN) } : point);
+  const pose = (skeleton) => ({ ...skeleton, points: skeleton.points.map(turn) });
+  const paths = range.paths.map((path) => ({ ...path, points: path.points.map(turn) }));
+  const start = pose(range.start);
+  const end = pose(range.end);
+  const all = [...start.points, ...end.points, ...paths.flatMap((path) => path.points)].filter(Boolean);
+  const box = {
+    minX: Math.min(...all.map((point) => point.x)), maxX: Math.max(...all.map((point) => point.x)),
+    minY: Math.min(...all.map((point) => point.y)), maxY: Math.max(...all.map((point) => point.y)),
+  };
+  return { ...range, start, end, paths, box };
 }
 
-function drawGuideArrow(ctx, path, share, { width, fast, t, goal }) {
+function drawGuideArrow(ctx, path, share, { width, fast, t, goal, grows = false }) {
   if (path.length < 2) return;
   const lengths = [0];
   for (let i = 1; i < path.length; i += 1) lengths.push(lengths[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
@@ -253,7 +244,20 @@ function drawGuideArrow(ctx, path, share, { width, fast, t, goal }) {
   const [x, y] = path.at(-1);
   const back = path.findLast((_, i) => total - lengths[i] > width * 3) ?? path[0];
   const angle = Math.atan2(y - back[1], x - back[0]);
-  const size = width * (fast ? 5 : 4);
+  const size = width * (fast ? 5 : grows ? 6 : 4); // a punch at you lands big
+  if (grows) {
+    // Coming at you: the shaft widens toward the head, the way a near thing looks bigger.
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.beginPath();
+    const [sx, sy] = path[0];
+    const across = angle + Math.PI / 2;
+    ctx.moveTo(sx + Math.cos(across) * width * 0.6, sy + Math.sin(across) * width * 0.6);
+    ctx.lineTo(x + Math.cos(across) * width * 2.6, y + Math.sin(across) * width * 2.6);
+    ctx.lineTo(x - Math.cos(across) * width * 2.6, y - Math.sin(across) * width * 2.6);
+    ctx.lineTo(sx - Math.cos(across) * width * 0.6, sy - Math.sin(across) * width * 0.6);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.fillStyle = share >= 0.98 ? GUIDE_FILL : goal;
   ctx.strokeStyle = "rgba(0,0,0,0.65)";
   ctx.lineWidth = width * 0.8;
