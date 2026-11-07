@@ -95,6 +95,7 @@ const AIMED = new RegExp(
   `\\b(train\\w*|work\\w*( out)?|exercis\\w*|ton\\w*|strengthen\\w*|build\\w*|for|focus\\w*( on)?|target\\w*|us(e|ing)|just|only|with)\\s+(on\\s+)?(my|the|your|out my|just my|only my)?\\s*${UPPER_PART}\\b|\\b${UPPER_PART}\\s+(only|day|workouts?|exercises?|training|game)\\b|\\b(just|only)\\s+(my\\s+|the\\s+)?hands\\b|\\bhands\\s+only\\b`,
   "gi",
 );
+const BARE_PART = new RegExp(`\\b${UPPER_PART}\\b`, "gi");
 const PART_FOCUS = (part) => (/^(should|delt)/.test(part) ? "shoulders" : /^(chest|pec)/.test(part) ? "chest" : "arms");
 
 const BODY = [
@@ -103,15 +104,18 @@ const BODY = [
   ["legs", /\b(legs?|leg day|lower[ -]?body|glutes?|thighs?|quads?|hamstrings?|calves|squats|lunges)\b/i],
   ["cardio", /\b(cardio|sweat\w*|heart rate|calories|hiit|endurance|out of breath|fat burn\w*|burn fat)\b/i],
   ["full", /\b(full[ -]?body|whole[ -]?body|total[ -]?body|every muscle|head to toe|arms and legs|legs and arms)\b/i],
-  ["seated", /\b(seated|sitting|sit down|chairs?|wheelchairs?|desk)\b/i],
+  ["seated", /\b(seated|sitting|sit down|chairs?|wheelchairs?|desk|paraly\w+|paraplegic|waist down)\b/i],
 ];
 const LOW_IMPACT = /\b(low[ -]?impact|bad knees?|knee pain|sore knees?|knee injur\w*|downstairs neighbou?rs?)\b/i;
 
 // "no running", "not a runner", "without my legs", "I can't jump". A negation reaches forward to the
 // first thing it can rule out, and on through "or" and "and" to the next ones, never past punctuation
 // or a turn like "but" or "just". So "non-impact game for my shoulders" still asks for shoulders.
-const NEGATION = /\b(no|not|non|without|never|avoid\w*|minus|nothing with|don['’]?t|do not|doesn['’]?t|won['’]?t|can['’]?t|cannot|hate|zero)\b/gi;
+// Longer phrases come first so "anything but" is read whole, not cut at its "but".
+const NEGATION = /\b(anything but|everything but|all but|other than|instead of|rather than|except( for)?|apart from|leave out|leaving out|cut out|skip (the|my)|tired of|sick of|bored of|fed up with|no|not|non|without|never|nothing|avoid\w*|minus|don['’]?t|do not|doesn['’]?t|isn['’]?t|aren['’]?t|won['’]?t|can['’]?t|cannot|hate|zero)\b/gi;
 const CLAUSE_END = /[.,;!?]|\b(but|just|only|instead|rather|so|then|while|though|except|please|because)\b/i;
+// A hurt leg rules the legs out, and its words never count as asking for them.
+const LEG_INJURY = /\b(broken|injured|hurt|bad|sore|sprained|twisted|weak|busted|dodgy)\s+(my\s+)?(legs?|ankles?|foot|feet|hips?)\b|\b(my\s+)?(legs?|ankles?|foot|feet|hips?)\s+(is|are)\s+(broken|injured|hurt\w*|sore|sprained|in a cast|weak)\b|\b(leg|ankle|foot|hip|knee)\s+(injur\w*|surgery|in a cast)\b|\bon crutches\b/gi;
 const NEGATABLE = [
   ["running", /\b(run\w*|sprint\w*|jog\w*)\b/i],
   ["jumping", /\b(jump\w*|hop\w*|bounc\w*|leap\w*|skipping)\b/i],
@@ -120,7 +124,7 @@ const NEGATABLE = [
 ];
 const NEGATED_STANDING = /\bstand\w*/i;
 const once = (pattern) => new RegExp(pattern.source, "i");
-const TERMS = [...NEGATABLE.map(([, pattern]) => pattern), NEGATED_STANDING, ...MECHANICS.map(([, pattern]) => once(pattern))];
+const TERMS = [...NEGATABLE.map(([, pattern]) => pattern), NEGATED_STANDING, once(BARE_PART), ...MECHANICS.map(([, pattern]) => once(pattern))];
 const isTerm = (word) => TERMS.some((pattern) => pattern.test(word));
 const LINKS = new Set(["or", "and", "nor", "&"]);
 const REACH = 6; // words a negation looks ahead for something to rule out
@@ -132,6 +136,7 @@ function negatedClauses(text) {
     let rest = text.slice(from);
     const stop = rest.search(CLAUSE_END);
     if (stop >= 0) rest = rest.slice(0, stop);
+    if (/^\s*(mind|against|problem|opposed)\b/i.test(rest)) continue; // "don't mind running" asks for it
     const words = [...rest.matchAll(/\S+/g)];
     let last = words.slice(0, REACH).findIndex(([word]) => isTerm(word));
     if (last < 0) continue;
@@ -146,9 +151,17 @@ const unique = (items) => [...new Set(items)];
 
 // What the idea asks of the body. positive is the idea with every negated clause taken out.
 export function readBody(text = "") {
+  const injuries = [...text.matchAll(LEG_INJURY)].map((match) => ({ start: match.index, end: match.index + match[0].length }));
   const clauses = negatedClauses(text);
+  // Overlapping cuts are merged, so taking them out back to front never slices at a stale index.
+  const cuts = [];
+  for (const cut of [...clauses, ...injuries].sort((a, b) => a.start - b.start)) {
+    const last = cuts.at(-1);
+    if (last && cut.start <= last.end) last.end = Math.max(last.end, cut.end);
+    else cuts.push({ start: cut.start, end: cut.end });
+  }
   let positive = text;
-  for (const clause of [...clauses].reverse()) positive = `${positive.slice(0, clause.start)} ${positive.slice(clause.end)}`;
+  for (const cut of [...cuts].reverse()) positive = `${positive.slice(0, cut.start)} ${positive.slice(cut.end)}`;
   const negated = clauses.map((clause) => clause.text).join(" ; ");
 
   const focus = BODY.filter(([, pattern]) => pattern.test(positive)).map(([id]) => id);
@@ -156,7 +169,13 @@ export function readBody(text = "") {
     const part = match[0].match(new RegExp(UPPER_PART, "i"))?.[0] ?? "arms";
     focus.push(/hands/i.test(match[0]) ? "arms" : PART_FOCUS(part.toLowerCase()));
   }
+  // A bare "shoulders and arms" is a body goal too, as long as no mechanic in the idea could be
+  // using the word ("flap my arms" stays a flying idea).
+  if (!focus.length && !mechanicScores(positive).size) {
+    for (const match of positive.matchAll(BARE_PART)) focus.push(PART_FOCUS(match[0].toLowerCase()));
+  }
   const avoid = NEGATABLE.filter(([, pattern]) => clauses.some((clause) => pattern.test(clause.text))).map(([id]) => id);
+  if (injuries.length) avoid.push("legs");
   if (LOW_IMPACT.test(positive)) avoid.push("impact");
   if (clauses.some((clause) => NEGATED_STANDING.test(clause.text))) focus.push("seated");
   return { focus: unique(focus), avoid: unique(avoid), positive, negated };
@@ -226,7 +245,9 @@ export function matchTemplates(text, known = {}) {
       score += mechanic;
       const moves = EXERCISES.filter(([pattern, gestures]) => pattern.test(reading.positive) && bindsAny(template, gestures)).length;
       if (moves) why.push("moves");
-      score += moves;
+      // An exercise the player names and the game really binds counts nearly as much as a mechanic word, so
+      // "jumping jacks" gets the game that has them, not the one whose name sounds like jumping.
+      score += moves * 2.5;
       const bonus = focusBonus(template, reading.focus);
       if (bonus) why.push("body");
       score += bonus;

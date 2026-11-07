@@ -69,6 +69,22 @@ describe("reading the body out of an idea", () => {
     ["no jumping, just punching", [], ["jumping"]],
     ["bad knees", [], ["impact"]],
     ["A fishing boat race where I pump my arms to row", [], []],
+    // Other ways people rule things out.
+    ["nothing that uses my legs", [], ["legs"]],
+    ["everything except legs", [], ["legs"]],
+    ["anything but a runner", [], ["running"]],
+    ["a game that isn't running", [], ["running"]],
+    ["something other than jumping", [], ["jumping"]],
+    ["I'm tired of runner games", [], ["running"]],
+    ["no arms, legs only", ["legs"], []],
+    ["I don't mind running", [], []],
+    // A hurt leg is never a request for a legs game.
+    ["my legs are injured", [], ["legs"]],
+    ["I have a broken leg, something for my arms", ["arms"], ["legs"]],
+    ["recovering from knee surgery", [], ["legs"]],
+    // A bare body part is a goal unless a mechanic is using the word.
+    ["shoulders and arms", ["shoulders", "arms"], []],
+    ["flap my arms and fly", [], []],
   ];
   for (const [idea, focus, avoid] of cases) {
     it(`"${idea}"`, () => {
@@ -95,6 +111,9 @@ describe("the matcher", () => {
     ["full body workout", ["circuit"]],
     ["core workout", ["oars", "rickshaw"]],
     ["seated boxing", ["pads"]],
+    // A named exercise goes to the game that really has it.
+    ["jumping jacks", ["circuit"]],
+    ["jump over gaps", ["hop"]],
   ];
   for (const [idea, allowed] of picks) {
     it(`"${idea}" picks ${allowed.join(" or ")}`, () => {
@@ -117,6 +136,9 @@ describe("the matcher", () => {
     "upper body jumping game",
     "seated dodging in a wheelchair",
     "upper body workout on the moon",
+    "nothing that uses my legs",
+    "everything except legs",
+    "I have a broken leg",
   ];
   for (const idea of armsOnly) {
     it(`"${idea}" never offers a game that needs legs`, () => {
