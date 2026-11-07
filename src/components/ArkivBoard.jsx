@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { EXPLORER, MAX_NAME, SCORE_DAYS, specHash } from "@/lib/arkiv/schema";
 import { templateInfo } from "@/lib/templates";
+import { WORLDS } from "@/lib/spec/contract";
 
 const NAME_KEY = "taksh.player";
 
@@ -115,7 +116,7 @@ export default function ArkivBoard({ spec, result, mode, source, cover, daily })
                 <td>{index + 1}</td>
                 <td>{row.player}</td>
                 <td>{row.score}</td>
-                <td>{row.world}, {row.style}</td>
+                <td>{WORLDS.find((w) => w.id === row.world)?.label ?? row.world}, {row.style}</td>
                 <td>{row.mode}</td>
                 <td>{row.daysLeft} d</td>
               </tr>

@@ -20,8 +20,16 @@ export default async function Page({ searchParams }) {
   const place = WORLDS.some((w) => w.id === world) ? world : undefined;
   let listing = null;
   let failure = null;
+  let shared = null;
   try {
-    listing = await listGames({ template: filter, world: place });
+    // ponytail: the chips look at the newest 100 games (Arkiv's page maximum). Past that, count per template.
+    const [page, all] = await Promise.all([listGames({ template: filter, world: place }), listGames({ limit: 100 })]);
+    listing = page;
+    // Chips only for what has a game: templates in the chosen world, worlds for the chosen template.
+    shared = {
+      templates: new Set(all.games.filter((game) => !place || game.world === place).map((game) => game.template)),
+      worlds: new Set(all.games.filter((game) => !filter || game.template === filter).map((game) => game.world)),
+    };
   } catch (error) {
     console.error("Arkiv gallery read failed:", error.shortMessage ?? error.message);
     failure = arkivMessage(error, "shared games are unavailable right now. Games on the main page still play");
@@ -34,15 +42,17 @@ export default async function Page({ searchParams }) {
       </header>
       <section className="shelf" aria-labelledby="gallery-title">
         <h2 id="gallery-title">Shared games{listing ? ` (${listing.count})` : ""}</h2>
-        <p className="examples" aria-label="Game">
+        <p className="examples gallery-filter" aria-label="Game">
+          <span className="gallery-filter__label">Game</span>
           <Link className="chip" href={href({ world: place })} aria-pressed={!filter}>All games</Link>
-          {TEMPLATES.map((t) => (
+          {TEMPLATES.filter((t) => !shared || shared.templates.has(t.id) || t.id === filter).map((t) => (
             <Link key={t.id} className="chip" href={href({ template: t.id, world: place })} aria-pressed={filter === t.id}>{t.name}</Link>
           ))}
         </p>
-        <p className="examples" aria-label="World">
+        <p className="examples gallery-filter" aria-label="World">
+          <span className="gallery-filter__label">World</span>
           <Link className="chip" href={href({ template: filter })} aria-pressed={!place}>All worlds</Link>
-          {WORLDS.map((w) => (
+          {WORLDS.filter((w) => !shared || shared.worlds.has(w.id) || w.id === place).map((w) => (
             <Link key={w.id} className="chip" href={href({ template: filter, world: w.id })} aria-pressed={place === w.id}>{w.label}</Link>
           ))}
         </p>
@@ -59,7 +69,7 @@ export default async function Page({ searchParams }) {
                   <span className="game-card__pitch">by {game.author}</span>
                   <span className="game-card__facts">
                     <span>{templateInfo(game.template)?.name ?? game.template}</span>
-                    <span>{game.world}</span>
+                    <span>{WORLDS.find((w) => w.id === game.world)?.label ?? game.world}</span>
                     <span>{game.style}</span>
                     {/* Games are stored for Arkiv's longest lifetime, about six months. Past that the link stops working. */}
                     <span>{game.daysLeft} days left</span>
