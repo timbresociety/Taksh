@@ -141,7 +141,8 @@ describe("0G rival episodes", async () => {
   // A round as /api/rival/decide would issue it: one round ID, decisions stamped with server time.
   // speed 1 is real time; a fast-forwarded round runs game time faster than the server's clock.
   // The player dodges each shot `reactMs` after it shows, using the template's own answer.
-  function playRound({ reactMs = 300, startedAt = 1_000_000, speed = 1, issueGapMs = 0, serveMs = 3000, jabEvery = 6 } = {}) {
+  // lateStartMs: the game ran this long before the server opened the round, as when the first decision is lost.
+  function playRound({ reactMs = 300, startedAt = 1_000_000, speed = 1, issueGapMs = 0, serveMs = 3000, jabEvery = 6, lateStartMs = 0 } = {}) {
     const roundId = roundIdFor(null);
     const session = new GameSession(starterSpec("bout"), { rival: "0g" });
     const decisions = [];
@@ -149,10 +150,10 @@ describe("0G rival episodes", async () => {
     let dodgedThis = null;
     for (let frame = 0; session.phase !== "ended" && frame < 20000; frame += 1) {
       const gameMs = session.recording.dts.reduce((sum, dt) => sum + dt, 0);
-      if (session.state.plan.length === 0 && !session.state.attack && decisions.length < 6) {
+      if (gameMs >= lateStartMs && session.state.plan.length === 0 && !session.state.attack && decisions.length < 6) {
         const requestId = `req-${next++}`;
         const plan = ["left", "high", "right"];
-        const issuedAt = startedAt + serveMs + gameMs * speed + (decisions.length ? issueGapMs : 0);
+        const issuedAt = startedAt + serveMs + (gameMs - lateStartMs) * speed + (decisions.length ? issueGapMs : 0);
         recordDecision(requestId, { roundId, template: "bout", askedAt: issuedAt - serveMs, issuedAt, plan, read: "r", observation: {}, trace: { requestId } });
         session.plan(plan);
         decisions.push({ requestId, t: gameMs });
@@ -166,7 +167,7 @@ describe("0G rival episodes", async () => {
     }
     const gameMs = session.recording.dts.reduce((sum, dt) => sum + dt, 0);
     const raw = { spec: session.spec, roundId, ...session.recording, decisions };
-    const round = { raw, roundId, session, endsAt: startedAt + serveMs + gameMs * speed + issueGapMs + 3000 };
+    const round = { raw, roundId, session, endsAt: startedAt + serveMs + (gameMs - lateStartMs) * speed + issueGapMs + 3000 };
     round.check = async (now, episode = round.raw) => checkEpisode(episode, episode.spec, await loadRound(roundId), now);
     return round;
   }
@@ -187,6 +188,14 @@ describe("0G rival episodes", async () => {
     await assert.rejects(fast.check(fast.endsAt), /faster than real time/);
     const live = playRound();
     await assert.rejects(live.check(live.endsAt - 30000), /faster than real time/, "uploaded before the round could have finished");
+  });
+
+  it("stores a round whose first decision was lost, so the server opened it late", async () => {
+    // Seen live on 2026-11-07: the first decision timed out, the next one opened the round 10 s into the game.
+    const late = playRound({ lateStartMs: 10000 });
+    await assert.doesNotReject(late.check(late.endsAt));
+    const fast = playRound({ lateStartMs: 10000, speed: 0.2 });
+    await assert.rejects(fast.check(fast.endsAt), /faster than real time/);
   });
 
   it("refuses a round sent long after it ended, but not one that paused", async () => {

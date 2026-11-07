@@ -59,15 +59,19 @@ export function checkEpisode(raw, spec, round, now = Date.now()) {
   });
 
   // Real time. Game time at each plan is the sum of the steps before it, which the browser can't
-  // shrink without also changing the score. It can't be more than the server time since the round opened.
+  // shrink without also changing the score. Counted from the first plan played: game time since then
+  // can't be more than server time since 0G served it. Not from the round's opening, because when the
+  // first decision is lost the next one opens the round seconds into the game. Before the first plan
+  // the rival only guards, so nothing can be gained there.
   const gameMsAt = (step) => dts.slice(0, step).reduce((sum, dt) => sum + dt, 0);
   const endMs = gameMsAt(dts.length);
+  const firstPlanMs = gameMsAt(plans[0][0]);
+  const firstServedAt = issued[0].issuedAt;
   plans.forEach(([step], index) => {
-    const served = issued[index].issuedAt - round.startedAt;
-    if (gameMsAt(step) > served + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
-    if (index > 0 && served < issued[index - 1].issuedAt - round.startedAt) throw refuse("The 0G decisions are out of order.");
+    if (gameMsAt(step) - firstPlanMs > issued[index].issuedAt - firstServedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
+    if (index > 0 && issued[index].issuedAt < issued[index - 1].issuedAt) throw refuse("The 0G decisions are out of order.");
   });
-  if (endMs > now - round.startedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
+  if (endMs - firstPlanMs > now - firstServedAt + CLOCK_SLACK_MS) throw refuse("This round ran faster than real time.");
   if (now - round.startedAt > endMs + UPLOAD_WINDOW_MS) throw refuse("This round is too old to store.");
 
   // Every plan 0G served in time to be played has to be in the round. Only two kinds may be missing:

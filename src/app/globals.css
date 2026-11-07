@@ -1694,7 +1694,8 @@ kbd {
 }
 
 .ens-name a:not(.button),
-.source-note a {
+.source-note a,
+.rival-episode a {
   color: var(--volt);
 }
 
