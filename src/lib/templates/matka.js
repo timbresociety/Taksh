@@ -1,6 +1,6 @@
 // Matka Beats: painted clay pots swing in on a dhol beat. Slash the side pots, jump for the high ones and
 // duck for the low ones, on the beat.
-import { REACTION_MS, STRIKE_CALLS, createRandom, strikeActions, strikeBindings } from "./shared.js";
+import { REACTION_MS, STRIKE_CALLS, STRIKE_GESTURES, createRandom, moveCue, strikeActions, strikeBindings } from "./shared.js";
 
 export const DIRS = ["left", "right", "up", "down"];
 const MIRROR = { left: "right", right: "left", up: "down", down: "up" };
@@ -126,12 +126,15 @@ export default {
     return events;
   },
 
-  // The next pot's move is named as well as drawn, so a new player learns the four arrows in a bar.
+  // The next pot's move is drawn by the guide as well as on its pot, so a new player learns the four
+  // arrows in a bar.
   hud(state) {
-    const next = state.pots.filter((pot) => pot.at - state.t <= state.approachMs * 0.6)[0];
-    const call = next ? STRIKE_CALLS[next.dir] : null;
-    const combo = state.combo > 1 ? `${state.combo} combo` : null;
-    return { score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`, extra: [call, combo].filter(Boolean).join(" · ") || null };
+    const lead = state.approachMs * 0.6;
+    const next = state.pots.filter((pot) => pot.at - state.t <= lead)[0];
+    return {
+      score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`, extra: state.combo > 1 ? `${state.combo} combo` : null,
+      cue: next ? moveCue(STRIKE_GESTURES[next.dir], 1 - (next.at - state.t) / lead, STRIKE_CALLS[next.dir]) : null,
+    };
   },
 
   result(state) {

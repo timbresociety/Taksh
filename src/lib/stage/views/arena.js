@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { POSES } from "../../motion/poses.js";
 import { aimBone } from "../character.js";
 import { MOVE_POSES, applyPose } from "../coach.js";
-import { damp, gloves, holdOnBone, wordCard } from "./shared.js";
+import { damp, gloves, holdOnBone } from "./shared.js";
 
 const flat = (width, depth, material, y = 0.03) => {
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), material);
@@ -223,13 +223,7 @@ export const pads = {
     const timer = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.42, 40), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
     timer.userData.keepMaterial = true;
     group.add(disc, timer);
-    const cards = Object.fromEntries(Object.entries(PUNCH_COLOURS).map(([punch, colour]) => {
-      const card = wordCard(punch.toUpperCase(), colour);
-      card.position.set(0, 0.86, 0); // above the timer ring at its widest
-      card.visible = false;
-      group.add(card);
-      return [punch, card];
-    }));
+    // The pad says where and when, by its colour and its ring. The guide by the player says which punch.
     world.dress(group);
     scene.add(group);
     let swingMs = 0;
@@ -247,7 +241,6 @@ export const pads = {
           timer.material.opacity = 0.9;
           if (shownId !== pad.id) {
             shownId = pad.id;
-            for (const [punch, card] of Object.entries(cards)) card.visible = punch === pad.punch;
             disc.material = disc.material.clone();
             disc.material.color.set(PUNCH_COLOURS[pad.punch]);
             timer.material.color.set(PUNCH_COLOURS[pad.punch]);
@@ -292,8 +285,8 @@ const OPEN_GOLD = "#ffae00";
 const DANGER_RED = "#ff2a3d";
 const ease = (value) => value * value * (3 - 2 * value);
 
-// A sign with an arrow, for the call to dodge and the call to hit back. Drawn once, outlined so it
-// reads over any world.
+// A sign with an arrow, for the way to dodge, or words, for the call to hit back. Drawn once, outlined
+// so it reads over any world.
 function signCard(text, colour, arrow = null, size = 1) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -306,7 +299,7 @@ function signCard(text, colour, arrow = null, size = 1) {
   pen.lineJoin = "round";
   if (arrow) {
     pen.save();
-    pen.translate(0, 84);
+    pen.translate(0, text ? 84 : 128);
     pen.rotate({ left: Math.PI, right: 0, down: Math.PI / 2 }[arrow]);
     pen.beginPath();
     for (const [x, y] of [[-74, -24], [8, -24], [8, -62], [82, 0], [8, 62], [8, 24], [-74, 24]]) pen.lineTo(x, y);
@@ -315,6 +308,7 @@ function signCard(text, colour, arrow = null, size = 1) {
     pen.fill();
     pen.restore();
   }
+  if (!text) return spriteOf(canvas, size);
   // Long words shrink to fit the card rather than run off its edges.
   pen.font = "900 66px system-ui, sans-serif";
   const fits = Math.min(66, Math.floor((66 * 470) / pen.measureText(text).width));
@@ -324,6 +318,10 @@ function signCard(text, colour, arrow = null, size = 1) {
   const y = arrow ? 206 : 128;
   pen.strokeText(text, 0, y);
   pen.fillText(text, 0, y);
+  return spriteOf(canvas, size);
+}
+
+function spriteOf(canvas, size) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, fog: false }));
@@ -379,13 +377,14 @@ export const bout = {
     rival.play("Idle_Loop");
 
     // Where the shot lands: a red patch over the side of the head it is aimed at, and a ring that
-    // closes on it as the shot comes in. The sign on the other side says which way to go.
+    // closes on it as the shot comes in. The arrow on the other side points the way out; the guide by
+    // the player shows the move.
     const danger = overlay(new THREE.PlaneGeometry(1, 1), DANGER_RED);
     const closing = overlay(new THREE.RingGeometry(0.5, 0.62, 40), DANGER_RED);
     const signs = {
-      slip_left: signCard("STEP LEFT", "#ffffff", "left", 1.15),
-      slip_right: signCard("STEP RIGHT", "#ffffff", "right", 1.15),
-      duck: signCard("DUCK", "#ffffff", "down", 1.15),
+      slip_left: signCard("", "#ffffff", "left", 1.15),
+      slip_right: signCard("", "#ffffff", "right", 1.15),
+      duck: signCard("", "#ffffff", "down", 1.15),
     };
     // After a dodge the rival is off balance: a gold ring round its feet drains as the chance runs out.
     const openSign = signCard("HIT NOW  x2", OPEN_GOLD, null, 1.7);

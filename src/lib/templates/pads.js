@@ -1,11 +1,15 @@
 // Pad Rounds: pads light up around you. Throw the punch each pad asks for before it vanishes.
-import { createRandom } from "./shared.js";
+import { createRandom, moveCue } from "./shared.js";
 
 const PUNCHES = ["jab", "cross", "hook", "uppercut"];
 // Where each pad waits, in shares of a pad's reach either side of the player: -1 is out to their left.
 // Straight punches go at the screen, so their pads wait in front: the jab's a little toward the lead
 // (left) hand, the cross's on the middle, where the rear fist crosses to. Hooks and uppercuts go to a side.
 const SIDES = { jab: [-0.3], cross: [0.05], hook: [-1, 1], uppercut: [-1, 1] };
+// The arm that throws each punch at a pad on that side, for the guide.
+const PUNCH_GESTURES = { jab: () => "punch_left", cross: () => "punch_right", hook: (side) => (side < 0 ? "hook_left" : "hook_right"), uppercut: (side) => (side < 0 ? "uppercut_left" : "uppercut_right") };
+export const padGesture = (pad) => PUNCH_GESTURES[pad.punch](pad.side);
+const PUNCH_LABELS = { jab: "Jab", cross: "Cross", hook: "Hook", uppercut: "Uppercut" };
 
 function spawn(state) {
   const punch = state.rng.pick(PUNCHES);
@@ -92,7 +96,10 @@ export default {
     return events;
   },
 
-  hud: (state) => ({ score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`, extra: state.pad ? state.pad.punch : state.combo > 1 ? `${state.combo} combo` : null }),
+  hud: (state) => ({
+    score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`, extra: state.combo > 1 ? `${state.combo} combo` : null,
+    cue: state.pad ? moveCue(padGesture(state.pad), state.pad.ms / state.pad.lifeMs, PUNCH_LABELS[state.pad.punch]) : null,
+  }),
 
   result: (state) => ({
     outcome: "complete",

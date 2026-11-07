@@ -1,7 +1,7 @@
 // Cardio Circuit: the coach calls one exercise at a time from the whole library, and every rep thumps
 // Aalsi Raja, the Couch King. A set that runs out of time lets him sink back into his cushions. Moves
 // that aren't being called are ignored, because a body doing one exercise honestly trips others.
-import { createRandom } from "./shared.js";
+import { createRandom, moveCue } from "./shared.js";
 
 export const BOSS_NAME = "Aalsi Raja";
 const HEAL = 0.25; // of one set, when a set runs out
@@ -173,7 +173,9 @@ export default {
     return {
       score: state.score, label: "Score", clock: exercise ? `${left} s` : "Done", bars: [{ label: BOSS_NAME, value: state.health / state.maxHealth }],
       meter: state.phase === "set" ? state.done / wanted : 0, keys: exercise ? [exercise.id] : [],
-      extra: state.won ? `${BOSS_NAME} is out` : !exercise ? "Round done" : state.phase === "rest" ? `Next: ${exercise.label}` : `${exercise.label}: ${state.done} of ${wanted}`,
+      extra: state.won ? `${BOSS_NAME} is out` : !exercise ? "Round done" : state.phase === "rest" ? "Get ready" : `${state.done} of ${wanted}`,
+      // The rest shows the next exercise early, so the player is in shape for it when the set starts.
+      cue: exercise && !state.won && state.finaleMs <= 0 ? moveCue(exercise.moves, state.phase === "rest" ? 0 : 0.3, exercise.label) : null,
     };
   },
 

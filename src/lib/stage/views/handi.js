@@ -213,11 +213,10 @@ export const handi = {
     scene.add(marker);
     hero.play("Idle_Loop");
 
-    // The call to the left of the tower names the next move. The pops answer the move just made.
-    const calls = { jump: sign("JUMP", GO), hands: sign("HANDS UP", STOP), smash: sign("JUMP TO SMASH", GOLD) };
+    // The guide by the player shows the next move. The pops answer the move just made.
     const pops = { up: sign("UP A TIER", GO), shaky: sign("TOO WOBBLY", STOP), steady: sign("STEADY", CALM), saved: sign("SAVED", CALM), fell: sign("FELL", STOP), smash: sign("SMASH!", GOLD) };
     const popAt = new Map();
-    scene.add(...Object.values(calls), ...Object.values(pops));
+    scene.add(...Object.values(pops));
     // One answer at a time, so a quick pair of moves never stacks two words over the hero.
     const pop = (card, at, big = 1) => {
       for (const shown of popAt.keys()) shown.visible = false;
@@ -245,7 +244,6 @@ export const handi = {
     let pose = null;
     const seat = new THREE.Vector3();
     const place = new THREE.Vector3();
-    const wordAt = new THREE.Vector3();
     const popFrom = new THREE.Vector3();
 
     const standOn = (tier, height, out) => {
@@ -344,15 +342,6 @@ export const handi = {
         focusShadow(0, 0, 0);
 
         const cardScale = back / 12;
-        const callOn = !playing ? null : wobbling(state) ? calls.hands : atTop(state) ? calls.smash : calls.jump;
-        // Always to the left of the tower, so the call never sits on the hero, who waits on the right.
-        wordAt.set(-0.4 - 2.6 * cardScale, seat.y + 1.1, 1.2);
-        for (const card of Object.values(calls)) {
-          card.visible = card === callOn;
-          card.position.copy(wordAt);
-          const throb = card === calls.hands && Math.abs(state.sway) >= LEAN_AT ? 1 + Math.abs(Math.sin(elapsed * 10)) * 0.15 : 1;
-          card.scale.set(3.1 * cardScale * throb, 1.0 * cardScale * throb, 1);
-        }
         for (const [card, left] of popAt) {
           const life = left - dt;
           if (life <= 0) {

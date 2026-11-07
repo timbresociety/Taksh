@@ -1,7 +1,7 @@
 // Blade March: raiders close in from four sides. Slash the ones at your sides, jump at the ones above and
 // duck under the ones below, guard the heavy blows, and march on to a boss at the end of the road.
 import { BOSS_TUNING, bossCall, bossHealthLeft, bossWants, createBoss, defendBoss, hitBoss, stepBoss } from "./bosses.js";
-import { REACTION_MS, STRIKE_CALLS, createRandom, strikeActions, strikeBindings } from "./shared.js";
+import { REACTION_MS, STRIKE_CALLS, STRIKE_GESTURES, createRandom, moveCue, strikeActions, strikeBindings } from "./shared.js";
 
 export const SIDES = ["left", "right", "up", "down"];
 export const REACH_MS = 1000; // the last stretch of an approach, when a raider is close enough to cut
@@ -181,12 +181,17 @@ export default {
 
   hud(state) {
     const inReach = state.enemies.filter((enemy) => enemy.arriveMs - enemy.ms <= REACH_MS).sort((a, b) => a.arriveMs - a.ms - (b.arriveMs - b.ms))[0];
-    const say = { defend: "Guard", strike: (side) => STRIKE_CALLS[side], sleeping: (side) => STRIKE_CALLS[side] };
+    // What the boss is doing, as the move that answers it: a guard for its heavy blow, a strike at its open part.
+    const soon = state.boss?.attack ? state.boss.attack.ms / state.boss.attack.warnMs : 0.3;
+    const strike = (side, urgency) => moveCue(STRIKE_GESTURES[side], urgency, STRIKE_CALLS[side]);
+    const say = { defend: moveCue("guard", soon, "Guard"), strike: (side) => strike(side, soon), sleeping: (side) => strike(side, 0) };
+    const near = inReach && 1 - (inReach.arriveMs - inReach.ms) / REACH_MS;
     return {
       score: state.score, label: "Score", lives: state.lives, maxLives: state.startLives,
       clock: state.boss ? state.boss.name : `Wave ${state.wave} of ${state.waves}`,
       bars: state.boss ? [{ label: state.boss.name, value: bossHealthLeft(state.boss) }] : undefined,
-      extra: state.boss ? bossCall(state.boss, say) : inReach ? (inReach.heavy ? "Guard" : STRIKE_CALLS[inReach.side]) : state.combo > 1 ? `${state.combo} in a row` : null,
+      extra: !state.boss && state.combo > 1 ? `${state.combo} in a row` : null,
+      cue: state.boss ? bossCall(state.boss, say) : inReach ? (inReach.heavy ? moveCue("guard", near, "Guard") : strike(inReach.side, near)) : null,
     };
   },
 

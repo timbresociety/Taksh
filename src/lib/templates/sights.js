@@ -5,7 +5,7 @@
 import { BOSS_TUNING, bossCall, bossHealthLeft, bossWants, createBoss, defendBoss, hitBoss, isExposed, stepBoss } from "./bosses.js";
 import { SCREEN_RATIO } from "./chop.js";
 import { SIDES, aimCursors, handsOnScreen, newCursors, placeCursor, screenGap, settleCursors } from "./cursors.js";
-import { REACTION_MS, clamp, createRandom } from "./shared.js";
+import { REACTION_MS, clamp, createRandom, moveCue } from "./shared.js";
 
 export const JUMP_MS = 720;
 export const SIGHT_RADIUS = 0.17; // in half screen heights, about 180 px across on a 1080p screen
@@ -437,17 +437,21 @@ export default {
   },
 
   hud(state) {
-    const say = { defend: "Jump", strike: () => "Shoot it down", sleeping: () => "Aim now" };
+    // Aiming is the hands' own cursor, so only the body moves get the guide: a jump and a grenade squat.
+    const say = { defend: null, strike: () => "Shoot it down", sleeping: () => "Aim now" };
     const roll = state.rolls.find((item) => item.arriveMs - item.ms < 1200);
     const answer = state.boss?.attack?.answer;
     const bossSays = answer === "strike" || answer === "defend" ? bossCall(state.boss, say) : state.boss?.mood === "sleep" ? say.sleeping() : null;
     const crowd = state.grenades > 0 && state.enemies.filter((enemy) => enemy.z > LINE_Z - 4).length >= 3;
-    const call = state.boss ? bossSays : roll ? "Jump" : crowd ? "Squat for a grenade" : null;
+    const call = state.boss ? bossSays : null;
+    const attack = state.boss?.attack;
+    const cue = answer === "defend" ? moveCue("jump", attack.ms / attack.warnMs) : !state.boss && roll ? moveCue("jump", 1 - (roll.arriveMs - roll.ms) / 1200) : !state.boss && crowd ? moveCue("squat_down", 0.3) : null;
     return {
       score: state.score, label: "Score", lives: state.lives, maxLives: state.startLives,
       clock: state.boss ? state.boss.name : `Wave ${state.wave} of ${state.waves}`,
       bars: state.boss ? [{ label: state.boss.name, value: bossHealthLeft(state.boss) }] : undefined,
       extra: call ?? `Grenades: ${state.grenades}`,
+      cue,
     };
   },
 
