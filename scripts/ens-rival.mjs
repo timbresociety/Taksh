@@ -3,17 +3,21 @@
 //   1. Deploy a Permissioned Resolver for it. initialize() writes the ENSIP-26 agent-context and
 //      agent-endpoint[web] records, and which model and 0G provider make its decisions.
 //   2. Register "rival" in the game registry, owned by the owner key, with that resolver.
-//   3. Grant the server's registrar wallet ROLE_SET_TEXT on one key, taksh.rival.last-episode, so
-//      after each stored round the server can point the name at it. It can't touch any other record.
-// Each step is skipped when the chain already shows it done. Set TAKSH_URL to the live app to
-// update agent-endpoint[web] and url on a later run.
+//   3. Give the name its own UserRegistry, so the rival is a namespace: each stored round becomes
+//      round-<hash>.rival.<parent>. The owner key keeps only registrar and renew roles there and the
+//      server wallet gets ROLE_REGISTRAR, so the registry is emancipated and no round can be revoked.
+//   4. Grant the server wallet ROLE_SET_TEXT on three keys: taksh.rival.last-episode, so after each
+//      stored round it can point the name at it, and taksh.round.episode and taksh.round.score for
+//      the round's own name. It can't touch any other record.
+// Each step is skipped when the chain already shows it done, and any record that differs from the
+// list below is rewritten. Set TAKSH_URL to the live app to update agent-endpoint[web] and url.
 //
 // Usage: npm run ens:rival   (reads .env.local)
 import { encodeFunctionData, labelhash, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
-  ABI, CREATOR_TOKEN_ROLES, LAST_EPISODE, RIVAL_LABEL, ROLES, STATUS, dnsEncode, ensConfig, proxyDeployed, publicClient,
-  randomSalt, readParent, rivalName, textResource, walletClient,
+  ABI, CREATOR_TOKEN_ROLES, LAST_EPISODE, RIVAL_LABEL, RIVAL_SERVER_KEYS, ROLES, ROUND_DAYS, STATUS, admin, dnsEncode, ensConfig,
+  proxyDeployed, publicClient, randomSalt, readParent, rivalName, textResource, walletClient,
 } from "../src/lib/ens/chain.js";
 
 const config = ensConfig();
@@ -46,10 +50,14 @@ the private tier, so the model runs in a TEE. I only throw shots I planned. If 0
 6 seconds I hold my guard and throw nothing.
 
 A round I fight can be stored on 0G Storage, with the 0G request ID of every decision in it.
-taksh.rival.last-episode holds the root hash of the latest one. Replay it with
+taksh.rival.last-episode holds the root hash of the latest one. Each stored round also gets its own
+name under mine, round-<first 10 hex of its root hash>.${name}, which I own. It expires after
+${ROUND_DAYS} days and can't be transferred. Its taksh.round.episode record is the root hash and
+taksh.round.score the score the server replayed. Replay a round with
 npm run replay-episode -- <rootHash> from ${"https://github.com/timbresociety/Taksh"}.
 
-The Taksh server can write taksh.rival.last-episode on this name and no other record.`;
+The Taksh server can register round names under mine, and can write taksh.rival.last-episode,
+taksh.round.episode and taksh.round.score. It can't change any other record.`;
 
 const records = [
   ["description", "The 0G rival in Taksh's Counter Bout. Its shots are planned on 0G Private Computer."],
@@ -82,16 +90,31 @@ if (STATUS[state.status] === "available") {
   if (state.latestOwner.toLowerCase() !== owner.toLowerCase()) throw new Error(`${name} belongs to ${state.latestOwner}.`);
   resolver = await client.getEnsResolver({ name });
   console.log(`${name} is registered, resolver ${resolver}`);
-  for (const key of ["agent-endpoint[web]", "url"]) {
-    if ((await client.getEnsText({ name, key })) !== web) await send(`set ${key}`, { address: resolver, abi: ABI.resolver, functionName: "setText", args: [dns, key, web] });
+  for (const [key, value] of records) {
+    if ((await client.getEnsText({ name, key })) !== value) await send(`set ${key}`, { address: resolver, abi: ABI.resolver, functionName: "setText", args: [dns, key, value] });
   }
 }
 
-const canWrite = (key) => client.readContract({ address: resolver, abi: ABI.resolver, functionName: "hasRoles", args: [textResource(key), ROLES.setText, registrar] });
-if (!(await canWrite(LAST_EPISODE))) {
-  // Only the selector and the key in the setter call matter. The name and value are ignored.
-  const setter = encodeFunctionData({ abi: ABI.resolver, functionName: "setText", args: ["0x", LAST_EPISODE, ""] });
-  await send(`grant ${LAST_EPISODE} to the server wallet`, { address: resolver, abi: ABI.resolver, functionName: "grantSetterRoles", args: [setter, registrar] });
+let rounds = await client.readContract({ address: parent.subregistry, abi: ABI.registry, functionName: "getSubregistry", args: [RIVAL_LABEL] });
+if (rounds === zeroAddress) {
+  const operational = ROLES.registrar | admin(ROLES.registrar) | ROLES.renew | admin(ROLES.renew);
+  rounds = proxyDeployed(await send("round registry", {
+    address: config.deployment.verifiableFactory, abi: ABI.factory, functionName: "deployProxy",
+    args: [config.deployment.userRegistryImpl, randomSalt(), encodeFunctionData({ abi: ABI.userRegistry, functionName: "initialize", args: [[{ account: owner, roleBitmap: operational }]] })],
+  }));
+  await send(`attach it under ${name}`, { address: parent.subregistry, abi: ABI.registry, functionName: "setSubregistry", args: [BigInt(labelhash(RIVAL_LABEL)), rounds] });
 }
-console.log(`server wallet can set ${LAST_EPISODE}: ${await canWrite(LAST_EPISODE)}, agent-context: ${await canWrite("agent-context")}`);
-console.log(`resolver ${resolver}`);
+if (!(await client.readContract({ address: rounds, abi: ABI.registry, functionName: "hasRootRoles", args: [ROLES.registrar, registrar] }))) {
+  await send("grant ROLE_REGISTRAR on the round registry to the server wallet", { address: rounds, abi: ABI.registry, functionName: "grantRootRoles", args: [ROLES.registrar, registrar] });
+}
+
+const canWrite = (key) => client.readContract({ address: resolver, abi: ABI.resolver, functionName: "hasRoles", args: [textResource(key), ROLES.setText, registrar] });
+for (const key of RIVAL_SERVER_KEYS) {
+  if (await canWrite(key)) continue;
+  // Only the selector and the key in the setter call matter. The name and value are ignored.
+  const setter = encodeFunctionData({ abi: ABI.resolver, functionName: "setText", args: ["0x", key, ""] });
+  await send(`grant ${key} to the server wallet`, { address: resolver, abi: ABI.resolver, functionName: "grantSetterRoles", args: [setter, registrar] });
+}
+for (const key of [...RIVAL_SERVER_KEYS, "agent-context"]) console.log(`server wallet can set ${key}: ${await canWrite(key)}`);
+const emancipated = await client.readContract({ address: rounds, abi: ABI.registry, functionName: "isEmancipated" });
+console.log(`resolver ${resolver}, round registry ${rounds} (emancipated: ${emancipated})`);

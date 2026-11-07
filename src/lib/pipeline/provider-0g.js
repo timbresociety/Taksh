@@ -1,6 +1,8 @@
 // 0G provider. Calls the 0G Compute Router (OpenAI-compatible) on the private tier, so prompts are
 // served only by TEE (TeeML) providers. Server-side only: the sk- key never reaches the client.
 // Every reply carries x_0g_trace, which is passed up as `trace` so the UI can show the request ID.
+// payer "user" means apiKey is a signed-in player's 0G session token, so the call spends their own
+// daily iAI credits instead of the app's balance.
 export const OG_BASE_URL = "https://router-api.0g.ai/v1";
 export const OG_DEFAULT_MODEL = "glm-5.3";
 export const OG_TRUST_MODE = "private";
@@ -11,10 +13,11 @@ const MAX_TOKENS = { intent: 4000, generate: 16000, revise: 16000, rival: 400 };
 const MAX_PRICE = { prompt: "3", completion: "10" };
 const TIMEOUT_MS = 120000;
 
-export function createOgProvider({ model = process.env.OG_MODEL || OG_DEFAULT_MODEL, apiKey = process.env.OG_API_KEY, fetch = globalThis.fetch } = {}) {
+export function createOgProvider({ model = process.env.OG_MODEL || OG_DEFAULT_MODEL, apiKey = process.env.OG_API_KEY, payer = "app", fetch = globalThis.fetch } = {}) {
   return {
     source: "0g",
     model,
+    payer,
     trustMode: OG_TRUST_MODE,
     async complete({ stage, system, user, schema }) {
       const startedAt = Date.now();
@@ -28,7 +31,7 @@ export function createOgProvider({ model = process.env.OG_MODEL || OG_DEFAULT_MO
         ],
         response_format: { type: "json_schema", json_schema: { name: `taksh_${stage}`, strict: true, schema } },
       };
-      const json = await post(fetch, apiKey, body);
+      const json = await post(fetch, apiKey, body, MESSAGES[payer]);
       const choice = json.choices?.[0];
       if (choice?.finish_reason === "length") throw ogError("The model ran out of room before finishing.", 502, json);
       const text = choice?.message?.content;
@@ -38,7 +41,7 @@ export function createOgProvider({ model = process.env.OG_MODEL || OG_DEFAULT_MO
   };
 }
 
-async function post(fetch, apiKey, body, retried = false) {
+async function post(fetch, apiKey, body, messages, retried = false) {
   const response = await fetch(`${OG_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
@@ -58,17 +61,19 @@ async function post(fetch, apiKey, body, retried = false) {
   if (!retried && [429, 502, 503].includes(response.status)) {
     const wait = Math.min(Number(response.headers.get("retry-after")) || 1, 5) * 1000;
     await new Promise((resolve) => setTimeout(resolve, wait));
-    return post(fetch, apiKey, body, true);
+    return post(fetch, apiKey, body, messages, true);
   }
-  throw ogError(MESSAGES[response.status] ?? "The game generator did not respond. Try again.", response.status, json);
+  throw ogError(messages[response.status] ?? "The game generator did not respond. Try again.", response.status, json);
 }
 
 // What the player sees. Exposed because none of it leaks a key or a prompt.
-const MESSAGES = {
-  401: "The 0G API key was rejected. Check OG_API_KEY.",
-  402: "The 0G compute balance is empty. Top it up at pc.0g.ai.",
+const SHARED = {
   429: "0G is rate limiting this app. Wait a few seconds and try again.",
   503: "No private 0G provider is free right now. Try again in a minute.",
+};
+const MESSAGES = {
+  app: { ...SHARED, 401: "The 0G API key was rejected. Check OG_API_KEY.", 402: "The 0G compute balance is empty. Top it up at pc.0g.ai." },
+  user: { ...SHARED, 401: "Your 0G sign-in expired. Sign in again.", 402: "Your 0G credits are used up. iAI credits refresh at 00:00 UTC." },
 };
 
 function ogError(message, status, json) {
@@ -118,7 +123,7 @@ export async function check0g({ model = process.env.OG_MODEL || OG_DEFAULT_MODEL
 // Speech to text on the same private tier, so a spoken idea is heard only inside a TEE.
 export const OG_SPEECH_MODEL = "whisper-large-v3";
 
-export async function transcribe0g(audio, { apiKey = process.env.OG_API_KEY, fetch = globalThis.fetch } = {}) {
+export async function transcribe0g(audio, { apiKey = process.env.OG_API_KEY, payer = "app", fetch = globalThis.fetch } = {}) {
   const form = new FormData();
   form.append("model", OG_SPEECH_MODEL);
   // Chrome records webm, Safari mp4. Whisper reads the format from the file name.
@@ -130,6 +135,6 @@ export async function transcribe0g(audio, { apiKey = process.env.OG_API_KEY, fet
     signal: AbortSignal.timeout(30000),
   });
   const json = await response.json().catch(() => ({}));
-  if (!response.ok) throw ogError(MESSAGES[response.status] ?? "0G could not hear that. Try again, or type it.", response.status, json);
+  if (!response.ok) throw ogError(MESSAGES[payer][response.status] ?? "0G could not hear that. Try again, or type it.", response.status, json);
   return { text: (json.text ?? "").trim(), trace: readTrace(json) };
 }

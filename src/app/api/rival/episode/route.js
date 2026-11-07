@@ -4,7 +4,7 @@ import { MAX_EPISODE_BYTES, checkEpisode } from "@/lib/agent/episode";
 import { validateSpec } from "@/lib/spec/validate";
 import { createBudget } from "@/lib/agent/budget";
 import { ROUND_ID, loadRound, releaseRound, reserveRound, spendRound } from "@/lib/agent/ledger";
-import { ensConfig, rivalName, writeRivalEpisode } from "@/lib/ens/chain";
+import { ensConfig, rivalName, roundName, writeRivalEpisode } from "@/lib/ens/chain";
 import { readText } from "../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -46,12 +46,17 @@ export async function POST(request) {
       const stored = await uploadEpisode({ ...episode, storedAt: new Date().toISOString() });
       const write = spendRound(episode.roundId, stored.rootHash);
       if (write) after(() => write.catch((error) => console.error("rival spent write failed:", error.shortMessage ?? error.message)));
-      // The rival's ENS name points at its latest round. A Sepolia transaction, so it runs after the reply.
+      // The round gets its own name under the rival's, and the rival's name points at it. Two Sepolia
+      // transactions, so they run after the reply. The round's name follows from its root hash.
       const ens = ensConfig();
       const rival = ens.reason || !ens.registrarKey ? null : rivalName(ens);
-      if (rival) after(() => writeRivalEpisode(ens, stored.rootHash).catch((error) => console.error("rival ENS write failed:", error.shortMessage ?? error.message)));
+      if (rival) {
+        after(() => writeRivalEpisode(ens, stored.rootHash, episode.replayed?.score)
+          .then((written) => console.log("rival ENS write:", JSON.stringify(written)))
+          .catch((error) => console.error("rival ENS write failed:", error.shortMessage ?? error.message)));
+      }
       // The score here is the server's replay. Show this one, not the browser's.
-      return Response.json({ ...stored, replayed: episode.replayed, rival });
+      return Response.json({ ...stored, replayed: episode.replayed, rival, round: rival && roundName(ens, stored.rootHash) });
     } catch (error) {
       releaseRound(episode.roundId);
       throw error;

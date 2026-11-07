@@ -1,9 +1,8 @@
 import { after } from "next/server";
-import { getProvider } from "@/lib/pipeline/provider";
 import { brainFor, cleanObservation, rivalMessage, rivalSchema } from "@/lib/agent/rival";
 import { createBudget } from "@/lib/agent/budget";
 import { recordDecision, roundIdFor } from "@/lib/agent/ledger";
-import { badRequest, readText } from "../../_shared";
+import { badRequest, providerFor, readText } from "../../_shared";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +12,8 @@ const spend = createBudget(60);
 // One decision for the 0G rival. Without 0G it answers 503, and the rival waits.
 export async function POST(request) {
   try {
-    const { provider } = await getProvider();
+    // A signed-in player pays for their rival from their own iAI credits.
+    const provider = await providerFor(request);
     if (provider.source !== "0g") return Response.json({ error: "The 0G rival needs OG_API_KEY." }, { status: 503 });
     const text = await readText(request, 4000);
     let raw = null;

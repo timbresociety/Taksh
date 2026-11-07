@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { normalize } from "viem/ens";
 import Studio from "@/components/Studio";
 import { ensConfig, readGame } from "@/lib/ens/chain";
-import { recordsToSpec } from "@/lib/ens/records";
+import { KEYS, recordsToSpec } from "@/lib/ens/records";
 import { validateSpec } from "@/lib/spec/validate";
 
 // The name is the game's address: every visit resolves it live through the ENS Universal Resolver,
@@ -26,6 +27,8 @@ async function load(param) {
     return { name, error: "ENS could not be reached, so this game can't load right now." };
   }
   if (!found.resolver) return { name, error: "This name does not exist on ENS." };
+  // A name with records but no game, such as the rival's, gets the ENS view instead of an error.
+  if (!found.texts[KEYS.spec]) return { name, other: true };
   try {
     const check = validateSpec(recordsToSpec(found.texts));
     if (!check.ok) return { name, error: `The game on this name is invalid: ${check.errors[0]}` };
@@ -42,6 +45,7 @@ export async function generateMetadata({ params }) {
 
 export default async function PlayByName({ params }) {
   const game = await load((await params).name);
+  if (game.other) redirect(`/name/${game.name}`);
   if (game.error) {
     return (
       <main className="result">
@@ -54,7 +58,8 @@ export default async function PlayByName({ params }) {
   return (
     <>
       <p className="source-note" style={{ top: "auto", bottom: 14 }} data-testid="ens-source">
-        {game.name}, resolved on {game.chain} through the ENS Universal Resolver. Resolver {game.resolver}.
+        {game.name}, resolved on {game.chain} through the ENS Universal Resolver. Resolver {game.resolver}.{" "}
+        <Link href={`/name/${game.name}`}>Owner, roles and records</Link>
       </p>
       <Studio initialGame={{ spec: game.spec, source: "ens", ensName: game.name }} />
     </>

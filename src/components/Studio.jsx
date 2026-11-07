@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { unlockSound } from "@/lib/game/sound";
 import { starterSpec } from "@/lib/spec/starter";
 import { templateInfo } from "@/lib/templates";
+import { useOgAccount } from "@/lib/og/account";
+import { costOf, ogHeaders, signInAvailable } from "@/lib/og/session";
+import OgAccount from "./OgAccount";
 import IdeaStage from "./IdeaStage";
 import BriefStage from "./BriefStage";
 import CalibrateStage from "./CalibrateStage";
@@ -11,8 +14,10 @@ import PlayStage from "./PlayStage";
 import PracticeStage from "./PracticeStage";
 import ResultStage from "./ResultStage";
 
+// With a signed-in player's 0G session attached, the server bills their iAI credits instead of the app.
 async function post(path, body) {
-  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const headers = { "Content-Type": "application/json", ...ogHeaders() };
+  const response = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error);
   return data;
@@ -34,6 +39,18 @@ export default function Studio({ initialGame = null }) {
   const [revision, setRevision] = useState(null);
   const [playCount, setPlayCount] = useState(0);
   const feed = useRef(null);
+  const og = useOgAccount();
+  // Where 0G sign-in works, building a game runs on the player's own iAI credits, so it needs sign-in.
+  // Starter games stay open to everyone. On other hosts (the deployed demo) the app's key pays as before.
+  // Every model call refreshes the balance, so the drop shows right after a game is built or changed.
+  const call = async (path, body) => {
+    if (signInAvailable() && !og.signedIn) throw new Error(SIGN_IN_FIRST);
+    try {
+      return await post(path, body);
+    } finally {
+      og.refresh();
+    }
+  };
 
   useEffect(() => {
     fetch("/api/status").then((r) => r.json()).then(setStatus).catch(() => setStatus(null));
@@ -54,7 +71,7 @@ export default function Studio({ initialGame = null }) {
 
   // traces are 0G receipts. The intent step's receipt is kept so the game's total cost is complete.
   async function generate(idea, clarification, brief, earlier = []) {
-    const generated = await post("/api/generate", { idea, clarification, brief });
+    const generated = await call("/api/generate", { idea, clarification, brief });
     if (!generated.ok) throw new Error(`The generated game failed validation after a repair: ${generated.errors[0]}`);
     setGame({ ...generated, traces: [...earlier, ...(generated.traces ?? [])] });
     setRevision(null);
@@ -64,7 +81,7 @@ export default function Studio({ initialGame = null }) {
   const submitIdea = (idea, clarification) =>
     attempt("Reading your idea", async () => {
       setDraft({ idea, clarification: clarification ?? "" });
-      const reading = await post("/api/intent", { idea, clarification });
+      const reading = await call("/api/intent", { idea, clarification });
       setIntent(reading);
       if (reading.status === "ready") {
         setBusy("Building your game");
@@ -110,7 +127,7 @@ export default function Studio({ initialGame = null }) {
 
   const reviseGame = (request) =>
     attempt("Changing your game", async () => {
-      const revised = await post("/api/revise", { spec: game.spec, request });
+      const revised = await call("/api/revise", { spec: game.spec, request });
       if (!revised.ok) throw new Error(`That change didn't take: ${revised.errors[0]}`);
       setRevision({ ...revised, request });
       setGame((current) => ({ ...current, spec: revised.spec, source: revised.source, model: revised.model, traces: [...(current.traces ?? []), ...(revised.traces ?? [])] }));
@@ -126,13 +143,18 @@ export default function Studio({ initialGame = null }) {
   };
 
   const fixture = status?.source === "fixture";
+  // A signed-in player brings 0G with them, so voice and the 0G rival work even with no app key.
+  const on0g = status?.source === "0g" || og.signedIn;
+  // What the last game cost on 0G, build plus round, so the account chip can say how many more today's credits cover.
+  const gameCost = costOf(game?.traces) + costOf(result?.episode?.decisions);
 
   return (
     <div className="studio" data-stage={stage}>
       {stage !== "play" && stage !== "calibrate" && stage !== "practice" && <SourceNote status={status} game={stage === "idea" ? null : game} />}
+      {(stage === "idea" || stage === "brief" || stage === "result") && <OgAccount account={og} gameCost={gameCost} />}
 
       {stage === "idea" && (
-        <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} voice={status?.source === "0g"} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
+        <IdeaStage draft={draft} intent={intent} busy={busy} error={error} fixture={fixture} voice={on0g} onSubmit={submitIdea} onAccept={acceptClosest} onChangeIdea={reviseIdea} onPick={pickGame} />
       )}
       {stage === "brief" && <BriefStage game={game} onChangeSkin={changeSkin} onPlay={startPlay} onBack={restart} onCover={(cover) => setGame((current) => ({ ...current, cover }))} />}
       {stage === "calibrate" && (
@@ -166,7 +188,7 @@ export default function Studio({ initialGame = null }) {
           feed={feed}
           calibration={calibration}
           personal={practised[game.spec.template]}
-          rival={status?.source === "0g" ? "0g" : undefined}
+          rival={on0g ? "0g" : undefined}
           onRecalibrate={() => {
             setCalibration(null);
             setStage("calibrate");
@@ -181,6 +203,7 @@ export default function Studio({ initialGame = null }) {
       {stage === "result" && (
         <ResultStage
           game={game}
+          paidByYou={og.signedIn}
           result={result}
           revision={revision}
           busy={busy}
@@ -210,7 +233,7 @@ function SourceNote({ status, game }) {
     const last = traces.at(-1);
     return (
       <p className="source-note source-note--0g" data-testid="source-note" title={traces.map((trace) => trace.requestId).join("\n")}>
-        Built on 0G with {game.model} in a private TEE. {traces.length} {traces.length === 1 ? "call" : "calls"}, ${cost.toFixed(4)}.
+        Built on 0G with {game.model} in a private TEE{game.payer === "user" ? ", paid from your 0G credits" : ""}. {traces.length} {traces.length === 1 ? "call" : "calls"}, ${cost.toFixed(4)}.
         Request <code>{last.requestId.slice(0, 8)}</code>
       </p>
     );
@@ -221,3 +244,5 @@ function SourceNote({ status, game }) {
     </p>
   );
 }
+
+const SIGN_IN_FIRST = "Sign in with 0G (top right) to build your own game. Your daily iAI credits pay for it. Or pick a starter game below.";

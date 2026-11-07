@@ -108,3 +108,14 @@ describe("0g provider", () => {
     });
   });
 });
+
+describe("0g provider paid by a signed-in player", () => {
+  it("sends the player's session token and blames their credits, not the app key", async () => {
+    const { fetch, seen } = stubFetch({ status: 402, json: { error: { code: "insufficient_balance" } } });
+    await assert.rejects(call(createOgProvider({ apiKey: "session-1", payer: "user", fetch })), /credits are used up/);
+    assert.equal(seen[0].init.headers.Authorization, "Bearer session-1");
+
+    const expired = stubFetch({ status: 401, json: {} });
+    await assert.rejects(call(createOgProvider({ apiKey: "old", payer: "user", fetch: expired.fetch })), /sign-in expired/);
+  });
+});

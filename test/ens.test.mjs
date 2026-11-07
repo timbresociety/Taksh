@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { normalize } from "viem/ens";
-import { CREATOR_TOKEN_ROLES, ROLES, admin, ensConfig } from "../src/lib/ens/chain.js";
+import { CREATOR_TOKEN_ROLES, PUBLIC_RPCS, REGISTRY_ROLE_NAMES, RESOLVER_ROLE_NAMES, ROLES, admin, ensConfig, roleNames, roundName, rpcUrls } from "../src/lib/ens/chain.js";
 import { KEYS, MAX_LABEL, MAX_SPEC_BYTES, recordsToSpec, slugLabel, specToRecords } from "../src/lib/ens/records.js";
 import { starterSpec } from "../src/lib/spec/starter.js";
 import { validateSpec } from "../src/lib/spec/validate.js";
@@ -43,10 +43,21 @@ describe("spec and text records", () => {
     assert.equal(back.spec.title, "Moon Hop");
   });
 
-  it("ignores empty field records and refuses names without a game", () => {
+  it("stores no field twice, and reads names published with the whole spec in taksh.spec", () => {
     const spec = starterSpec("hop", 1);
-    const texts = { ...asTexts(specToRecords(spec)), [KEYS.world]: "" };
-    assert.equal(recordsToSpec(texts).skin.world, spec.skin.world);
+    const stored = JSON.parse(asTexts(specToRecords(spec))[KEYS.spec]);
+    for (const field of ["template", "title", "objective"]) assert.equal(stored[field], undefined, field);
+    assert.equal(stored.skin.world, undefined);
+    assert.equal(stored.skin.style, undefined);
+    assert.ok(stored.skin.hero, "the characters stay in the spec");
+    // A name from before the split: the spec record is whole, and an empty field record falls back to it.
+    const legacy = { ...asTexts(specToRecords(spec)), [KEYS.spec]: JSON.stringify(spec), [KEYS.world]: "" };
+    assert.deepEqual(validateSpec(recordsToSpec(legacy)).spec, spec);
+  });
+
+  it("refuses a new name whose field record was cleared, and names without a game", () => {
+    const texts = { ...asTexts(specToRecords(starterSpec("hop", 1))), [KEYS.world]: "" };
+    assert.equal(validateSpec(recordsToSpec(texts)).ok, false);
     assert.throws(() => recordsToSpec({}), /No Taksh game/);
     assert.throws(() => recordsToSpec({ [KEYS.spec]: "{nope" }), /not valid JSON/);
     assert.throws(() => recordsToSpec({ [KEYS.spec]: "[1]" }), /not a spec/);
@@ -106,5 +117,25 @@ describe("config and roles", () => {
     assert.equal(ROLES.canTransferAdmin, (1n << 28n) << 128n);
     assert.equal(CREATOR_TOKEN_ROLES & ROLES.registrar, 0n);
     assert.ok(CREATOR_TOKEN_ROLES & ROLES.setResolver);
+  });
+
+  it("tries ENS_RPC_URL first, then keyless public RPCs, and viem's rate-limited default last", () => {
+    const urls = rpcUrls(ensConfig({ ENS_PARENT_NAME: "games.eth", ENS_RPC_URL: "https://mine.example" }));
+    assert.deepEqual(urls, ["https://mine.example", ...PUBLIC_RPCS.sepolia, undefined]);
+    assert.deepEqual(rpcUrls(ensConfig({ ENS_PARENT_NAME: "games.eth", ENS_RPC_URL: PUBLIC_RPCS.sepolia[0] })), [...PUBLIC_RPCS.sepolia, undefined]);
+  });
+
+  it("names the roles a creator's token carries, and every resolver role in the full grant", () => {
+    assert.deepEqual(roleNames(CREATOR_TOKEN_ROLES, REGISTRY_ROLE_NAMES), ["set subregistry", "set subregistry (admin)", "set resolver", "set resolver (admin)", "transfer"]);
+    assert.equal(roleNames(ROLES.allResolver, RESOLVER_ROLE_NAMES).length, 20);
+    assert.deepEqual(roleNames(ROLES.setText, RESOLVER_ROLE_NAMES), ["set text"]);
+    assert.deepEqual(roleNames(0n, REGISTRY_ROLE_NAMES), []);
+  });
+
+  it("names a stored round under the rival's name from its root hash, as a valid ENS name", () => {
+    const config = ensConfig({ ENS_PARENT_NAME: "taksh-games.eth" });
+    const name = roundName(config, "0x24A627FC945E3E03404A7AC966D944874D76EC5F67B82A326BF8703DFD4279CE");
+    assert.equal(name, "round-24a627fc94.rival.taksh-games.eth");
+    assert.equal(normalize(name), name);
   });
 });

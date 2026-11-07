@@ -1,6 +1,6 @@
 import { transcribe0g } from "@/lib/pipeline/provider-0g";
 import { createBudget } from "@/lib/agent/budget";
-import { readBytes } from "../_shared";
+import { OG_SESSION_HEADER, readBytes } from "../_shared";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,9 @@ const spend = createBudget(20);
 // Raw audio in, the idea as text out. The 0G key stays here.
 export async function POST(request) {
   try {
-    if (!process.env.OG_API_KEY) throw Object.assign(new Error("Voice needs 0G. Type your idea instead."), { status: 503, expose: true });
+    // A signed-in player pays from their own iAI credits, so voice works even without the app key.
+    const session = request.headers.get(OG_SESSION_HEADER);
+    if (!session && !process.env.OG_API_KEY) throw Object.assign(new Error("Voice needs 0G. Type your idea instead."), { status: 503, expose: true });
     const type = request.headers.get("content-type") ?? "";
     if (!type.startsWith("audio/")) throw Object.assign(new Error("Send the recording as audio."), { status: 400, expose: true });
     const bytes = await readBytes(request, MAX_AUDIO_BYTES).catch((error) => {
@@ -19,7 +21,7 @@ export async function POST(request) {
     });
     if (bytes.byteLength === 0) throw Object.assign(new Error("That recording was empty."), { status: 400, expose: true });
     spend();
-    const { text, trace } = await transcribe0g(new Blob([bytes], { type }));
+    const { text, trace } = await transcribe0g(new Blob([bytes], { type }), session ? { apiKey: session, payer: "user" } : {});
     if (!text) throw Object.assign(new Error("0G heard nothing. Try again a bit louder."), { status: 422, expose: true });
     return Response.json({ text: text.slice(0, 500), trace });
   } catch (error) {
