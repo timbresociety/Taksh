@@ -13,6 +13,7 @@ import { PROMPT_VERSIONS } from "../src/lib/pipeline/prompts.js";
 import { checkClaude, createClaudeProvider, DEFAULT_MODEL } from "../src/lib/pipeline/provider-claude.js";
 import { createFixtureProvider } from "../src/lib/pipeline/provider-fixture.js";
 import { check0g, createOgProvider, OG_DEFAULT_MODEL } from "../src/lib/pipeline/provider-0g.js";
+import { conflicts } from "../src/lib/templates/focus.js";
 import { simulate, templateInfo } from "../src/lib/templates/index.js";
 
 // The demo budget: type an idea, and be playing inside this many seconds.
@@ -34,9 +35,14 @@ if (!useFixture) {
 }
 const provider = useFixture ? createFixtureProvider() : use0g ? createOgProvider({ model }) : createClaudeProvider({ model });
 
+// focus and avoid use the intent schema's words, and a template that conflicts with them fails
+// however well it matches the rest, so "upper body" landing on a runner is a miss.
 function keepsIdea(spec, expect) {
   const misses = [];
   if (expect.templates && !expect.templates.includes(spec.template)) misses.push(`template is ${spec.template}`);
+  if (expect.forbid?.includes(spec.template)) misses.push(`template ${spec.template} is ruled out`);
+  const misfit = (expect.focus || expect.avoid) && conflicts(spec.template, { focus: expect.focus, avoid: expect.avoid });
+  if (misfit) misses.push(`${spec.template}: ${misfit}`);
   if (expect.world && spec.skin.world !== expect.world) misses.push(`world is ${spec.skin.world}`);
   if (expect.style && spec.skin.style !== expect.style) misses.push(`style is ${spec.skin.style}`);
   return misses;
@@ -72,6 +78,7 @@ for (const item of cases.filter((entry) => entry.kind !== "revision")) {
     continue;
   }
   row.status = reading.value.status;
+  row.body = reading.value.body;
   const statusOk = row.status === item.expect.status;
   const notes = statusOk ? [] : [`status ${row.status}, wanted ${item.expect.status}`];
 
