@@ -13,6 +13,7 @@ import { templateInfo } from "@/lib/templates";
 
 const HUD_INTERVAL_MS = 80;
 const MAX_FRAME_MS = 50;
+const FEED_STALL_MS = 250;
 const FILL_FADE = 0.88; // a speed move's meter is a flash, so the guide's fill lets go of it slowly
 
 // What the guide shows for a cue: each move's range of motion, drawn from its demo pose, and the
@@ -72,6 +73,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
     let guide = guideFor(template, null);
     let fills = [];
     let painted = false;
+    let fedAt = -Infinity; // when the camera last drew the guide, so a stalled feed hands it to the frame loop
     const setCue = (next) => {
       const key = next ? cueGestures(next).join() : "";
       cue = next;
@@ -99,6 +101,7 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
         if (template.drive && result.features) session.handleDrive({ speed: result.features.speed, tilt: result.features.tilt });
         stage?.follow(points, calibration.torso);
         if (overlay.current) drawSkeleton(overlay.current, points, aspect, "#e9ff3a");
+        fedAt = performance.now();
         paintGuide(t, points, result.features, engine);
         if (result.features && template.framing === "full") scaleDrift = result.features.scale < 0.72 || result.features.scale > 1.32;
       });
@@ -158,8 +161,9 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
         setCue(session.phase === "playing" ? shown.cue ?? null : null);
         setHud({ ...shown, cue, phase: session.phase, count, movements: session.movements, tracking, scaleDrift });
       }
-      // Without a camera the guide plays the move on a loop, here; with one, the feed draws it per frame.
-      if (!usesCamera) paintGuide(now);
+      // Without a camera the guide plays the move on a loop, here; with one, the feed draws it per frame,
+      // unless the feed has stalled or never started, when the loop keeps the panel from sitting blank.
+      if (!usesCamera || now - fedAt > FEED_STALL_MS) paintGuide(now);
 
       if (session.phase === "ended" && !ended) {
         ended = true;
@@ -196,7 +200,9 @@ export default function PlayStage({ spec, mode, feed, calibration, personal, riv
     };
   }, [spec, template, usesCamera, feed, calibration, personal, rival, onEnd]);
 
-  const shownGuide = hud?.cue && hud.phase === "playing" ? guideFor(template, hud.cue) : null;
+  // A cue whose moves have no pose to draw shows nothing, rather than an empty panel.
+  const cueGuide = hud?.cue && hud.phase === "playing" ? guideFor(template, hud.cue) : null;
+  const shownGuide = cueGuide?.ranges.length ? cueGuide : null;
 
   return (
     <main className="play" data-testid="play" data-template={spec.template} data-phase={hud?.phase ?? "loading"} data-score={hud?.score}>
