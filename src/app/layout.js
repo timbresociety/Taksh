@@ -6,8 +6,9 @@ const body = Hanken_Grotesk({ subsets: ["latin"], variable: "--font-body" });
 
 const description = "Turn the wait between prompts into a quick game you play with your whole body. Just a webcam, no controller.";
 
-// The share images in this folder need an absolute address, which Vercel gives each build.
-const site = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000";
+// The share images in this folder need an absolute address: the public domain in production, and
+// each preview's own address, so a preview's card shows that preview's image.
+const site = process.env.VERCEL_ENV === "production" ? "https://taksh.vercel.app" : process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
 
 export const metadata = {
   metadataBase: new URL(site),
