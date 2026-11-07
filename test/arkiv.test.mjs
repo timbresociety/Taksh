@@ -4,7 +4,7 @@ import { createPublicClient, createWalletClient, ExpirationTime, SchemaMismatchE
 import { rabdi } from "@arkiv-network/sdk/chains";
 import { custom, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Games, SCORE_DAYS, Scores, cleanName, daysLeft, fitStr, gameValues, plainRow, readScope, readSpecBytes, scoreValues, specHash, stableJson } from "../src/lib/arkiv/schema.js";
+import { Games, SCORE_DAYS, Scores, cleanName, daysLeft, fitStr, isTestRow, shownName, gameValues, plainRow, readScope, readSpecBytes, scoreValues, specHash, stableJson } from "../src/lib/arkiv/schema.js";
 import { gamesQuery, scoreQuery } from "../src/lib/arkiv/store.js";
 import { starterSpec } from "../src/lib/spec/starter.js";
 
@@ -122,6 +122,17 @@ describe("arkiv write throttle", async () => {
 });
 
 describe("arkiv lifetimes", () => {
+  it("hides our test rows when read, and shows the walkthrough as Guest", () => {
+    assert.ok(isTestRow({ player: "fm-probe" }));
+    assert.ok(isTestRow({ author: "Firstmate QA", title: "Chop Shop" }));
+    assert.ok(isTestRow({ author: "ketan", title: "Arkiv Index Check 2" }));
+    assert.ok(isTestRow({ author: "anon", title: "Dedupe Check Two" }));
+    assert.ok(!isTestRow({ player: "ketan" }));
+    assert.ok(!isTestRow({ author: "Judge walkthrough", title: "Sky Hop" }));
+    assert.equal(shownName("Judge walkthrough"), "Guest");
+    assert.equal(shownName("Ravi"), "Ravi");
+  });
+
   it("counts days left from 2 s blocks, to the nearest day, never below zero", () => {
     const day = 86400 / 2;
     assert.equal(daysLeft(1000 + SCORE_DAYS * day, 1000), 30);

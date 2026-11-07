@@ -15,6 +15,13 @@ const BLOCK_SECONDS = 2; // Rabdi's block time, the SDK's BLOCK_TIME
 
 // Days until an entity expires, to the nearest day, from its $expiresAt block and the block the read
 // was made at. Rounded, so a score posted a minute ago shows its 30 days, not 29.
+// Rows our own testing wrote. Hidden when read, never deleted on chain: they expire on their own.
+const TEST_AUTHORS = new Set(["fm-probe", "Firstmate QA", "ketan merged check"]);
+const TEST_TITLE = /^(Arkiv (Index|Track) Check|Dedupe Check)/;
+export const isTestRow = (row) => TEST_AUTHORS.has(row.player ?? row.author) || TEST_TITLE.test(row.title ?? "");
+// The judge walkthrough's posts stay, under a plain name.
+export const shownName = (name) => (name === "Judge walkthrough" ? "Guest" : name);
+
 export const daysLeft = (expiresAt, block) => Math.max(0, Math.round(((Number(expiresAt) - Number(block)) * BLOCK_SECONDS) / 86400));
 const MAX_STR_BYTES = 128;
 

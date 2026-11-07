@@ -7,7 +7,7 @@ import { i32 } from "@arkiv-network/sdk/schema";
 import { http, nonceManager } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { pickEarliest } from "../daily/daily.js";
-import { DEFAULT_WRITER, Daily, ENTITY_KEY, Games, SCORE_DAYS, Scores, dailyValues, daysLeft, gameValues, plainRow, readSpecBytes, scoreValues } from "./schema.js";
+import { DEFAULT_WRITER, isTestRow, shownName, Daily, ENTITY_KEY, Games, SCORE_DAYS, Scores, dailyValues, daysLeft, gameValues, plainRow, readSpecBytes, scoreValues } from "./schema.js";
 
 export const BOARD_SIZE = 10;
 const SCORE_LIFETIME = () => ExpirationTime.fromDays(SCORE_DAYS); // a rolling monthly board
@@ -114,7 +114,10 @@ export async function topScores(scope) {
   const { reader, owner } = connect();
   const query = scoreQuery(reader, owner, scope);
   const page = await read(query, "read the board");
-  return { rows: page.entities.map((entity) => withDaysLeft(entity, page.blockNumber)), count: Number(page.count), block: Number(page.blockNumber), query: query.toString(), owner };
+  const all = page.entities.map((entity) => withDaysLeft(entity, page.blockNumber));
+  const rows = all.filter((row) => !isTestRow(row)).map((row) => ({ ...row, player: shownName(row.player) }));
+  // ponytail: count drops only the test rows on this page. Test rows past the top 10 still count.
+  return { rows, count: Number(page.count) - (all.length - rows.length), block: Number(page.blockNumber), query: query.toString(), owner };
 }
 
 function requireWriter() {
@@ -180,7 +183,9 @@ export const canWrite = () => Boolean(connect().writer);
 export async function listGames(options) {
   const { reader, owner } = connect();
   const page = await read(gamesQuery(reader, owner, options), "list games");
-  return { games: page.entities.map((entity) => withDaysLeft(entity, page.blockNumber)), count: Number(page.count) };
+  const all = page.entities.map((entity) => withDaysLeft(entity, page.blockNumber));
+  const games = all.filter((game) => !isTestRow(game)).map((game) => ({ ...game, author: shownName(game.author) }));
+  return { games, count: Number(page.count) - (all.length - games.length) };
 }
 
 // The same spec published twice points at the first entity instead of paying for a second.
@@ -202,7 +207,7 @@ export async function readGame(key) {
   try {
     const entity = await arkiv(reader.getEntity(key, Games), "read the game");
     if (entity.$owner.toLowerCase() !== owner.toLowerCase()) return null;
-    return { key, title: entity.title.value, author: entity.author.value, specHash: entity.specHash.value, swarmRef: entity.swarmRef?.value ?? null, spec: readSpecBytes(entity.spec.value) };
+    return { key, title: entity.title.value, author: shownName(entity.author.value), specHash: entity.specHash.value, swarmRef: entity.swarmRef?.value ?? null, spec: readSpecBytes(entity.spec.value) };
   } catch (error) {
     if (error instanceof NoEntityFoundError || error instanceof SchemaMismatchError) return null;
     throw error;
