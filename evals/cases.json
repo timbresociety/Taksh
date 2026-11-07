@@ -132,6 +132,54 @@
     "expect": { "status": "ready", "templates": ["circuit"] }
   },
   {
+    "id": "body-upper-space",
+    "kind": "clear",
+    "idea": "I want an upper body workout in a space world",
+    "expect": { "status": "ready", "templates": ["pads", "flyer", "chop", "rally", "oars", "rangoli", "dabba", "popup", "poses"], "world": "station", "focus": ["upper"] }
+  },
+  {
+    "id": "body-arms-boxing",
+    "kind": "clear",
+    "idea": "arms only boxing game",
+    "expect": { "status": "ready", "templates": ["pads"], "focus": ["arms"] }
+  },
+  {
+    "id": "body-legs",
+    "kind": "clear",
+    "idea": "something for my legs",
+    "expect": { "status": "ready", "templates": ["hop", "guard", "lane_runner", "rickshaw", "handi", "circuit", "keeper", "harmonium"], "focus": ["legs"] }
+  },
+  {
+    "id": "body-train-arms",
+    "kind": "clear",
+    "idea": "I want to train my arms",
+    "expect": { "status": "ready", "templates": ["pads", "flyer", "chop", "rally", "oars", "rangoli", "dabba", "popup", "poses"], "forbid": ["lane_runner"], "focus": ["arms"] }
+  },
+  {
+    "id": "body-seated",
+    "kind": "clear",
+    "idea": "seated, arms only",
+    "expect": { "status": "ready", "templates": ["oars"], "focus": ["seated"] }
+  },
+  {
+    "id": "body-no-running",
+    "kind": "clear",
+    "idea": "upper body, no running",
+    "expect": { "status": "ready", "templates": ["pads", "flyer", "chop", "rally", "oars", "rangoli", "dabba", "popup", "poses"], "focus": ["upper"], "avoid": ["running"] }
+  },
+  {
+    "id": "body-boxing",
+    "kind": "clear",
+    "idea": "boxing",
+    "expect": { "status": "ready", "templates": ["pads", "bout"] }
+  },
+  {
+    "id": "body-runner-asked",
+    "kind": "clear",
+    "idea": "a runner in Mumbai",
+    "expect": { "status": "ready", "templates": ["lane_runner"], "world": "mumbai" }
+  },
+  {
     "id": "ambiguous",
     "kind": "ambiguous",
     "idea": "make me a cool workout game",
@@ -149,6 +197,12 @@
     "kind": "unsupported",
     "idea": "Two players fight each other on the same webcam with sword gestures",
     "expect": { "status": "unsupported" }
+  },
+  {
+    "id": "unsupported-push-ups",
+    "kind": "unsupported",
+    "idea": "push ups for my upper body",
+    "expect": { "status": "unsupported", "focus": ["upper"] }
   },
   {
     "id": "revise-more-time",

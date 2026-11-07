@@ -1,6 +1,7 @@
 // The single source of truth for what a game can contain. A game is a template plus a skin and
 // bounded tuning. The validator, session and generator prompts are all derived from this file.
 import { POSES } from "../motion/poses.js";
+import { focusText } from "../templates/focus.js";
 import { TEMPLATES } from "../templates/index.js";
 
 export const SPEC_VERSION = 2;
@@ -115,7 +116,7 @@ export function contractText() {
       .map(([key, field]) => `    ${key}: ${field.label}, ${field.min} to ${field.max}${field.unit ? ` ${field.unit}` : ""}, default ${field.default}, ${field.higherIsHarder ? "higher is harder" : "higher is easier"}`)
       .join("\n");
     const moves = [...new Set(template.bindings.map((binding) => binding.exercise))].join(", ");
-    return `- ${template.id} (${template.name}): ${template.pitch}\n  Player moves: ${moves}\n  Tuning:\n${tuning}`;
+    return `- ${template.id} (${template.name}): ${template.pitch}\n  Player moves: ${moves}\n  Body: ${focusText(template.id)}\n  Tuning:\n${tuning}`;
   }).join("\n");
   return [
     `specVersion is ${SPEC_VERSION}.`,

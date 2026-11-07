@@ -99,7 +99,7 @@ Eval on 2026-11-06 (`npm run eval -- --provider 0g`, 20 cases, saved in `evals/r
 
 With thinking on, 8 of 20 games failed validation on the first try, all because of colours that weren't `#rrggbb`. Each one needed a repair call. The three cases still failing are judgment calls. One idea got a question when it should have become a game, one became a game when it needed a question, and one became a game when it should have been marked unsupported.
 
-- Prompts: `prompts/intent.v2.md`, `prompts/generate.v2.md`, `prompts/revise.v2.md`. Versions are set in `src/lib/pipeline/prompts.js`. The list of templates, worlds, styles and tuning ranges is injected from `src/lib/spec/contract.js`.
+- Prompts: `prompts/intent.v3.md`, `prompts/generate.v2.md`, `prompts/revise.v2.md`. Versions are set in `src/lib/pipeline/prompts.js`. The list of templates, worlds, styles and tuning ranges is injected from `src/lib/spec/contract.js`.
 - The Claude path (`provider-claude.js`, default `claude-opus-5-5`) still works with `ANTHROPIC_API_KEY`. It hasn't been run since the colour pattern was added to the shared schema.
 
 ## 0G rival in Counter Bout
