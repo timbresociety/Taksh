@@ -1,9 +1,12 @@
 // The idea-to-game pipeline. Each stage asks a provider for structured data, then validates it in
 // code. A provider is anything with complete(); see provider-claude.js and provider-fixture.js.
+import { castFor } from "../spec/cast.js";
 import { compareSpecs } from "../spec/compare.js";
 import { validateSpec } from "../spec/validate.js";
 import { GAME_SPEC_SCHEMA } from "../spec/contract.js";
-import { TEMPLATES, templateInfo } from "../templates/index.js";
+import { conflicts } from "../templates/focus.js";
+import { templateInfo } from "../templates/index.js";
+import { bestTemplate } from "./match.js";
 import { INTENT_SCHEMA, LEVEL_SCHEMA, PROMPT_VERSIONS, REVISION_SCHEMA, loadPrompt } from "./prompts.js";
 import { brainFor, cleanObservation } from "../agent/rival.js";
 
@@ -40,18 +43,27 @@ export async function clarifyIdea({ idea, clarification }, provider) {
     input: { idea, clarification },
   });
   const { data } = reply;
+  const said = [idea, clarification].filter(Boolean).join(" ");
+  const pick = bestTemplate(said, data.body);
+  const body = pick.reading;
 
-  // One question at most, whatever the model decides.
-  const status = data.status === "clarify" && clarification ? "ready" : data.status;
-  // The closest game has to be one we can really build, whatever the model named.
-  const template = templateInfo(data.brief?.template) ?? TEMPLATES[0];
-  const result = { status, brief: { ...data.brief, template: template.id }, ...meta(provider, startedAt, 1, [reply]) };
+  // One question at most, and none once the idea names a body goal: go straight to its best game.
+  const status = data.status === "clarify" && (clarification || body.focus.length) ? "ready" : data.status;
+  // A forced answer is chosen again from the idea and the answer, not left on the model's stale guess.
+  const reselect = status !== data.status && pick.evidence;
+  // The game has to be one we can build, and one that fits the body the creator asked for.
+  const named = templateInfo(data.brief?.template);
+  const misfit = named ? conflicts(named.id, body) : "not a game we have";
+  const template = reselect || misfit ? pick.template : named;
+  const result = { status, brief: { ...data.brief, template: template.id }, body, ...meta(provider, startedAt, 1, [reply]) };
+  if (misfit && template !== named) result.swapped = { from: data.brief?.template ?? "", why: misfit };
   if (status === "clarify") {
     result.question = data.question;
     result.options = data.options.slice(0, 4);
   }
   if (status === "unsupported") {
-    result.unsupported = { ...data.unsupported, closest: data.unsupported.closest || `${template.name}: ${template.pitch}` };
+    const closest = template === named && data.unsupported.closest ? data.unsupported.closest : `${template.name}: ${template.pitch}`;
+    result.unsupported = { ...data.unsupported, closest };
     result.message = `We're still working on complex interactions like ${data.unsupported.requested}. Here's the closest game you can play today.`;
   }
   return result;
@@ -86,6 +98,16 @@ export async function generateGame({ idea, clarification, brief }, provider) {
     });
     replies.push(repaired);
     check = validateSpec(repaired.data);
+  }
+
+  // Who plays and who they face follow the game's own rules (its own people, Ravana in the ring, a man
+  // unless the game or the idea feels feminine) and the player's words. The model's clothes stay when
+  // it chose the same body.
+  const said = [idea, clarification].filter(Boolean).join(" ");
+  if (check.ok) {
+    const cast = castFor({ text: said, template: check.spec.template });
+    if (check.spec.skin.hero.body !== cast.hero.body) check.spec.skin.hero = cast.hero;
+    if (check.spec.skin.rival.body !== cast.rival.body) check.spec.skin.rival = cast.rival;
   }
 
   return { ok: check.ok, spec: check.spec, errors: check.errors, firstErrors, ...meta(provider, startedAt, attempts, replies) };

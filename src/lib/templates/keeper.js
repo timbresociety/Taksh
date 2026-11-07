@@ -1,6 +1,6 @@
 // Last Line: stand in a goal cut into nine zones, and save each shot with the one move its zone asks
 // for. The zone lights up while the striker lines the shot up, so there is time to read it and move.
-import { createRandom } from "./shared.js";
+import { createRandom, moveCue } from "./shared.js";
 
 // The goal in reading order, as the player sees it in the mirrored picture: their left is the screen's
 // left. One move per zone, and this table is the only place a zone's move is chosen: the actions, keys,
@@ -171,11 +171,13 @@ export default {
   },
 
   hud(state) {
-    const zone = state.shots[0] && zoneInfo(state.shots[0].zone);
+    const shot = state.shots[0];
+    const zone = shot && zoneInfo(shot.zone);
     return {
       score: state.score, label: "Score", lives: state.lives, maxLives: state.startLives,
       clock: state.won ? "Full time" : `${state.toSpawn + state.shots.length} left`,
-      extra: state.won ? "Clean hands" : zone ? zone.exercise : state.waiting ? "Striker waiting" : "Get set",
+      extra: state.won ? "Clean hands" : zone ? null : state.waiting ? "Striker waiting" : "Get set",
+      cue: zone && state.finaleMs <= 0 ? moveCue(zone.gesture, shot.ms / shot.lifeMs) : null,
       keys: ZONES.map(({ id }) => `save_${id}`), // all nine, which the key bar lays out like the goal
     };
   },

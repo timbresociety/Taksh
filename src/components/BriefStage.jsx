@@ -13,6 +13,8 @@ export function Controls({ spec }) {
   // Mirror Match and the circuit show their move on screen, so ten or more rows would only get in the
   // way. Last Line's nine zones each need their own move, so nine still fit.
   const shown = template.actions.length > 9 ? template.actions.slice(0, 3) : template.actions;
+  // A game played with hand cursors says what the hands do, since its swipes only stand in for a key.
+  const body = (action) => template.handCursors?.controls?.[action.id] ?? [...new Set(template.bindings.filter((binding) => binding.action === action.id).map((binding) => binding.exercise))].join(" or ");
   return (
     <table className="controls" data-testid="controls">
       <thead>
@@ -25,7 +27,7 @@ export function Controls({ spec }) {
       <tbody>
         {shown.map((action) => (
           <tr key={action.id}>
-            <td>{[...new Set(template.bindings.filter((binding) => binding.action === action.id).map((binding) => binding.exercise))].join(" or ")}</td>
+            <td>{body(action)}</td>
             <td>{action.label}</td>
             <td>
               <kbd>{action.keyLabel}</kbd>

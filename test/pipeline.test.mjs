@@ -10,6 +10,7 @@ import { createFixtureProvider } from "../src/lib/pipeline/provider-fixture.js";
 import { getProvider, resolveProvider } from "../src/lib/pipeline/provider.js";
 import { GAME_SPEC_SCHEMA, SPEC_VERSION } from "../src/lib/spec/contract.js";
 import { validateSpec } from "../src/lib/spec/validate.js";
+import { conflicts } from "../src/lib/templates/focus.js";
 import { TEMPLATES, templateInfo } from "../src/lib/templates/index.js";
 
 const fixtures = createFixtureProvider();
@@ -222,7 +223,7 @@ describe("fixture routing", () => {
     hop: ["jump over gaps", "bounce on the moon", "hop across the river", "floating platforms"],
     rally: ["tennis", "a long rally", "a racket sport"],
     pads: ["hit the pads", "punch as fast as I can"],
-    bout: ["boxing", "a fight", "beat my rival"],
+    bout: ["a fight", "beat my rival", "slip his punches and counter"],
     flyer: ["I can fly", "be a bird", "flap to stay up", "tiny wings"],
     poses: ["strike a pose", "copy the character", "a dance game", "mirror me"],
     guard: ["goalkeeper", "a keeper in goal", "save every shot", "dodge the beams", "a robot attacks"],
@@ -297,7 +298,7 @@ describe("fixture routing", () => {
     const idea = "make me a cool workout game";
     const asked = await clarifyIdea({ idea }, fixtures);
     assert.equal(asked.status, "clarify");
-    assert.equal(asked.question, "What should your body be doing in this game?");
+    assert.equal(asked.question, "What do you want to work?");
     assert.ok(asked.options.length >= 2 && asked.options.length <= 4);
     for (const clarification of asked.options) {
       const template = TEMPLATES.find((item) => clarification.includes(item.name));
@@ -398,9 +399,9 @@ describe("fixture revisions", () => {
 });
 
 describe("prompts", () => {
-  it("are on v2, with the contract injected and no leftovers from v1", async () => {
+  it("are on their current versions, with the contract injected and no leftovers from v1", async () => {
+    assert.deepEqual(PROMPT_VERSIONS, { intent: "v3", generate: "v3", revise: "v2", level: "v1" });
     for (const stage of ["intent", "generate", "revise"]) {
-      assert.equal(PROMPT_VERSIONS[stage], "v2");
       const prompt = await loadPrompt(stage);
       assert.doesNotMatch(prompt, /\{\{/);
       for (const template of TEMPLATES) assert.ok(prompt.includes(template.id), `${stage} lacks ${template.id}`);
@@ -483,6 +484,9 @@ describe("eval ideas through the fixture", () => {
       const game = await generateGame({ idea: item.idea, brief }, fixtures);
       assert.ok(game.ok);
       assert.ok(item.expect.templates.includes(game.spec.template), `got ${game.spec.template}`);
+      assert.ok(!item.expect.forbid?.includes(game.spec.template), `got ${game.spec.template}`);
+      if (item.expect.world) assert.equal(game.spec.skin.world, item.expect.world);
+      assert.equal(conflicts(game.spec.template, item.expect), null);
     });
 
     it(`${item.id} expects a game that exists`, () => {

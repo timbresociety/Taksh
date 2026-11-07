@@ -1,6 +1,7 @@
 // The single source of truth for what a game can contain. A game is a template plus a skin and
 // bounded tuning. The validator, session and generator prompts are all derived from this file.
 import { POSES } from "../motion/poses.js";
+import { focusText } from "../templates/focus.js";
 import { TEMPLATES } from "../templates/index.js";
 
 export const SPEC_VERSION = 2;
@@ -52,8 +53,8 @@ export const GESTURES = [
   { id: "squat_up", label: "Stand up", cue: "Stand tall out of your squat", hidden: true },
   { id: "lean_left", label: "Lean left", cue: "Keep your feet still and tilt your upper body to your left" },
   { id: "lean_right", label: "Lean right", cue: "Keep your feet still and tilt your upper body to your right" },
-  { id: "punch_left", label: "Left punch", cue: "Fist by your chin, then punch out and slightly to your left" },
-  { id: "punch_right", label: "Right punch", cue: "Fist by your chin, then punch out and slightly to your right" },
+  { id: "punch_left", label: "Left punch", cue: "Fists by your chin, then punch your left fist straight at the screen and snap it back" },
+  { id: "punch_right", label: "Right punch", cue: "Fists by your chin, then punch your right fist straight at the screen and snap it back" },
   { id: "hook_left", label: "Left hook", cue: "Lift your left elbow out to the side, then swing that fist across your chest" },
   { id: "hook_right", label: "Right hook", cue: "Lift your right elbow out to the side, then swing that fist across your chest" },
   { id: "uppercut_left", label: "Left uppercut", cue: "Dip your left fist to your waist, then drive it straight up to your chin" },
@@ -115,7 +116,7 @@ export function contractText() {
       .map(([key, field]) => `    ${key}: ${field.label}, ${field.min} to ${field.max}${field.unit ? ` ${field.unit}` : ""}, default ${field.default}, ${field.higherIsHarder ? "higher is harder" : "higher is easier"}`)
       .join("\n");
     const moves = [...new Set(template.bindings.map((binding) => binding.exercise))].join(", ");
-    return `- ${template.id} (${template.name}): ${template.pitch}\n  Player moves: ${moves}\n  Tuning:\n${tuning}`;
+    return `- ${template.id} (${template.name}): ${template.pitch}\n  Player moves: ${moves}\n  Body: ${focusText(template.id)}\n  Tuning:\n${tuning}`;
   }).join("\n");
   return [
     `specVersion is ${SPEC_VERSION}.`,

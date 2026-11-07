@@ -64,7 +64,7 @@ export default function IdeaStage({ draft, intent, busy, error, fixture, voice, 
                 </button>
               ))}
             </div>
-            {fixture && <p className="fixture-hint">Fixture mode matches keywords such as run, box, fly, pose, Mumbai, Diwali, neon and pixel.</p>}
+            {fixture && <p className="fixture-hint">Fixture mode reads words such as upper body, legs, seated, no jumping, box, fly, run, Mumbai and neon.</p>}
           </form>
 
           <DailyCard />

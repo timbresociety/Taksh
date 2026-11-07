@@ -30,6 +30,11 @@ export const STRIKE_MOVES = [
   { dir: "down", gesture: "squat_down", label: "Duck", key: "ArrowDown", keyLabel: "↓" },
 ];
 export const STRIKE_CALLS = Object.fromEntries(STRIKE_MOVES.map((move) => [move.dir, move.label]));
+export const STRIKE_GESTURES = Object.fromEntries(STRIKE_MOVES.map((move) => [move.dir, move.gesture]));
+
+// The move a game is waiting on, for the guide the play screen draws: one gesture, or a list when any
+// of them answers, and how close the moment is from 0 to 1. The words on the HUD no longer say it.
+export const moveCue = (gesture, urgency = 0, label) => ({ gesture, urgency: clamp(urgency, 0, 1), ...(label && { label }) });
 export const strikeActions = () => STRIKE_MOVES.map(({ dir, label, key, keyLabel }) => ({ id: `slash_${dir}`, label, key, keyLabel }));
 export const strikeBindings = () => STRIKE_MOVES.map(({ dir, gesture, label }) => ({ gesture, action: `slash_${dir}`, exercise: label }));
 

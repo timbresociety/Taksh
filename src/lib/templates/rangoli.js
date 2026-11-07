@@ -205,7 +205,20 @@ export default {
     return state;
   },
 
-  aimsByReaching: true,
+  // The tray follows its hand's x and nothing else, so practice slides it to marks on the floor.
+  handCursors: {
+    lesson: {
+      kind: "slide",
+      label: "Slide the tray",
+      cue: "Each hand has a tray on the floor. Slide it left and right to the mark of its colour.",
+      mouseCue: "The tray follows the mouse. Slide it to each mark.",
+      half: 0.19, // the default tray
+      // Inside where a hanging arm leaves each tray, so every mark takes a slide to reach.
+      dots: [{ hand: "left", x: -0.2, y: TRAY_Y }, { hand: "right", x: 0.2, y: TRAY_Y }, { hand: null, x: 0, y: TRAY_Y }],
+    },
+    keys: { left: "← slides the tray left.", right: "→ slides the tray right." },
+    controls: { left: "Slide a hand left", right: "Slide a hand right" },
+  },
   aim: aimCursors,
 
   // A hand on screen already is the tray, so a swipe read from it needs nothing more.

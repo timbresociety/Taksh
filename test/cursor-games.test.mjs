@@ -906,21 +906,30 @@ describe("popup", () => {
 describe("teaching a game played by reaching", () => {
   const taught = (id, usesCamera) => practiceMoves(templateInfo(id), usesCamera).map((move) => move.gesture);
 
-  for (const id of ["sights", "rangoli", "dabba", "popup"]) {
+  for (const id of ["sights", "dabba", "popup"]) {
     it(`${id} teaches the reach first on camera, and no swipe`, () => {
       const moves = taught(id, true);
       assert.equal(moves[0], "aim");
       assert.ok(!moves.some((gesture) => gesture.startsWith("slash_")));
     });
+  }
 
-    it(`${id} keeps every bound key on the keyboard`, () => {
-      assert.ok(!taught(id, false).includes("aim"));
-      assert.ok(taught(id, false).some((gesture) => gesture.startsWith("slash_")));
+  for (const id of ["sights", "rangoli", "dabba", "popup", "chop"]) {
+    it(`${id} teaches the mouse and then its keys on the keyboard, and no swipe to copy`, () => {
+      const moves = practiceMoves(templateInfo(id), false);
+      assert.ok(moves[0].dots.length > 0);
+      assert.equal(moves[0].label, "Move the mouse");
+      assert.ok(moves[0].dots.every((dot) => dot.hand === null), "the mouse is the only ring");
+      assert.ok(!moves.some((move) => move.gesture.startsWith("slash_")));
+      const keys = moves.filter((move) => move.keyOnly);
+      assert.ok(keys.length > 0);
+      for (const key of keys) assert.ok(templateInfo(id).actions.includes(key.action) && key.cue.length > 0, key.gesture);
     });
   }
 
   it("twin sights still teaches its squat and jump", () => {
     assert.deepEqual(taught("sights", true), ["aim", "squat_down", "jump"]);
+    assert.deepEqual(taught("sights", false), ["aim", "key_snap", "squat_down", "jump"]);
   });
 
   it("twin sights teaches that each hand takes its own half, and the other games keep the plain cue", () => {
@@ -930,9 +939,20 @@ describe("teaching a game played by reaching", () => {
     assert.notEqual(practiceMoves(templateInfo("dabba"), true)[0].cue, reach.cue);
   });
 
-  it("chop shop keeps its slashes, because there the slash is the move", () => {
-    assert.ok(taught("chop", true).includes("slash_left"));
-    assert.ok(!taught("chop", true).includes("aim"));
+  it("chop shop teaches the hands it is played with: a slice through fruit, not a slash to copy", () => {
+    assert.deepEqual(taught("chop", true), ["slice"]);
+    const [slice] = practiceMoves(templateInfo("chop"), true);
+    assert.deepEqual(slice.dots.map((dot) => dot.hand), ["left", "right", null]);
+    assert.match(slice.cue, /fast through the fruit/i);
+    assert.deepEqual(taught("chop", false), ["slice", "key_slice"]);
+  });
+
+  it("rangoli breaker slides its trays along the floor, to a mark left and then right", () => {
+    assert.deepEqual(taught("rangoli", true), ["slide"]);
+    const [slide] = practiceMoves(rangoli, true);
+    assert.ok(slide.dots.every((dot) => dot.y === TRAY_Y));
+    assert.deepEqual(slide.dots.map((dot) => [dot.hand, Math.sign(dot.x)]), [["left", -1], ["right", 1], [null, 0]]);
+    assert.deepEqual(taught("rangoli", false), ["slide", "key_left", "key_right"]);
   });
 
   it("gives each hand one dot, and a dot only counts for a hand that reached it", () => {

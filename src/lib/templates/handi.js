@@ -7,7 +7,7 @@
 // never caught out by a wobble that came back on its own. A jump while the tower wobbles climbs
 // nothing and costs nothing, because the call already said hands up. A wobble left alone grows until
 // the tower falls, which drops the climber a tier and costs a life.
-import { createRandom } from "./shared.js";
+import { createRandom, moveCue } from "./shared.js";
 
 export const STEADY_BELOW = 0.3; // the crew lets the climber up only while the tower stands this straight
 export const LEAN_AT = 0.7; // where the crowd starts shouting, a full warning before the tower goes
@@ -166,17 +166,19 @@ export default {
 
   hud(state) {
     const height = potHeight(state);
-    let call = "Jump to climb";
+    // The next move is the guide's to show. The words only say what happened.
+    let call = null;
+    let cue = null;
     if (state.won) call = "You did it!";
     else if (state.phase === "between") call = "Pot smashed!";
     else if (state.phase === "fallen") call = "Tower fell. Regroup";
-    else if (Math.abs(state.sway) >= LEAN_AT) call = "Hands up now!";
-    else if (wobbling(state)) call = "Hands up to steady";
-    else if (atTop(state)) call = "Jump to smash the pot";
+    else if (wobbling(state)) cue = moveCue("hands_up", Math.abs(state.sway) / FALL_AT);
+    else cue = moveCue("jump", atTop(state) ? 0.5 : 0);
     return {
       score: state.score, label: "Score", lives: state.lives, maxLives: state.startLives,
       clock: `Pot ${Math.min(state.pot + 1, state.pots)}/${state.pots} · ${secondsLeft(state)}s`,
       extra: call,
+      cue,
       bars: [
         { label: `Climb ${Math.min(state.tier, height)} of ${height}`, value: Math.min(1, state.tier / height) },
         { label: "Wobble", value: Math.min(1, Math.abs(state.sway)) },

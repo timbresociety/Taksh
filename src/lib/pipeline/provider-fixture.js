@@ -1,47 +1,12 @@
 // Fixture provider: canned stand-ins for the model, used when no credentials are configured.
 // It exists to exercise the runtime and the UI. Keyword matching here says nothing about how well
 // a real model reads intent, and every response is labelled source: "fixture" all the way to the UI.
-import { DEFAULT_HERO, DEFAULT_RIVAL, SPEC_VERSION, WORLDS } from "../spec/contract.js";
-import { TEMPLATES, templateInfo } from "../templates/index.js";
+import { castFor } from "../spec/cast.js";
+import { SPEC_VERSION, WORLDS } from "../spec/contract.js";
+import { templateInfo } from "../templates/index.js";
+import { WORLD_WORDS, bestTemplate, clarifyOptions } from "./match.js";
 
-export const FIXTURE_MODEL = "fixture-v2";
-
-// First match wins, so an idea that mentions two games gets the one earlier in this list.
-const TEMPLATE_WORDS = [
-  ["sights", /\b(sights?|crosshairs?|aim\w*|shoot\w*|guns?|grenades?|lock on)\b/i],
-  ["rangoli", /\b(rangoli|bricks?|tiles?|paddle and ball|ball and paddle)\b/i],
-  ["dabba", /\b(dabbas?|tiffins?|catch\w*|lunch ?box\w*)\b/i],
-  ["popup", /\b(whack\w*|pop.?ups?|potholes?|monkeys?)\b/i],
-  ["rickshaw", /\b(rickshaws?|auto rally|tuk.?tuks?)\b/i],
-  ["oars", /\b(boats?|oars?|rowing|koli|paddl\w*|fishing|pump\w*)\b/i],
-  ["handi", /\b(dahi|handi|govindas?|janmashtami|human (tower|pyramid)|pyramid)\b/i],
-  ["circuit", /\b(cardio|circuit|reps|exercises|couch)\b/i],
-  ["keeper", /\b(top corners?|corners? of (the|a) goal|(nine )?zones? of (the|a) goal|goal.?line|last line)\b/i],
-  ["lane_runner", /\b(run\w*|lanes?|trains?|chas(e|es|ed|ing))\b/i],
-  ["hop", /\b(jump\w*|moon|hop|hops|hopping|platforms?)\b/i],
-  ["rally", /\b(tennis|rally|rallies|rackets?)\b/i],
-  ["pads", /\b(pads?|punch\w*)\b/i],
-  ["chop", /\b(chop\w*|slic\w+|fruit\w*|mangoes|mango)\b/i],
-  ["blades", /\b(swords?|blades?|slash\w*|melee|ravana)\b/i],
-  ["bout", /\b(box\w*|fight\w*|rivals?)\b/i],
-  ["flyer", /\b(fly|flying|flies|birds?|flap\w*|wings?)\b/i],
-  ["poses", /\b(pose|poses|posing|copy\w*|danc\w+|mirror\w*)\b/i],
-  ["guard", /\b(goal.?keep\w*|keepers?|save|saves|saving|dodg\w+|robots?)\b/i],
-  ["matka", /\b(matka|pots?|rhythm|dhol|drums?)\b/i],
-  ["harmonium", /\b(harmonium|piano|keyboard|melody|tune)\b/i],
-];
-
-const WORLD_WORDS = [
-  ["diwali", /\b(diwali|diyas?|firecrackers?|rangoli|ravana|ramayana)\b/i],
-  ["marine_drive", /\b(marine drive|juhu|chowpatty|beach|sea.?front|queen'?s necklace)\b/i],
-  ["mumbai", /\b(mumbai|bombay|vada pav|pav bhaji|rickshaws?|kaali peeli|dabbawala)\b/i],
-  ["downtown", /\bcity\b/i],
-  ["forest", /\b(forest|jungle)\b/i],
-  ["station", /\b(space|station)\b/i],
-  ["moon", /\bmoon\b/i],
-  ["village", /\b(village|medieval)\b/i],
-  ["sunset", /\b(sunset|park)\b/i],
-];
+export const FIXTURE_MODEL = "fixture-v3";
 
 const STYLE_WORDS = [
   ["toon", /\b(toon|cartoon)\b/i],
@@ -53,70 +18,66 @@ const STYLE_WORDS = [
 
 const COLOURS = { red: "#e5383b", orange: "#ff8c2f", yellow: "#ffd23f", green: "#2fbf71", blue: "#2f6bff", purple: "#8a5cff", pink: "#ff4f9a", black: "#16181f", white: "#f5f7fb" };
 
+// Each refusal carries what the move works, so the closest game keeps the player's body goal:
+// push-ups still get an upper-body game, never the runner.
 const UNSUPPORTED = [
-  [/swim|butterfly stroke/i, "swimming strokes"],
-  [/handstand|backflip|cartwheel|somersault/i, "inverted moves"],
-  [/push.?up|plank|sit.?up|crunch|yoga/i, "floor exercises"],
-  [/two.?player|multiplayer|with a friend|versus my/i, "playing with a second person"],
-  [/juggl|dumbbell|kettlebell|hold(ing)? a/i, "tracking objects you hold"],
+  [/swim|butterfly stroke/i, "swimming strokes", "upper body"],
+  [/handstand|backflip|cartwheel|somersault/i, "inverted moves", "jump"],
+  [/push.?up/i, "floor exercises", "upper body"],
+  [/plank|sit.?up|crunch/i, "floor exercises", "core"],
+  [/yoga/i, "floor exercises", "poses"],
+  [/two.?player|multiplayer|with a friend|versus my/i, "playing with a second person", ""],
+  [/dumbbell|kettlebell/i, "tracking objects you hold", "for my arms"],
+  [/juggl|hold(ing)? a/i, "tracking objects you hold", "catch"],
 ];
-
-const CLARIFY_OPTIONS = [
-  ["lane_runner", "Running and dodging"],
-  ["pads", "Punching pads"],
-  ["guard", "Saving shots"],
-  ["hop", "Hopping across platforms"],
-];
-
-const FALLBACK_TEMPLATE = "lane_runner";
 
 const firstMatch = (words, text) => words.find(([, pattern]) => pattern.test(text))?.[0];
-
-// A template's own name wins, so an answer like "Saving shots (Lane Guard)" cannot route by accident.
-function pickTemplate(text) {
-  const named = TEMPLATES.find((template) => text.toLowerCase().includes(template.name.toLowerCase()));
-  return named?.id ?? firstMatch(TEMPLATE_WORDS, text);
-}
 
 const pickWorld = (text) => firstMatch(WORLD_WORDS, text) ?? "downtown";
 const pickStyle = (text) => firstMatch(STYLE_WORDS, text) ?? "bright";
 
-function brief(text, templateId) {
-  const template = templateInfo(templateId);
+function brief(text, template) {
   return { template: template.id, world: pickWorld(text), style: pickStyle(text), goal: template.pitch };
 }
 
+const none = { requested: "", closest: "" };
+
+// The body comes first: an idea that names a body part, an exercise or a mechanic goes straight to
+// its best game. Only an idea with nothing to go on gets a question, and never twice.
 function fixtureIntent({ idea, clarification }) {
   const text = [idea, clarification].filter(Boolean).join(" ");
   const blocked = UNSUPPORTED.find(([pattern]) => pattern.test(text));
-  const templateId = pickTemplate(text);
+  const pick = bestTemplate(blocked ? `${text} ${blocked[2]}` : text);
+  const body = pick.reading;
   if (blocked) {
-    const closest = templateInfo(templateId ?? FALLBACK_TEMPLATE);
+    const closest = pick.template;
     return {
       status: "unsupported",
-      brief: brief(text, closest.id),
+      brief: brief(text, closest),
+      body,
       question: "",
       options: [],
       unsupported: { requested: blocked[1], closest: `${closest.name}: ${closest.pitch}` },
     };
   }
-  if (!templateId) {
+  if (!pick.evidence && !clarification) {
     return {
       status: "clarify",
-      brief: brief(text, FALLBACK_TEMPLATE),
-      question: "What should your body be doing in this game?",
-      options: CLARIFY_OPTIONS.map(([id, label]) => `${label} (${templateInfo(id).name})`),
-      unsupported: { requested: "", closest: "" },
+      brief: brief(text, pick.template),
+      body,
+      question: "What do you want to work?",
+      options: clarifyOptions(body),
+      unsupported: none,
     };
   }
-  return { status: "ready", brief: brief(text, templateId), question: "", options: [], unsupported: { requested: "", closest: "" } };
+  return { status: "ready", brief: brief(text, pick.template), body, question: "", options: [], unsupported: none };
 }
 
 const seedFrom = (text) => [...text].reduce((seed, letter) => (seed * 31 + letter.charCodeAt(0)) % 100000, 7);
 
 function fixtureSpec({ idea, clarification, brief: gameBrief }) {
   const text = [idea, clarification].filter(Boolean).join(" ");
-  const template = templateInfo(gameBrief?.template) ?? templateInfo(pickTemplate(text) ?? FALLBACK_TEMPLATE);
+  const template = templateInfo(gameBrief?.template) ?? bestTemplate(text).template;
   const world = WORLDS.find((item) => item.id === pickWorld(`${text} ${gameBrief?.world ?? ""}`));
   return {
     specVersion: SPEC_VERSION,
@@ -124,7 +85,7 @@ function fixtureSpec({ idea, clarification, brief: gameBrief }) {
     title: `${world.label} ${template.name}`,
     objective: template.pitch,
     seed: seedFrom(text),
-    skin: { world: world.id, style: pickStyle(`${text} ${gameBrief?.style ?? ""}`), hero: DEFAULT_HERO, rival: DEFAULT_RIVAL },
+    skin: { world: world.id, style: pickStyle(`${text} ${gameBrief?.style ?? ""}`), ...castFor({ text, template: template.id }) },
     tuning: [],
   };
 }

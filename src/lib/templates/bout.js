@@ -1,11 +1,16 @@
 // Counter Bout: punch whenever you like. When a warning shows, step or duck the way it says, and the
 // rival is left open: your punches hit twice as hard until it recovers. Punches always land, so the
 // player never wonders why nothing happened.
-import { REACTION_MS, createRandom } from "./shared.js";
+import { REACTION_MS, createRandom, moveCue } from "./shared.js";
 
 // A shot's side is the side of the player it comes at, so they step the other way. "high" is at the head.
 const ATTACKS = { left: "slip_right", right: "slip_left", high: "duck" };
-export const CALLS = { slip_left: "← Step left", slip_right: "Step right →", duck: "Duck ↓" };
+// The move that answers each shot, which the guide on the play screen draws, and its word under it.
+export const ANSWERS = { slip_left: { gesture: "step_left", label: "Step left" }, slip_right: { gesture: "step_right", label: "Step right" }, duck: { gesture: "squat_down", label: "Duck" } };
+const answerCue = (attack) => {
+  const { gesture, label } = ANSWERS[ATTACKS[attack.side]];
+  return moveCue(gesture, attack.ms / attack.windupMs, label);
+};
 const OPPOSITE = { slip_left: "slip_right", slip_right: "slip_left" };
 // Bigger punches hit harder. The rival hits about as hard as a hook, so a round is won by trading well.
 const DAMAGE = { jab: 5, cross: 6, hook: 8, uppercut: 10 };
@@ -162,7 +167,8 @@ export default {
   hud: (state) => ({
     score: state.score, label: "Score", clock: `${Math.max(0, Math.ceil((state.durationMs - state.t) / 1000))}s`,
     bars: [{ label: "You", value: Math.max(0, state.health) / 100 }, { label: "Rival", value: Math.max(0, state.rivalHealth) / state.rivalMax }],
-    extra: state.attack ? CALLS[ATTACKS[state.attack.side]] : state.openMs > 0 ? "Hit now! x2" : state.guarding ? "Guard up" : null,
+    extra: state.attack ? null : state.openMs > 0 ? "Hit now! x2" : state.guarding ? "Guard up" : null,
+    cue: state.attack ? answerCue(state.attack) : null,
     tone: state.attack ? "danger" : state.openMs > 0 ? "open" : null,
     keys: ["jab", "cross", "hook", "uppercut", "slip_left", "slip_right", "duck"],
   }),

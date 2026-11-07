@@ -1,5 +1,5 @@
 // Baseline Rally: toss to serve, then swing on the beat. First to the target score wins the match.
-import { REACTION_MS, createRandom } from "./shared.js";
+import { REACTION_MS, createRandom, moveCue } from "./shared.js";
 
 const FLIGHT_MS = 1100;
 
@@ -34,6 +34,15 @@ function afterPoint(state, events) {
     return;
   }
   serveReady(state);
+}
+
+// The move the point is waiting on, for the guide: a hand up to toss, a swing to serve, then a swing on
+// the side the ball comes to.
+function rallyCue(state) {
+  if (state.phase === "serve") return moveCue(["reach_up_left", "reach_up_right"], 0, "Toss");
+  if (state.phase === "tossed") return moveCue(["swing_left", "swing_right"], 1 - state.tossMs / 900, "Swing");
+  if (state.phase === "incoming" && state.ball) return moveCue(`swing_${state.ball.side}`, state.ball.ms / state.ball.flightMs, "Swing");
+  return null;
 }
 
 export default {
@@ -126,7 +135,7 @@ export default {
     return events;
   },
 
-  hud: (state) => ({ score: state.you, label: "You", clock: `${state.you} : ${state.rival}`, extra: state.phase === "serve" ? "Lift your hand to toss" : state.phase === "tossed" ? "Swing!" : null }),
+  hud: (state) => ({ score: state.you, label: "You", clock: `${state.you} : ${state.rival}`, cue: rallyCue(state) }),
 
   result: (state) => ({
     outcome: state.you >= state.target ? "win" : "lose",

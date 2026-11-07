@@ -6,7 +6,7 @@ import { LM, LandmarkSmoother } from "../src/lib/motion/landmarks.js";
 import { POSES } from "../src/lib/motion/poses.js";
 import { GESTURES } from "../src/lib/spec/contract.js";
 import { templateInfo } from "../src/lib/templates/index.js";
-import { BODIES, playTimeline } from "./helpers/body.mjs";
+import { BODIES, guardArm, playTimeline, punchTimeline, straightArm } from "./helpers/body.mjs";
 
 function calibrate(body, { framing, hide = [] } = {}) {
   const calibrator = new Calibrator({ framing });
@@ -604,5 +604,132 @@ describe("locked moves", () => {
     assert.ok(aim.right.x > 0.5 && aim.right.x <= 1);
     assert.ok(aim.right.y > 0);
     assert.ok(aim.left.y < 0);
+  });
+});
+
+// The owner's call: a straight punch goes at the screen. Depth is the weakest thing the camera reads, so
+// these punches must also read from the image alone: the elbow coming up fast behind a fist from guard.
+describe("punches at the camera", () => {
+  const FISTS_AND_ARMS = ["punch_left", "punch_right", "hook_left", "hook_right", "uppercut_left", "uppercut_right", "slash_left", "slash_right", "slash_up", "slash_down", "swing_left", "swing_right", "reach_up_left", "reach_up_right", "hands_up", "hand_left", "hand_right"];
+  const thrown = (body, timeline, options) => hearAll(body, timeline, options).names.filter((name) => FISTS_AND_ARMS.includes(name));
+  // A fast hook or uppercut is a slash too, honestly, and games that bind slashes bind no punches.
+  const struck = (body, timeline, options) => hearAll(body, timeline, options).names.filter((name) => /^(punch|hook|uppercut)_/.test(name));
+
+  for (const [bodyName, body] of Object.entries(BODIES)) {
+    it(`a jab from guard at the camera is the left punch and nothing else, from the image alone, on ${bodyName}`, () => {
+      assert.deepEqual(thrown(body, punchTimeline("left", "jab", { depth: false })), ["punch_left"]);
+    });
+
+    it(`a cross from guard toward the middle is the right punch and nothing else, from the image alone, on ${bodyName}`, () => {
+      assert.deepEqual(thrown(body, punchTimeline("right", "cross", { depth: false })), ["punch_right"]);
+    });
+  }
+
+  it("reads the same punches with depth as well", () => {
+    for (const metric of [false, true]) {
+      assert.deepEqual(thrown(BODIES.midRange, punchTimeline("left", "jab"), { metric }), ["punch_left"]);
+      assert.deepEqual(thrown(BODIES.midRange, punchTimeline("right", "cross"), { metric }), ["punch_right"]);
+    }
+  });
+
+  it("the rear hand can jab and the lead hand can cross; the hand decides which punch it is", () => {
+    assert.deepEqual(thrown(BODIES.midRange, punchTimeline("right", "jab", { depth: false })), ["punch_right"]);
+    assert.deepEqual(thrown(BODIES.midRange, punchTimeline("left", "cross", { depth: false })), ["punch_left"]);
+  });
+
+  it("a slower punch, a third of a second out, still counts", () => {
+    assert.deepEqual(thrown(BODIES.midRange, punchTimeline("left", "jab", { depth: false, outMs: 300 })), ["punch_left"]);
+  });
+
+  it("two punches in a row count twice", () => {
+    const [up, guard, ...rest] = punchTimeline("left", "jab", { depth: false });
+    const punch = rest.slice(0, 4);
+    assert.deepEqual(thrown(BODIES.midRange, [up, guard, ...punch, ...punch, ...rest.slice(4)]), ["punch_left", "punch_left"]);
+  });
+
+  it("an arm raised slowly out in front to shoulder height is not a punch", () => {
+    const front = { wrist: [0.05, 0, 0], elbow: [0.03, 0.02] };
+    const hanging = { wrist: [-0.08, 1.15, 0], elbow: [-0.04, 0.57] };
+    const lift = (p) => ({ leftArm: { wrist: hanging.wrist.map((v, i) => v + (front.wrist[i] - v) * p), elbow: hanging.elbow.map((v, i) => v + (front.elbow[i] - v) * p) } });
+    assert.deepEqual(thrown(BODIES.midRange, [[1500, lift], [800, { leftArm: front }], [1500, (p) => lift(1 - p)]]), []);
+  });
+
+  it("easing the elbow up from guard into a punch shape is not a punch", () => {
+    for (const side of ["left", "right"]) {
+      assert.deepEqual(thrown(BODIES.midRange, punchTimeline(side, "jab", { depth: false, outMs: 1400, backMs: 1400 })), []);
+    }
+  });
+
+  it("a guard raised, held and dropped is not a punch", () => {
+    const timeline = punchTimeline("left", "jab", { depth: false });
+    assert.deepEqual(thrown(BODIES.midRange, [timeline[0], [2000, timeline[1][1]], timeline.at(-1)]), []);
+    assert.deepEqual(thrown(BODIES.midRange, [timeline[0], [2000, timeline[1][1]], timeline.at(-1)], { metric: true }), []);
+  });
+
+  it("a hook from guard is still a hook, not a punch", () => {
+    const guard = { leftArm: guardArm("left", { depth: false }), rightArm: guardArm("right", { depth: false }) };
+    const hookEnd = { wrist: [1.1, 0.1, 0], elbow: [0.3, 0.15] };
+    const cocked = { wrist: [-0.3, 0.1, 0], elbow: [-0.45, 0.3] };
+    const mix = (from, to, p) => ({ wrist: from.wrist.map((v, i) => v + (to.wrist[i] - v) * p), elbow: from.elbow.map((v, i) => v + (to.elbow[i] - v) * p) });
+    const timeline = [
+      [900, (p) => ({ leftArm: mix({ wrist: [-0.08, 1.15, 0], elbow: [-0.04, 0.57] }, guard.leftArm, p), rightArm: guard.rightArm })],
+      [300, guard],
+      [200, (p) => ({ ...guard, leftArm: mix(guard.leftArm, cocked, p) })],
+      [200, (p) => ({ ...guard, leftArm: mix(cocked, hookEnd, p) })],
+      [300, (p) => ({ ...guard, leftArm: mix(hookEnd, guard.leftArm, p) })],
+      [400, guard],
+    ];
+    assert.deepEqual(struck(BODIES.midRange, timeline), ["hook_left"]);
+  });
+
+  // The elbow comes straight up from guard to shoulder height here, with no wind-up out to the side, and
+  // for a moment the forearm points at the camera, which is the shape the punch reading looks for.
+  it("a hook with the elbow lifted straight up from guard is still a hook, not a punch", () => {
+    const guard = { leftArm: guardArm("left", { depth: false }), rightArm: guardArm("right", { depth: false }) };
+    const lifted = { wrist: [0.3, 0.05, 0], elbow: [-0.25, 0.1] };
+    const hookEnd = { wrist: [1.1, 0.1, 0], elbow: [0.3, 0.15] };
+    const mix = (from, to, p) => ({ wrist: from.wrist.map((v, i) => v + (to.wrist[i] - v) * p), elbow: from.elbow.map((v, i) => v + (to.elbow[i] - v) * p) });
+    const timeline = [
+      [900, (p) => ({ leftArm: mix({ wrist: [-0.08, 1.15, 0], elbow: [-0.04, 0.57] }, guard.leftArm, p), rightArm: mix({ wrist: [0.08, 1.15, 0], elbow: [0.04, 0.57] }, guard.rightArm, p) })],
+      [300, guard],
+      [150, (p) => ({ ...guard, leftArm: mix(guard.leftArm, lifted, p) })],
+      [200, (p) => ({ ...guard, leftArm: mix(lifted, hookEnd, p) })],
+      [300, (p) => ({ ...guard, leftArm: mix(hookEnd, guard.leftArm, p) })],
+      [400, guard],
+    ];
+    for (const body of Object.values(BODIES)) assert.deepEqual(struck(body, timeline), ["hook_left"]);
+  });
+
+  it("an uppercut from guard is still an uppercut, not a punch", () => {
+    const guard = { leftArm: guardArm("left", { depth: false }), rightArm: guardArm("right", { depth: false }) };
+    const dip = { wrist: [0.1, 0.5, 0], elbow: [-0.1, 0.8] };
+    const chin = { wrist: [0.15, -0.5, 0], elbow: [-0.05, 0.2] };
+    const mix = (from, to, p) => ({ wrist: from.wrist.map((v, i) => v + (to.wrist[i] - v) * p), elbow: from.elbow.map((v, i) => v + (to.elbow[i] - v) * p) });
+    const timeline = [
+      [900, (p) => ({ leftArm: mix({ wrist: [-0.08, 1.15, 0], elbow: [-0.04, 0.57] }, guard.leftArm, p), rightArm: guard.rightArm })],
+      [300, guard],
+      [400, (p) => ({ ...guard, leftArm: mix(guard.leftArm, dip, p) })],
+      [170, (p) => ({ ...guard, leftArm: mix(dip, chin, p) })],
+      [500, (p) => ({ ...guard, leftArm: mix(chin, guard.leftArm, p) })],
+      [400, guard],
+    ];
+    assert.deepEqual(struck(BODIES.midRange, timeline), ["uppercut_left"]);
+  });
+
+  it("both fists driven out at once is not a punch", () => {
+    const guard = { leftArm: guardArm("left", { depth: false }), rightArm: guardArm("right", { depth: false }) };
+    const out = { leftArm: straightArm("left", "jab", { depth: false }), rightArm: straightArm("right", "jab", { depth: false }) };
+    const mix = (from, to, p) => ({ wrist: from.wrist.map((v, i) => v + (to.wrist[i] - v) * p), elbow: from.elbow.map((v, i) => v + (to.elbow[i] - v) * p) });
+    const both = (from, to) => (p) => ({ leftArm: mix(from.leftArm, to.leftArm, p), rightArm: mix(from.rightArm, to.rightArm, p) });
+    const hanging = { leftArm: { wrist: [-0.08, 1.15, 0], elbow: [-0.04, 0.57] }, rightArm: { wrist: [0.08, 1.15, 0], elbow: [0.04, 0.57] } };
+    assert.deepEqual(struck(BODIES.midRange, [[900, both(hanging, guard)], [300, guard], [150, both(guard, out)], [200, out], [180, both(out, guard)], [400, guard]]), []);
+  });
+
+  it("Pad Rounds, Counter Bout and Cardio Circuit all hear the punch at the camera", () => {
+    for (const game of ["pads", "bout", "circuit"]) {
+      const punches = (timeline) => playedIn(game, BODIES.midRange, timeline).filter((name) => name.startsWith("punch_"));
+      assert.deepEqual(punches(punchTimeline("left", "jab", { depth: false })), ["punch_left"], game);
+      assert.deepEqual(punches(punchTimeline("right", "cross", { depth: false })), ["punch_right"], game);
+    }
   });
 });

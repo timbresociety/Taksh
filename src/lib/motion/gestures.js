@@ -15,7 +15,7 @@ export const THRESHOLDS = {
   burpee: { enter: 0.95, exit: 0.35 },
   squat: { enter: 0.3, exit: 0.16 }, // real squats read 0.35 to 0.48, and landing from a jump up to 0.24
   lean: { enter: 0.3, exit: 0.14 },
-  punch: { enter: 0.55, exit: 0.3 }, // the fist out from guard, or the arm pointing at the camera; see measure
+  punch: { enter: 0.55, exit: 0.3 }, // the fist out from guard, the elbow driving up behind it, or depth; see measure
   hook: { enter: 0.3, exit: 0.08 }, // wrist past the chest centre at shoulder height
   uppercut: { enter: 3, exit: 1 }, // torso lengths per second, upward
   swing: { enter: 2.8, exit: 1 }, // torso lengths per second, sideways
@@ -58,6 +58,11 @@ const SPEED_WINDOW_MS = 1500;
 const JAB_ARMED_MS = 1000; // how long after being up and inside the shoulder a fist going out still counts as a jab
 const JAB_INSIDE = 0.25; // torso lengths outside the shoulder; a fist nearer the middle than this is loaded
 const REST_DEPTH_MS = 600; // how quickly an arm's resting depth catches up with wherever it is held
+// The screen stands for a box at the player's chest, so a cursor goes where its hand goes, only bigger.
+const REACH = 0.85; // of an arm out past each shoulder reaches the screen's side, without a full stretch
+const REACH_DROP = 0.25; // of the torso below the shoulders is the screen's middle, where raised hands rest
+const REACH_SETTLE_MS = 2000; // the box trails the body: a lean carries the cursor, a step re-centres it
+const SCREEN_RATIO = 16 / 9; // the game field's shape, so the hand moves the cursor alike every way
 const GUARD_ZONE = 0.6; // torso lengths from the nose
 const SQUAT_JUMP_MS = 900; // a jump this soon after a squat grew out of it
 const PAIRED_SLASH_MS = 120; // two hands arriving this close together moved as one
@@ -80,6 +85,12 @@ const TWIST_NARROWED = 0.15; // shoulders look this much narrower when turned
 const WORLD_TORSO_M = 0.5; // MediaPipe sizes its metric skeleton to a typical adult
 const PUNCH_MAX_RISE = 0.35; // torso lengths above the shoulder; higher is arms going overhead
 const PUNCH_MAX_DROP = 3; // torso lengths per second; a hand swinging past the shoulder this fast is no punch
+const DRIVE_MS = 350; // a fist driven at the camera brings its elbow up from guard within this long
+const DRIVE_LIFT = 0.35; // torso lengths of quick elbow lift that read as a full punch
+const LOADED_FOREARM = 0.25; // torso lengths the fist sits above its elbow in a guard
+const ELBOW_LEVEL = 0.25; // torso lengths below the shoulder; an elbow this high is behind a straight fist
+const ELBOW_OUT = 0.35; // torso lengths out from the shoulder; an elbow further out is a hook
+const SHORT_FOREARM = 0.4; // torso lengths; a forearm pointing at the camera looks this short or shorter
 
 const SHOULDER_POINTS = [LM.leftShoulder, LM.rightShoulder];
 const HIP_POINTS = [LM.leftHip, LM.rightHip];
@@ -311,6 +322,9 @@ export class GestureEngine {
     this.beats = { legs: [], flap: [], arms: [] };
     this.guardedAt = { left: -Infinity, right: -Infinity };
     this.restDepth = { left: null, right: null, t: null };
+    this.reachAt = null;
+    this.loadedAt = { left: -Infinity, right: -Infinity };
+    this.elbowTrail = { left: [], right: [] };
     this.squatAt = -Infinity;
     this.lastSlash = null;
     this.hop = { up: false, low: 0, high: 0 };
@@ -615,6 +629,19 @@ export class GestureEngine {
     }
   }
 
+  // The part of the camera's picture the screen stands for, in its mirrored units: the screen's shape,
+  // as wide as a comfortable reach, centred on the chest, and trailing the shoulders by a second or two.
+  reachBox(shoulder, u, armLength) {
+    const halfWidth = (this.cal.shoulderWidth ?? 0.65 * u) / 2 + REACH * armLength;
+    const target = { x: shoulder.x, y: shoulder.y + REACH_DROP * u };
+    const last = this.reachAt;
+    const keep = last ? Math.exp(-Math.max(0, this.frameT - last.t) / REACH_SETTLE_MS) : 0;
+    const x = last ? target.x + (last.x - target.x) * keep : target.x;
+    const y = last ? target.y + (last.y - target.y) * keep : target.y;
+    this.reachAt = { x, y, t: this.frameT };
+    return { x, y, halfWidth, halfHeight: halfWidth / SCREEN_RATIO };
+  }
+
   measure(points) {
     const { cal } = this;
     const u = cal.torso;
@@ -683,11 +710,28 @@ export class GestureEngine {
     // A punch goes forward. Arms swinging through shoulder height read as depth, and swing fast up or down.
     const straight = (side) => Math.abs(velocity(side, "y")) < PUNCH_MAX_DROP;
     const handAt = (wrist) => (wrist.x - shoulder.x) / u; // across the body from its middle
+    // A fist driven at the camera barely moves in the image, but its elbow does: it comes up fast from
+    // under the fist to shoulder height, and the forearm shrinks to a point. Depth is too noisy to trust
+    // alone, so this is the punch's main witness. It has to start from a guard, forearm standing up by the
+    // chin, or an arm raised straight out in front would count; and the lift has to be quick, or easing
+    // the elbows up would.
+    const drive = (side, from, elbow, wrist) => {
+      const level = (elbow.y - from.y) / u;
+      const trail = this.elbowTrail[side];
+      trail.push({ t: this.frameT, level });
+      while (trail[0].t < this.frameT - DRIVE_MS) trail.shift();
+      if (distance(wrist, nose) < GUARD_ZONE * u && elbow.y - wrist.y >= LOADED_FOREARM * u) this.loadedAt[side] = this.frameT;
+      const armed = this.frameT - this.loadedAt[side] <= DRIVE_MS;
+      const behind = level < ELBOW_LEVEL && Math.abs(elbow.x - from.x) < ELBOW_OUT * u && distance(elbow, wrist) < SHORT_FOREARM * u;
+      const fistLevel = nearShoulderHeight(wrist) && from.y - wrist.y <= PUNCH_MAX_RISE * u && -velocity(side, "y") < BOTH_HANDS_RISING;
+      return armed && behind && fistLevel ? (Math.max(...trail.map((step) => step.level)) - level) / DRIVE_LIFT : 0;
+    };
     const handSpeed = seconds && {
       left: { x: velocity("left", "x"), y: velocity("left", "y"), seconds, at: handAt(leftWrist) },
       right: { x: velocity("right", "x"), y: velocity("right", "y"), seconds, at: handAt(rightWrist) },
     };
-    const aimAt = (wrist) => ({ x: clampUnit((wrist.x - shoulder.x) / (armLength * 1.2)), y: clampUnit((shoulder.y + 0.3 * u - wrist.y) / (armLength * 1.2)) });
+    const box = this.reachBox(shoulder, u, armLength);
+    const aimAt = (wrist) => ({ x: clampUnit((wrist.x - box.x) / box.halfWidth), y: clampUnit((box.y - wrist.y) / box.halfHeight) });
     const legLift = (knee, foot, otherFoot) => (otherFoot < THRESHOLDS.lift.otherMax ? Math.max(knee, foot) : 0);
     const rising = (side, other, wrist) => (Math.abs(wrist.x - shoulder.x) < 0.9 * u && wrist.y < shoulder.y + 0.5 * u && -velocity(other, "y") < BOTH_HANDS_RISING ? -velocity(side, "y") : 0);
     const upper = this.framing !== "full"; // the hips may be below the frame, so the shoulders stand in
@@ -716,8 +760,8 @@ export class GestureEngine {
 
     // Both arms reading forward at once is arms going up together, not a punch. In a real session four
     // in five depth readings were this.
-    const jabLeft = jab("left", leftShoulder, leftWrist, -1);
-    const jabRight = jab("right", rightShoulder, rightWrist, 1);
+    const jabLeft = Math.max(jab("left", leftShoulder, leftWrist, -1), drive("left", leftShoulder, points[LM.leftElbow], leftWrist));
+    const jabRight = Math.max(jab("right", rightShoulder, rightWrist, 1), drive("right", rightShoulder, points[LM.rightElbow], rightWrist));
     const forwardLeft = straight("left") ? Math.max(forward("left", leftShoulder, leftWrist), jabLeft) : 0;
     const forwardRight = straight("right") ? Math.max(forward("right", rightShoulder, rightWrist), jabRight) : 0;
     // One fist clearly out while the other stays in is a punch, whatever the depth of the other says.
@@ -773,6 +817,7 @@ export class GestureEngine {
       cadence: 0,
       handSpeed,
       aim: { left: aimAt(leftWrist), right: aimAt(rightWrist) },
+      reach: box,
       hipRise,
       feetLifted: Math.min(leftFootRise, rightFootRise) >= THRESHOLDS.jump.feet,
       shoulderDrop,

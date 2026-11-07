@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { POSES } from "../../motion/poses.js";
 import { aimBone } from "../character.js";
 import { MOVE_POSES, applyPose } from "../coach.js";
-import { damp, gloves, holdOnBone, wordCard } from "./shared.js";
+import { damp, gloves, holdOnBone } from "./shared.js";
 
 const flat = (width, depth, material, y = 0.03) => {
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), material);
@@ -184,15 +184,18 @@ function fightingStance(character, facing, weight) {
 }
 
 // The trainer holds each pad out at arm's length, on the side the punch goes to, so it sits in the open
-// beside the player rather than behind their own head. The player's left is the trainer's right.
+// beside the player rather than behind their own head. The player's left is the trainer's right. A jab or
+// a cross goes at the screen, so its pad is held right in front of the player instead.
 const TRAINER_X = 0.2;
+const PLAYER_X = -0.3; // where the hero stands
 const PAD_Z = -1.05;
 const PAD_OUT = 0.42;
-const padSpot = (pad) => new THREE.Vector3(TRAINER_X + pad.side * PAD_OUT, pad.height, PAD_Z);
+const IN_FRONT = new Set(["jab", "cross"]);
+const padSpot = (pad) => new THREE.Vector3((IN_FRONT.has(pad.punch) ? PLAYER_X : TRAINER_X) + pad.side * PAD_OUT, pad.height, PAD_Z);
 const shoulderTo = new THREE.Vector3();
 
 function holdPad(trainer, pad) {
-  const side = pad.side < 0 ? "r" : "l";
+  const side = padSpot(pad).x < TRAINER_X ? "r" : "l";
   const upper = trainer.bones.get(`upperarm_${side}`);
   if (!upper) return;
   const reach = padSpot(pad).sub(upper.getWorldPosition(shoulderTo));
@@ -208,7 +211,7 @@ export const pads = {
     gloves(hero, "#ff3b4e", world);
     gloves(rival, "#f1ece0", world);
     hero.root.rotation.y = Math.PI;
-    hero.root.position.set(-0.3, 0, 1);
+    hero.root.position.set(PLAYER_X, 0, 1);
     rival.root.position.set(TRAINER_X, 0, -1.5);
     hero.play("Idle_Loop");
     rival.play("Idle_Loop");
@@ -220,13 +223,7 @@ export const pads = {
     const timer = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.42, 40), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
     timer.userData.keepMaterial = true;
     group.add(disc, timer);
-    const cards = Object.fromEntries(Object.entries(PUNCH_COLOURS).map(([punch, colour]) => {
-      const card = wordCard(punch.toUpperCase(), colour);
-      card.position.set(0, 0.86, 0); // above the timer ring at its widest
-      card.visible = false;
-      group.add(card);
-      return [punch, card];
-    }));
+    // The pad says where and when, by its colour and its ring. The guide by the player says which punch.
     world.dress(group);
     scene.add(group);
     let swingMs = 0;
@@ -244,7 +241,6 @@ export const pads = {
           timer.material.opacity = 0.9;
           if (shownId !== pad.id) {
             shownId = pad.id;
-            for (const [punch, card] of Object.entries(cards)) card.visible = punch === pad.punch;
             disc.material = disc.material.clone();
             disc.material.color.set(PUNCH_COLOURS[pad.punch]);
             timer.material.color.set(PUNCH_COLOURS[pad.punch]);
@@ -289,8 +285,8 @@ const OPEN_GOLD = "#ffae00";
 const DANGER_RED = "#ff2a3d";
 const ease = (value) => value * value * (3 - 2 * value);
 
-// A sign with an arrow, for the call to dodge and the call to hit back. Drawn once, outlined so it
-// reads over any world.
+// A sign with an arrow, for the way to dodge, or words, for the call to hit back. Drawn once, outlined
+// so it reads over any world.
 function signCard(text, colour, arrow = null, size = 1) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -303,8 +299,8 @@ function signCard(text, colour, arrow = null, size = 1) {
   pen.lineJoin = "round";
   if (arrow) {
     pen.save();
-    pen.translate(0, 84);
-    pen.rotate({ left: Math.PI, right: 0, down: Math.PI / 2 }[arrow]);
+    pen.translate(0, text ? 84 : 128);
+    pen.rotate({ left: Math.PI, right: 0, down: Math.PI / 2, up: -Math.PI / 2 }[arrow]);
     pen.beginPath();
     for (const [x, y] of [[-74, -24], [8, -24], [8, -62], [82, 0], [8, 62], [8, 24], [-74, 24]]) pen.lineTo(x, y);
     pen.closePath();
@@ -312,6 +308,7 @@ function signCard(text, colour, arrow = null, size = 1) {
     pen.fill();
     pen.restore();
   }
+  if (!text) return spriteOf(canvas, size);
   // Long words shrink to fit the card rather than run off its edges.
   pen.font = "900 66px system-ui, sans-serif";
   const fits = Math.min(66, Math.floor((66 * 470) / pen.measureText(text).width));
@@ -321,6 +318,10 @@ function signCard(text, colour, arrow = null, size = 1) {
   const y = arrow ? 206 : 128;
   pen.strokeText(text, 0, y);
   pen.fillText(text, 0, y);
+  return spriteOf(canvas, size);
+}
+
+function spriteOf(canvas, size) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, fog: false }));
@@ -375,21 +376,18 @@ export const bout = {
     hero.play("Idle_Loop");
     rival.play("Idle_Loop");
 
-    // Where the shot lands: a red patch over the side of the head it is aimed at, and a ring that
-    // closes on it as the shot comes in. The sign on the other side says which way to go.
+    // Where the shot lands: a red patch over the side of the head it is aimed at, deepening as the shot
+    // comes in. The arrow on the other side points the way out; the guide by the player shows the move.
     const danger = overlay(new THREE.PlaneGeometry(1, 1), DANGER_RED);
-    const closing = overlay(new THREE.RingGeometry(0.5, 0.62, 40), DANGER_RED);
     const signs = {
-      slip_left: signCard("STEP LEFT", "#ffffff", "left", 1.15),
-      slip_right: signCard("STEP RIGHT", "#ffffff", "right", 1.15),
-      duck: signCard("DUCK", "#ffffff", "down", 1.15),
+      slip_left: signCard("", "#ffffff", "left", 1.15),
+      slip_right: signCard("", "#ffffff", "right", 1.15),
+      duck: signCard("", "#ffffff", "down", 1.15),
     };
-    // After a dodge the rival is off balance: a gold ring round its feet drains as the chance runs out.
-    const openSign = signCard("HIT NOW  x2", OPEN_GOLD, null, 1.7);
-    const openRing = overlay(new THREE.RingGeometry(0.62, 0.8, 48), OPEN_GOLD);
-    openRing.rotation.x = -Math.PI / 2;
-    openRing.material.depthTest = true;
-    scene.add(danger, closing, openSign, openRing, ...Object.values(signs));
+    // After a dodge the rival is off balance: a gold arrow points from the player at it, and fades as
+    // the chance runs out. The gloves glow gold too.
+    const openSign = signCard("", OPEN_GOLD, "up", 1.5);
+    scene.add(danger, openSign, ...Object.values(signs));
 
     // The punch that landed and what it took, rising off the rival.
     const cards = new Map();
@@ -481,7 +479,6 @@ export const bout = {
 
         for (const sign of Object.values(signs)) sign.visible = false;
         danger.material.opacity = 0;
-        closing.material.opacity = 0;
         if (attack) {
           const progress = attack.ms / attack.windupMs;
           // Where the head was as the shot started, so stepping or ducking out of the patch reads.
@@ -499,10 +496,6 @@ export const bout = {
           danger.scale.set(high ? 1.15 : 0.5, high ? 0.3 : 0.8, 1);
           danger.material.opacity = (0.18 + 0.32 * progress) * pulse;
           danger.lookAt(camera.position);
-          closing.position.copy(danger.position);
-          closing.scale.setScalar(Math.max(0.35, 1.9 - progress * 1.5));
-          closing.material.opacity = 0.9;
-          closing.lookAt(camera.position);
 
           const sign = signs[high ? "duck" : SAFE[attack.side] > 0 ? "slip_right" : "slip_left"];
           sign.visible = true;
@@ -512,15 +505,13 @@ export const bout = {
         }
 
         openSign.visible = open;
-        openRing.material.opacity = 0;
         if (open) {
           const left = state.openMs / state.openMaxMs;
           const beat = 1 + Math.sin(elapsed * 14) * 0.06;
-          openSign.position.set(rivalX, 2.4, RIVAL_Z);
-          openSign.scale.set(1.7 * beat, 0.85 * beat, 1);
-          openRing.position.set(rivalX, 0.04, RIVAL_Z);
-          openRing.scale.setScalar(0.45 + 0.55 * left);
-          openRing.material.opacity = 0.95;
+          // Between the player and the rival, pointing at it: the way to throw.
+          openSign.position.set((HERO_X + rivalX) / 2, 1.35, (1 + RIVAL_Z) / 2);
+          openSign.scale.set(1.5 * beat, 0.75 * beat, 1);
+          openSign.material.opacity = 0.35 + 0.65 * left;
         }
 
         for (let index = floating.length - 1; index >= 0; index -= 1) {
