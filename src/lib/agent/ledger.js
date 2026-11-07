@@ -8,6 +8,7 @@
 // ponytail: two instances racing on one round can both store it, seconds apart. Harmless: same
 // round, same score. A compare-and-set store would close it.
 import { readRound, writeDecision, writeSpent } from "../arkiv/ledger.js";
+import { arkivCause } from "../arkiv/store.js";
 
 const issued = (globalThis.__takshRivalLedger ??= new Map()); // requestId -> decision
 const rounds = (globalThis.__takshRivalRounds ??= new Map()); // roundId -> "pending" | "spent"
@@ -35,13 +36,24 @@ export function recordDecision(requestId, decision) {
 // already stored. It starts when its first decision was asked for, on the server's clock.
 export async function loadRound(roundId) {
   const local = [...issued].filter(([, decision]) => decision.roundId === roundId).map(([requestId, decision]) => ({ requestId, ...decision }));
-  const remote = onArkiv() ? await readRound(roundId) : { records: [], spent: false, full: false };
+  const none = { records: [], spent: false, full: false };
+  // An Arkiv outage or 429 leaves this instance's own memory, so a round served here still stores.
+  let reason = onArkiv() ? null : "Arkiv writes are off on this server";
+  const remote = onArkiv()
+    ? await readRound(roundId).catch((error) => {
+        reason = arkivCause(error);
+        console.error("rival ledger read failed:", reason);
+        return none;
+      })
+    : none;
   const records = [...new Map([...remote.records, ...local].map((record) => [record.requestId, record])).values()].sort((a, b) => a.issuedAt - b.issuedAt);
   return {
     roundId,
     records,
     spent: remote.spent || rounds.get(roundId) === "spent",
     full: remote.full,
+    // What the player is shown: how many decisions came back from Arkiv, one to open, or why none did.
+    arkiv: { read: remote.records.length, key: remote.records.find((record) => record.key)?.key ?? null, reason },
     startedAt: records.length ? Math.min(...records.map((record) => record.askedAt)) : null,
   };
 }

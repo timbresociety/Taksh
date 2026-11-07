@@ -4,7 +4,7 @@ Taksh writes five kinds of entity. Scores, games and daily challenges are define
 
 Every read also filters on `$owner`, the server's writer wallet. Arkiv is public and anyone can write an entity tagged `taksh.scores.v1`, so the tag alone can't be trusted.
 
-An index costs extra on every write, so a column is indexed only if some query filters on it. Sorting doesn't need an index.
+An index costs gas on every write, so a column is indexed only if some query filters on it. Dropping the unused `style` index on games took a 569-byte publish from 529,291 gas to 513,942. Sorting doesn't need an index. Dropping an index doesn't change the schema name: entities written with it still read.
 
 ## `taksh.scores.v1`: one finished round
 
@@ -22,7 +22,7 @@ An index costs extra on every write, so a column is indexed only if some query f
 | `durationMs` | `i32` | no | Length of the round in game time. Shown only. |
 | `daily` | `str`, optional | yes | The UTC date (`YYYY-MM-DD`) of a daily-challenge round, unset on every other round. Today's board is `eq("daily", date)`, and so is the rank after a daily post. Optional, so scores from before the daily challenge still read under `.v1`, and other rounds don't pay for an empty indexed value. |
 
-Lifetime: 30 days (`ExpirationTime.fromDays(30)`). The board is a rolling monthly board, and Arkiv drops old scores by itself, so no cleanup job is needed.
+Lifetime: 30 days (`ExpirationTime.fromDays(SCORE_DAYS)`). The board is a rolling monthly board, and Arkiv drops old scores by itself, so no cleanup job is needed. The board selects `$expiresAt` and shows each row's days left (`daysLeft` in `schema.js`: blocks left from the query's own `blockNumber`, times 2 s).
 
 The board query, as `toString()` prints it:
 
@@ -45,18 +45,19 @@ The server sets `daily` only on a score whose spec hashes to that day's challeng
 | Column | Type | Indexed | Why |
 | --- | --- | --- | --- |
 | `template` | `str` | yes | The gallery filters by template. |
-| `world` | `str` | yes | Kept indexed so a gallery can filter by world. No page uses it yet. |
-| `style` | `str` | yes | Same as `world`. |
+| `world` | `str` | yes | The gallery's world row filters on it, as `/games?world=moon`, alone or with a template. |
+| `style` | `str` | no | Shown on the card. Indexed until 2026-11-06, when we found no query used it. |
 | `specHash` | `str` | yes | Publishing the same spec twice finds the first entity with `eq("specHash", …)` and returns it instead of paying for a copy. |
 | `title` | `str` | no | The game's title, cut to 128 bytes on a character boundary. |
 | `author` | `str` | no | Display name of whoever published it. |
 | `source` | `str` | no | Where the spec came from: `template`, `claude` or `fixture`. |
 | `publishedAt` | `u64` | no | Unix seconds. The gallery sorts on it, newest first, because `$createdAt` can't be sorted on. |
-| `spec` | `bytes` | no (can't be) | The whole validated game spec as sorted JSON. A spec is about 1 to 2 KB, well over the 128-byte `str` limit and well under the 128 KiB `bytes` limit. |
+| `spec` | `bytes` | no (can't be) | The whole validated game spec as sorted JSON. The newest is 569 bytes, and publish refuses anything over 4096. That's over the 128-byte `str` limit and well under the 128 KiB `bytes` limit. |
+| `swarmRef` | `str`, optional | no | The game's Swarm collection (`cover.webp`, `spec.json`, `index.html`). The gallery shows the cover from it. Unset on games published before Swarm, or when the upload failed. |
 
-Lifetime: the maximum, about 182 days (`ExpirationTime.max()`). A shared link should keep working for months. It can be extended later with `extendEntity`.
+Lifetime: the maximum, 7,884,000 blocks or about 182.5 days (`ExpirationTime.max()`). A shared link should keep working for months. Each gallery card shows its days left. Nothing extends a game yet, so one still played on day 183 stops loading. `extendEntity` on open would fix that, at a write per play.
 
-The gallery selects every column except `spec`, so a page of thirty games doesn't download thirty specs. Opening a game reads one entity with `getEntity(key, Games)`, checks `$owner`, decodes the bytes and validates the spec again before it plays.
+The gallery selects every column except `spec`, so a page of thirty games doesn't download thirty specs: 1,903 bytes for the 6 live games on 2026-11-06, about 320 a game. A game's cover isn't here either. It's on Swarm, under `swarmRef` (`why-arkiv.md`). Opening a game reads one entity with `getEntity(key, Games)`, checks `$owner`, decodes the bytes and validates the spec again before it plays.
 
 ## `taksh.daily.v1`: one day's challenge
 
@@ -78,7 +79,7 @@ Nothing is written without 0G. With no 0G, no writer key or no Arkiv, the server
 | Column | Type | Indexed | Why |
 | --- | --- | --- | --- |
 | `roundId` | `str` | yes | The upload check reads a whole round with `eq("roundId", …)`. A UUID the server picks on the round's first decision. |
-| `requestId` | `str` | yes | 0G's request ID for the call. Kept indexed so one decision can be looked up. |
+| `requestId` | `str` | no | 0G's request ID for the call, read back with the round. Indexed until 2026-11-06, when we found no query used it. |
 | `askedAt` | `u64` | no | Unix ms when the server asked 0G. The earliest one is when the round started, on the server's clock. |
 | `issuedAt` | `u64` | no | Unix ms when the plan left the server. The real-time and missing-plan checks use it. |
 | `record` | `bytes` | no (can't be) | The plan, the model's read, the observation it saw and the 0G trace, as JSON. |

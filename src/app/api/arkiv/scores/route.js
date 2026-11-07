@@ -30,7 +30,12 @@ export const POST = arkivRoute(async (request) => {
   let daily = null;
   if (body.daily != null) {
     if (!openDates().includes(body.daily)) throw badRequest("That daily challenge is closed.");
-    if ((await dailyChallenge(body.daily)).hash !== hash) throw badRequest("That isn't the game for this daily challenge, so the score can't go on its board.");
+    const challenge = await dailyChallenge(body.daily);
+    if (challenge.hash !== hash) {
+      // With Arkiv unreachable the server only has the starter game, so it can't tell. Say why.
+      if (challenge.source !== "0g") throw Object.assign(new Error(`${challenge.reason} Your score can't be checked against the day's game, so it can't go on its board yet.`), { status: 503, expose: true });
+      throw badRequest("That isn't the game for this daily challenge, so the score can't go on its board.");
+    }
     daily = body.daily;
   }
   return { available: true, hash, ...(await postScore({ spec: checked.spec, hash, result: body.result, mode: body.mode, player: body.player, daily })) };

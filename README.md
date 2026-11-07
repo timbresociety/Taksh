@@ -1,6 +1,8 @@
 # Taksh
 
-Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. Games are generated on 0G Private Computer, inside a TEE. A published game is an ENSv2 name on Sepolia, and its records are the game.
+Type a game idea, or pick one of twenty-one games, then play it with your body through a webcam. Every game is a template, so its world, characters and art style can all be changed. Games are generated on 0G Private Computer, inside a TEE. A published game is an ENSv2 name on Sepolia, and its records are the game. Scores, shared games and each day's challenge are stored on Arkiv (see [Arkiv](#arkiv)).
+
+Play it at https://taksh.vercel.app.
 
 ## Run it
 
@@ -11,7 +13,7 @@ cp .env.example .env.local   # add OG_API_KEY (or ANTHROPIC_API_KEY) for real ge
 npm run build && npm start   # or: npm run dev
 ```
 
-Open http://localhost:3000. The input lab is at `/debug`, and the hand cursor test at `/debug/cursor`. `/debug/rig` shows the characters, and `/debug/stage?template=hop&world=moon&style=toon` plays any combination with its bot, and `&tune=waves:1,boss:1` sets tuning, so a boss can be looked at straight away.
+Open http://localhost:3000. The input lab is at `/debug`, and the hand cursor test at `/debug/cursor`. `/debug/rig` shows the characters, and `/debug/stage?template=hop&world=moon&style=toon` plays any combination with its bot, and `&tune=waves:1,boss:1` sets tuning, so a boss can be looked at straight away. `/debug/record` records a 60-second webcam clip of the moves, with cues on screen, to stand in for a camera in `scripts/camera-play.mjs` (convert it with `ffmpeg -i taksh-moves.mp4 -q:v 4 -f mjpeg clip.mjpeg`).
 
 Without a key the app runs on fixtures and says so on screen. Fixtures match keywords against the game templates, so they exercise the runtime and UI but show nothing about how well a model reads an idea.
 
@@ -78,6 +80,23 @@ To add a world, follow [docs/new-world.md](docs/new-world.md).
 A spec is `template + skin + tuning`. The skin picks one of nine worlds (downtown, forest, station, moon, village, sunset, mumbai, marine_drive, diwali), one of six art styles (bright, toon, neon, pixel, comic, clay), and the look of the hero and rival. Tuning is a set of bounded numbers per template. Levels come from a seed, so a model only ever chooses from these lists and can't produce something unplayable.
 
 The camera only works on `http://localhost` or an HTTPS address. The `Network` address Next.js prints is plain HTTP, so browsers block the camera there. Another device needs an HTTPS address.
+
+### Using an iPhone as the camera
+
+A laptop camera often sees only your head and shoulders. An iPhone across the room can see all of you. On a Mac, macOS Continuity Camera makes the phone an ordinary camera:
+
+1. Sign in to the same Apple ID on both, with Wi-Fi and Bluetooth on.
+2. Stand the phone up in landscape about two metres away, rear camera facing you, and lock it. macOS only shows the phone to browsers while it is in this pose, so a phone in your hand or flat on the desk won't appear.
+3. Open Taksh in Safari. On the calibrate screen, choose the iPhone under **Camera**. The list updates by itself when the phone appears. The choice is saved in this browser, and if that camera is gone next time, Taksh opens the default one.
+
+| Browser | iPhone camera |
+|---|---|
+| Safari on macOS 13+ | Yes, through Continuity Camera. Tested |
+| Chrome on macOS | Not reliably. On the build Mac (macOS 26.5, Chrome 156) Chrome listed only the FaceTime camera while macOS and Safari had the iPhone. Use Safari |
+| Any browser on Windows or Linux | No. Continuity Camera is Mac only |
+| Safari on the iPhone itself | Not supported yet. The screen is too small to read from two metres back |
+
+Players who never open the menu get the same front camera at 1280x720 and 30 fps as before.
 
 ## Model and prompts
 
@@ -257,13 +276,15 @@ Live on Sepolia (2026-11-06), tested on an anvil fork first:
 
 ## Arkiv
 
-Scores, shared games and the daily challenge are stored on Arkiv's Rabdi testnet (chain ID 7794095). When a round ends, the result screen reads the leaderboard live from Arkiv. You can narrow it to the same world and style, to this exact game (by spec hash), or to camera play only. Post your score and it becomes an entity, and the board reads again with your row in bold and your rank. "Publish this game" stores the whole spec as an entity. `/games` lists published games straight from Arkiv, and `/games/<entity key>` opens one to play.
+Scores, shared games and the daily challenge are stored on Arkiv's Rabdi testnet (chain ID 7794095). When a round ends, the result screen reads the leaderboard live from Arkiv. You can narrow it to the same world and style, to this exact game (by spec hash), or to camera play only. Post your score and it becomes an entity, and the board reads again with your row in bold and your rank. "Publish this game" stores the whole spec as an entity. `/games` lists published games straight from Arkiv, filtered by game and by world, and `/games/<entity key>` opens one to play. Each score row and gallery card shows how many days Arkiv keeps it: 30 for a score, about 182 for a game.
 
 Each UTC day has one challenge, a `taksh.daily.v1` entity holding the spec 0G made from the day's theme. The home card reads it and links to `/daily` to play. A daily round's score carries the date in an indexed `daily` column, so its result screen shows that day's board and your rank on it. `/daily/<date>` shows any day's board. Two server instances that race on the first request both serve the earliest entity.
 
-Writes go through `/api/arkiv/scores` and `/api/arkiv/games`, signed on the server with `ARKIV_PRIVATE_KEY`. The key never reaches the browser. Reads keep only entities that wallet owns, because anyone can write entities with our schema tag. With no key the board still reads, and with the RPC down the game still plays and the board says it is unavailable. Details are in `arkiv/`, starting with `arkiv/schema.md`.
+Writes go through `/api/arkiv/scores` and `/api/arkiv/games`, signed on the server with `ARKIV_PRIVATE_KEY`. The key never reaches the browser. Reads keep only entities that wallet owns, because anyone can write entities with our schema tag. With no key the board still reads, and with the RPC down the game still plays and each page says why Arkiv is unavailable. Details are in `arkiv/`, starting with `arkiv/schema.md`.
 
-Writer wallet: `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30` (testnet dev wallet, fund it at https://hub.arkiv.network/faucet).
+Set `ARKIV_ACCESS_KEY` (free at https://hub.arkiv.network/access-keys) for anything past local testing. Without it the server uses the public endpoint, whose query budget runs out after about 1,000 queries per client address and then answers `429 ANON_COST_LIMITED` for about ten minutes. The app says so on every page when that happens. `npm run arkiv:probe` prints live counts, query times and the rate-limit headers.
+
+Writer wallet: [`0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30`](https://rabdi.explorer.arkiv.network/address/0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30) (testnet dev wallet, fund it at https://hub.arkiv.network/faucet). Every Taksh entity is owned by it.
 
 A query to run against testnet, the top ten scores across every game:
 
@@ -279,16 +300,29 @@ curl -s https://rpc.rabdi.db-chain.testnet.arkiv.network -H "content-type: appli
   -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"arkiv_query\",\"params\":[\"arkiv.schema = str('taksh.scores.v1') AND daily = str('$(date -u +%F)') AND \$owner = addr(0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30) ORDER BY score:i32 DESC\",{\"select\":{\"key\":true,\"attributes\":true,\"count\":true},\"limit\":\"0xa\"}]}"
 ```
 
+On 2026-11-06 at block 310695 the first query returned 8 scores, best first (flattened here):
+
+```text
+0xb67f88ad2f…  Firstmate QA       5654  chop  mumbai    keyboard  daily 2026-11-06
+0xa101e1a7b4…  ketan              4210  hop   diwali    keyboard
+0x2f6b5c9af1…  ketan              3000  bout  downtown  keyboard
+…
+```
+
+If either answers `{"error":"ANON_COST_LIMITED"}`, the public endpoint's budget for your network is spent. Wait out the `Retry-After` (about ten minutes), put your access key in the path (`https://rpc.rabdi.db-chain.testnet.arkiv.network/<key>`), or send the same body to the Rabdi indexer, which answered `arkiv_query` with no budget on 2026-11-06: `https://indexer.rabdi.db-chain.testnet.arkiv.network/api/entity-explorer/rpc`.
+
 The same board through the app: `curl 'http://localhost:3000/api/arkiv/scores?template=poses'`, or `?daily=2026-11-07` for a day. The response includes the exact query text sent to the node.
 
 Live on Rabdi testnet (2026-11-06), written by `0x7b78f1303a0c4916B5c9F8A858CbC04F8f808E30`:
 
 | What | Entity key | Tx |
 | --- | --- | --- |
-| Score, Sky Hop, 4210 | `0xa101e1a7b4a827df18d1fff911bc75d240c836080b490decd7ab78a9b87282a8` | [`0xccc8fc34…1b507`](https://rabdi.explorer.arkiv.network/tx/0xccc8fc34c2d2b937d1fdaf5e10f61c8ffe59f2922b12db4eba0bd4fd5251b507) |
-| Published game, Chop Shop | `0xf596b5687d9e58f37928e08ed49096cec6f1594559720ec591b842b31c66485a` | [`0x2d4baa27…de8c4`](https://rabdi.explorer.arkiv.network/tx/0x2d4baa2784ec63feb0e374cc9f5fef560dc294a8d53d22e40348c9f6aa1de8c4) |
+| Score, Sky Hop, 4210 | [`0xa101e1a7…282a8`](https://rabdi.explorer.arkiv.network/entity/0xa101e1a7b4a827df18d1fff911bc75d240c836080b490decd7ab78a9b87282a8) | [`0xccc8fc34…1b507`](https://rabdi.explorer.arkiv.network/tx/0xccc8fc34c2d2b937d1fdaf5e10f61c8ffe59f2922b12db4eba0bd4fd5251b507) |
+| Published game, Chop Shop | [`0xf596b568…6485a`](https://rabdi.explorer.arkiv.network/entity/0xf596b5687d9e58f37928e08ed49096cec6f1594559720ec591b842b31c66485a) | [`0x2d4baa27…de8c4`](https://rabdi.explorer.arkiv.network/tx/0x2d4baa2784ec63feb0e374cc9f5fef560dc294a8d53d22e40348c9f6aa1de8c4) |
+| Daily challenge, 2026-11-06, Mango Slice Fest (0G request `df9f68a1-05f9-4b82-9569-509c1e178412`) | [`0x7ed5ac24…53f3c`](https://rabdi.explorer.arkiv.network/entity/0x7ed5ac2484f8cceb77bb86d5dd8a50ed27128a33dd2962ddbf96136f59653f3c) | |
+| Score on that day's board, 1234 | [`0x992e1076…b113b`](https://rabdi.explorer.arkiv.network/entity/0x992e107686ba05339aa39e2b9dd8cfa8dc50a4216b44b97979c8135b052b113b) | [`0x94845855…a4f2e`](https://rabdi.explorer.arkiv.network/tx/0x94845855a48a2a04636bf757ca94881b7f4207358dcfb51c3a506762e1ca4f2e) |
 
-Both were read back through `GET /api/arkiv/scores?template=hop` and `GET /api/arkiv/games`.
+All were read back through the app: `GET /api/arkiv/scores?template=hop`, `GET /api/arkiv/games`, `GET /api/daily` and `GET /api/arkiv/scores?daily=2026-11-06`.
 
 ## Licence and AI use
 

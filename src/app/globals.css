@@ -398,6 +398,29 @@ kbd {
   align-self: flex-start;
 }
 
+.camera-picker label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.camera-picker select {
+  max-width: 100%;
+  padding: 0.4em 0.6em;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--court-deep);
+  color: var(--line);
+  font: inherit;
+  font-weight: 400;
+}
+
+.camera-picker .calibrate__hint {
+  margin: 8px 0 0;
+}
+
 .meter {
   height: 14px;
   border: 2px solid var(--line);

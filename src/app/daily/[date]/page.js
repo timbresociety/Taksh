@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { topScores } from "@/lib/arkiv/store";
+import { arkivMessage, topScores } from "@/lib/arkiv/store";
 import { dayKey, isDate } from "@/lib/daily/daily";
 import { dailyChallenge } from "@/lib/daily/server";
 import styles from "@/components/DailyCard.module.css";
@@ -13,10 +13,12 @@ export default async function Page({ params }) {
   const valid = isDate(date) && date <= dayKey();
   let board = null;
   let challenge = null;
+  let failure = null;
   if (valid) {
     [board, challenge] = await Promise.all([
       topScores({ daily: date }).catch((error) => {
         console.error("Arkiv daily board read failed:", error.shortMessage ?? error.message);
+        failure = arkivMessage(error, "this board is unavailable right now");
         return null;
       }),
       dailyChallenge(date),
@@ -35,7 +37,7 @@ export default async function Page({ params }) {
             {challenge.source === "0g" ? <>Made on 0G, request <code>{challenge.requestId}</code>.</> : challenge.reason}
           </p>
         )}
-        {valid && !board && <p className="error" role="alert">Arkiv did not respond, so this board is unavailable right now.</p>}
+        {failure && <p className="error" role="alert">{failure}</p>}
         {board?.rows.length === 0 && <p>No scores on this day&apos;s challenge.</p>}
         {board?.rows.length > 0 && (
           <table className="controls" data-testid="daily-board">
@@ -45,6 +47,7 @@ export default async function Page({ params }) {
                 <th scope="col">Player</th>
                 <th scope="col">Score</th>
                 <th scope="col">Played with</th>
+                <th scope="col">Expires in</th>
               </tr>
             </thead>
             <tbody>
@@ -54,6 +57,7 @@ export default async function Page({ params }) {
                   <td>{row.player}</td>
                   <td>{row.score}</td>
                   <td>{row.mode}</td>
+                  <td>{row.daysLeft} d</td>
                 </tr>
               ))}
             </tbody>
