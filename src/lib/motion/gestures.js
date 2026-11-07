@@ -15,7 +15,7 @@ export const THRESHOLDS = {
   burpee: { enter: 0.95, exit: 0.35 },
   squat: { enter: 0.3, exit: 0.16 }, // real squats read 0.35 to 0.48, and landing from a jump up to 0.24
   lean: { enter: 0.3, exit: 0.14 },
-  punch: { enter: 0.55, exit: 0.3 }, // the fist out from guard, or the arm pointing at the camera; see measure
+  punch: { enter: 0.55, exit: 0.3 }, // the fist out from guard, the elbow driving up behind it, or depth; see measure
   hook: { enter: 0.3, exit: 0.08 }, // wrist past the chest centre at shoulder height
   uppercut: { enter: 3, exit: 1 }, // torso lengths per second, upward
   swing: { enter: 2.8, exit: 1 }, // torso lengths per second, sideways
@@ -80,6 +80,12 @@ const TWIST_NARROWED = 0.15; // shoulders look this much narrower when turned
 const WORLD_TORSO_M = 0.5; // MediaPipe sizes its metric skeleton to a typical adult
 const PUNCH_MAX_RISE = 0.35; // torso lengths above the shoulder; higher is arms going overhead
 const PUNCH_MAX_DROP = 3; // torso lengths per second; a hand swinging past the shoulder this fast is no punch
+const DRIVE_MS = 350; // a fist driven at the camera brings its elbow up from guard within this long
+const DRIVE_LIFT = 0.35; // torso lengths of quick elbow lift that read as a full punch
+const LOADED_FOREARM = 0.25; // torso lengths the fist sits above its elbow in a guard
+const ELBOW_LEVEL = 0.25; // torso lengths below the shoulder; an elbow this high is behind a straight fist
+const ELBOW_OUT = 0.35; // torso lengths out from the shoulder; an elbow further out is a hook
+const SHORT_FOREARM = 0.4; // torso lengths; a forearm pointing at the camera looks this short or shorter
 
 const SHOULDER_POINTS = [LM.leftShoulder, LM.rightShoulder];
 const HIP_POINTS = [LM.leftHip, LM.rightHip];
@@ -311,6 +317,8 @@ export class GestureEngine {
     this.beats = { legs: [], flap: [], arms: [] };
     this.guardedAt = { left: -Infinity, right: -Infinity };
     this.restDepth = { left: null, right: null, t: null };
+    this.loadedAt = { left: -Infinity, right: -Infinity };
+    this.elbowTrail = { left: [], right: [] };
     this.squatAt = -Infinity;
     this.lastSlash = null;
     this.hop = { up: false, low: 0, high: 0 };
@@ -683,6 +691,22 @@ export class GestureEngine {
     // A punch goes forward. Arms swinging through shoulder height read as depth, and swing fast up or down.
     const straight = (side) => Math.abs(velocity(side, "y")) < PUNCH_MAX_DROP;
     const handAt = (wrist) => (wrist.x - shoulder.x) / u; // across the body from its middle
+    // A fist driven at the camera barely moves in the image, but its elbow does: it comes up fast from
+    // under the fist to shoulder height, and the forearm shrinks to a point. Depth is too noisy to trust
+    // alone, so this is the punch's main witness. It has to start from a guard, forearm standing up by the
+    // chin, or an arm raised straight out in front would count; and the lift has to be quick, or easing
+    // the elbows up would.
+    const drive = (side, from, elbow, wrist) => {
+      const level = (elbow.y - from.y) / u;
+      const trail = this.elbowTrail[side];
+      trail.push({ t: this.frameT, level });
+      while (trail[0].t < this.frameT - DRIVE_MS) trail.shift();
+      if (distance(wrist, nose) < GUARD_ZONE * u && elbow.y - wrist.y >= LOADED_FOREARM * u) this.loadedAt[side] = this.frameT;
+      const armed = this.frameT - this.loadedAt[side] <= DRIVE_MS;
+      const behind = level < ELBOW_LEVEL && Math.abs(elbow.x - from.x) < ELBOW_OUT * u && distance(elbow, wrist) < SHORT_FOREARM * u;
+      const fistLevel = nearShoulderHeight(wrist) && from.y - wrist.y <= PUNCH_MAX_RISE * u && -velocity(side, "y") < BOTH_HANDS_RISING;
+      return armed && behind && fistLevel ? (Math.max(...trail.map((step) => step.level)) - level) / DRIVE_LIFT : 0;
+    };
     const handSpeed = seconds && {
       left: { x: velocity("left", "x"), y: velocity("left", "y"), seconds, at: handAt(leftWrist) },
       right: { x: velocity("right", "x"), y: velocity("right", "y"), seconds, at: handAt(rightWrist) },
@@ -716,8 +740,8 @@ export class GestureEngine {
 
     // Both arms reading forward at once is arms going up together, not a punch. In a real session four
     // in five depth readings were this.
-    const jabLeft = jab("left", leftShoulder, leftWrist, -1);
-    const jabRight = jab("right", rightShoulder, rightWrist, 1);
+    const jabLeft = Math.max(jab("left", leftShoulder, leftWrist, -1), drive("left", leftShoulder, points[LM.leftElbow], leftWrist));
+    const jabRight = Math.max(jab("right", rightShoulder, rightWrist, 1), drive("right", rightShoulder, points[LM.rightElbow], rightWrist));
     const forwardLeft = straight("left") ? Math.max(forward("left", leftShoulder, leftWrist), jabLeft) : 0;
     const forwardRight = straight("right") ? Math.max(forward("right", rightShoulder, rightWrist), jabRight) : 0;
     // One fist clearly out while the other stays in is a punch, whatever the depth of the other says.

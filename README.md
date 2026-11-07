@@ -129,6 +129,8 @@ The rival's second read was "Never dodges left; leads with same head-side tell."
 
 **The exercises the new games depend on are only proven on synthetic bodies:** squat, lean, punch, hook, uppercut, swing, overhead reach, flap, arm pump, guard and all ten poses. Run the drill below before trusting them. Punches depend on MediaPipe's depth estimate, which is the weakest of these.
 
+**Straight punches go at the screen.** The old rule was to never ask for a punch straight at the camera, because the camera reads depth worst, and to send punches out slightly to the side instead. The owner overrode it on 2026-11-07: a jab and a cross go toward the screen, as in real boxing, and Pad Rounds holds their pads in front of the player. Depth is still hard to read, so a punch also counts from what the image shows: from a guard, the elbow comes up fast behind the fist to shoulder height and the forearm looks short. A fist going out to the side from guard still counts too.
+
 | Movement | Evidence | Result |
 | --- | --- | --- |
 | Burpee | Real footage, two people | 7 of 7 counted once, none lost tracking |
@@ -232,7 +234,7 @@ Live on Sepolia (2026-11-06), tested on an anvil fork first:
 
 - `src/lib/spec`: the versioned `GameSpec` contract, its validator, revision comparison and starter specs.
 - `src/lib/templates`: the games as pure logic with no drawing or camera, each with a bot, so they can all be played in a test.
-- `src/lib/motion`: pose feed, calibration and gesture recognition. Thresholds scale to the player's torso length, or shoulder width when the hips are out of frame, and follow them as they drift closer or further. A punch reads MediaPipe's metric depth and the arm looking short in the image. A game listens only for the moves it binds, and arm games calibrate without seeing the legs.
+- `src/lib/motion`: pose feed, calibration and gesture recognition. Thresholds scale to the player's torso length, or shoulder width when the hips are out of frame, and follow them as they drift closer or further. A punch reads the fist going out from guard, the elbow driving up fast behind a fist thrown at the camera, and MediaPipe's metric depth. A game listens only for the moves it binds, and arm games calibrate without seeing the legs.
 - `src/lib/pipeline`: clarify, generate and revise, with validation and one repair attempt. Credentials stay on the server.
 - `src/lib/stage`: the three.js renderer. `worlds.js` and `styles.js` are data plus one post-processing pass, `views/` draws each template, and `character.js` builds a rigged human whose 65-bone skeleton plays every clip in the animation library.
 

@@ -503,16 +503,21 @@ describe("tuning changes what a player experiences", () => {
     assert.ok(simulate(pads, specOf(pads, { durationS: 60 })).score > simulate(pads, specOf(pads, { durationS: 20 })).score);
   });
 
-  it("a jab pad waits on the left and a cross pad on the right", () => {
+  it("jab and cross pads wait in front, the jab's toward the lead hand and the cross's on the middle", () => {
     const pads = templateInfo("pads");
     const state = pads.create(specOf(pads));
-    const seen = new Set();
+    const sides = { jab: new Set(), cross: new Set(), hook: new Set(), uppercut: new Set() };
     for (let tick = 0; tick < 3000 && state.status === "playing"; tick += 1) {
       pads.step(state, 16);
-      if (state.pad) seen.add(`${state.pad.punch} ${state.pad.side}`);
+      if (state.pad) sides[state.pad.punch].add(state.pad.side);
     }
-    assert.ok(seen.has("jab -1") && seen.has("cross 1"));
-    assert.ok(!seen.has("jab 1") && !seen.has("cross -1"));
+    const [jab] = sides.jab;
+    const [cross] = sides.cross;
+    assert.deepEqual([sides.jab.size, sides.cross.size], [1, 1]);
+    assert.ok(jab < 0 && jab > -0.5, "a jab pad is in front, a little to the left");
+    assert.ok(Math.abs(cross) < 0.15 && cross > jab, "a cross pad is on the middle, right of the jab's");
+    assert.deepEqual([...sides.hook].sort(), [-1, 1]);
+    assert.deepEqual([...sides.uppercut].sort(), [-1, 1]);
   });
 });
 

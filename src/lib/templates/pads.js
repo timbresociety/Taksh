@@ -2,8 +2,10 @@
 import { createRandom } from "./shared.js";
 
 const PUNCHES = ["jab", "cross", "hook", "uppercut"];
-// A straight punch goes out slightly to its own side, where a front camera can see it, so its pad waits there.
-const SIDES = { jab: [-1], cross: [1], hook: [-1, 1], uppercut: [-1, 1] };
+// Where each pad waits, in shares of a pad's reach either side of the player: -1 is out to their left.
+// Straight punches go at the screen, so their pads wait in front: the jab's a little toward the lead
+// (left) hand, the cross's on the middle, where the rear fist crosses to. Hooks and uppercuts go to a side.
+const SIDES = { jab: [-0.3], cross: [0.05], hook: [-1, 1], uppercut: [-1, 1] };
 
 function spawn(state) {
   const punch = state.rng.pick(PUNCHES);

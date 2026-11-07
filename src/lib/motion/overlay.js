@@ -62,7 +62,7 @@ export function drawAim(canvas, cursors, dot) {
 export function drawGhost(canvas, ghost, aspect, calibration) {
   if (!ghost?.points.length) return;
   const { shoulderX, shoulderY, torso } = calibration;
-  const placed = ghost.points.map((point) => point && { x: shoulderX + point.x * torso, y: shoulderY + point.y * torso });
+  const placed = ghost.points.map((point) => point && { x: shoulderX + point.x * torso, y: shoulderY + point.y * torso, scale: point.scale ?? 1 });
   const at = projection(canvas, aspect);
   const ctx = canvas.getContext("2d");
   const width = Math.max(2, canvas.height * 0.009);
@@ -73,11 +73,22 @@ export function drawGhost(canvas, ghost, aspect, calibration) {
     for (const [a, b] of SKELETON) {
       if (!placed[a] || !placed[b]) continue;
       const moving = ghost.lit.includes(a) && ghost.lit.includes(b);
-      ctx.lineWidth = (moving ? width * 2 : width) + extra;
+      ctx.lineWidth = (moving ? width * 2 * Math.max(placed[a].scale, placed[b].scale) : width) + extra;
       ctx.beginPath();
       ctx.moveTo(...at(placed[a]));
       ctx.lineTo(...at(placed[b]));
       ctx.stroke();
+    }
+    // A lit fist ahead of the body is drawn as a ball that grows as it comes at the camera.
+    ctx.fillStyle = color;
+    for (const index of [LM.leftWrist, LM.rightWrist]) {
+      const fist = placed[index];
+      if (!fist || !ghost.lit.includes(index) || fist.scale <= 1) continue;
+      ctx.globalAlpha = Math.min(1, (fist.scale - 1) / 0.3);
+      ctx.beginPath();
+      ctx.arc(...at(fist), width * 2.2 * fist.scale + extra / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
     const head = placed[LM.nose];
     if (!head) continue;
