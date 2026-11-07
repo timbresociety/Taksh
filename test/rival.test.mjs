@@ -194,6 +194,13 @@ describe("0G rival episodes", async () => {
     // Seen live on 2026-11-07: the first decision timed out, the next one opened the round 10 s into the game.
     const late = playRound({ lateStartMs: 10000 });
     await assert.doesNotReject(late.check(late.endsAt));
+    // As the browser sends it: the timed-out ask is a safe stop, and 0G's late answer to it sits in
+    // a round of its own, since the browser never learned that round's ID.
+    const timedOut = playRound({ lateStartMs: 10500 });
+    recordDecision(`req-${next++}`, { roundId: roundIdFor(null), template: "bout", askedAt: 1_000_000 - 10500, issuedAt: 1_000_000 - 1000, plan: ["left"], read: "r", observation: {}, trace: {} });
+    timedOut.raw.decisions.unshift({ t: 0, safeStop: "0G took too long" });
+    const stored = await timedOut.check(timedOut.endsAt);
+    assert.equal(stored.safeStops, 1);
     const fast = playRound({ lateStartMs: 10000, speed: 0.2 });
     await assert.rejects(fast.check(fast.endsAt), /faster than real time/);
   });
