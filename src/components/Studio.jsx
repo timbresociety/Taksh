@@ -6,6 +6,7 @@ import { starterSpec } from "@/lib/spec/starter";
 import { templateInfo } from "@/lib/templates";
 import { useOgAccount } from "@/lib/og/account";
 import { costOf, ogHeaders, signInAvailable } from "@/lib/og/session";
+import { loadStudio, memoryKey, resumeStep, saveStudio, searchForStep, stepFromSearch } from "@/lib/game/studio-memory";
 import OgAccount from "./OgAccount";
 import IdeaStage from "./IdeaStage";
 import BriefStage from "./BriefStage";
@@ -21,6 +22,15 @@ async function post(path, body) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error);
   return data;
+}
+
+// The tab's sessionStorage, or nothing where the browser blocks it.
+function tabStorage() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
 }
 
 // initialGame opens straight on the brief, as a shared game from Arkiv or ENS does.
@@ -39,9 +49,13 @@ export default function Studio({ initialGame = null }) {
   const [revision, setRevision] = useState(null);
   const [playCount, setPlayCount] = useState(0);
   // This player's runs of the current game, oldest first, so the model can design the next level from them.
-  // ponytail: in memory only, so a reload starts the history again. Keep it in localStorage if reruns span visits.
+  // They are kept for the tab with everything else, so a reload keeps the history.
   const [runs, setRuns] = useState([]);
+  // Nothing is saved until what an earlier visit to this page left has been put back.
+  const [restored, setRestored] = useState(false);
   const feed = useRef(null);
+  const shown = useRef({ game: initialGame, result: null });
+  shown.current = { game, result };
   const og = useOgAccount();
   // Where 0G sign-in works, building a game runs on the player's own iAI credits, so it needs sign-in.
   // Starter games stay open to everyone. On other hosts (the deployed demo) the app's key pays as before.
@@ -59,6 +73,49 @@ export default function Studio({ initialGame = null }) {
     fetch("/api/status").then((r) => r.json()).then(setStatus).catch(() => setStatus(null));
     return () => feed.current?.stop();
   }, []);
+
+  // A refresh puts the tab's studio back where it was. The camera and a live round can't come back, so
+  // those return as the game's brief, one tap from playing again.
+  useEffect(() => {
+    const saved = loadStudio(tabStorage(), memoryKey(window.location.pathname));
+    if (saved) {
+      setDraft(saved.draft ?? { idea: "", clarification: "" });
+      setIntent(saved.intent ?? null);
+      setGame(saved.game ?? null);
+      setMode(saved.mode ?? "keyboard");
+      setPractised(saved.practised ?? {});
+      setResult(saved.result ?? null);
+      setRevision(saved.revision ?? null);
+      setPlayCount(saved.playCount ?? 0);
+      setRuns(saved.runs ?? []);
+    }
+    const start = initialGame ? "brief" : "idea";
+    const step = resumeStep(saved ?? { game: initialGame }, stepFromSearch(window.location.search), start);
+    setStage(step);
+    window.history.replaceState(window.history.state, "", window.location.pathname + searchForStep(window.location.search, step) + window.location.hash);
+    setRestored(true);
+    // Back and forward move between steps. A step that needs the camera comes back as the brief.
+    const onHistory = () => {
+      const step = resumeStep(shown.current, stepFromSearch(window.location.search), start);
+      const search = searchForStep(window.location.search, step);
+      if (search !== window.location.search) window.history.replaceState(window.history.state, "", window.location.pathname + search + window.location.hash);
+      setStage(step);
+    };
+    window.addEventListener("popstate", onHistory);
+    return () => window.removeEventListener("popstate", onHistory);
+  }, []); // once, on arrival: initialGame comes from the server and never changes after
+
+  useEffect(() => {
+    if (!restored) return;
+    saveStudio(tabStorage(), memoryKey(window.location.pathname), { draft, intent, game, mode, practised, result, revision, playCount, runs });
+  }, [restored, draft, intent, game, mode, practised, result, revision, playCount, runs]);
+
+  // Each step gets its own address, so the back button steps back through the studio.
+  useEffect(() => {
+    if (!restored) return;
+    const search = searchForStep(window.location.search, stage);
+    if (search !== window.location.search) window.history.pushState(null, "", window.location.pathname + search + window.location.hash);
+  }, [restored, stage]);
 
   async function attempt(label, work) {
     setBusy(label);
@@ -117,7 +174,8 @@ export default function Studio({ initialGame = null }) {
     setResult(null);
     setPlayCount((count) => count + 1);
     const framing = templateInfo(game.spec.template).framing;
-    if (nextMode === "camera" && calibration?.framing !== framing) setStage("calibrate");
+    // After a reload the camera is off, so it is set up again even with a calibration in hand.
+    if (nextMode === "camera" && (calibration?.framing !== framing || !feed.current?.running)) setStage("calibrate");
     else setStage(afterSetup());
   }
 

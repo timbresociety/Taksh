@@ -1019,31 +1019,6 @@ kbd {
   margin-bottom: 20px;
 }
 
-/* The Taksh mark sits absolute in the corner, so push the gallery heading below it. */
-.court__mark + .shelf {
-  padding-top: 40px;
-}
-
-.gallery-filter {
-  justify-content: flex-start;
-  margin: 0 0 12px;
-  /* The label hangs in the left margin, so wrapped chips line up under the first chip. */
-  padding-left: calc(4.5rem + 10px);
-}
-
-.gallery-filter + .gallery-filter {
-  margin-bottom: 28px;
-}
-
-.gallery-filter__label {
-  width: 4.5rem;
-  margin-left: calc(-4.5rem - 10px);
-  font-size: 0.78rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--line) 60%, transparent);
-}
-
 .shelf ul {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
@@ -1088,15 +1063,6 @@ kbd {
   font-weight: 800;
   font-size: 1.55rem;
   line-height: 1.05;
-}
-
-/* On /games the title is smaller and the meta lines sit tight under it. */
-.court__mark + .shelf .game-card {
-  gap: 3px;
-}
-
-.court__mark + .shelf .game-card__name {
-  font-size: 1.2rem;
 }
 
 .game-card__pitch {
@@ -2105,4 +2071,64 @@ kbd {
   .guide {
     transition: none;
   }
+}
+
+/* Others' games: the shared-games page, and the way to it under the starter games. Cards and chips are
+   links here, so they take the page's colours rather than the browser's link blue. */
+.explore-link {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  max-width: 1320px;
+  margin: 56px auto 0;
+  padding-top: 28px;
+  border-top: 1.5px solid color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.explore-link h2,
+.explore-link p {
+  margin: 0;
+}
+
+.explore-link .button,
+.explore a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.explore__back {
+  display: inline-block;
+  margin-bottom: 28px;
+  font-weight: 700;
+  text-decoration: underline !important;
+  text-underline-offset: 3px;
+}
+
+.explore h1 {
+  margin: 0 0 8px;
+}
+
+.explore__lead {
+  margin: 0 0 22px;
+  color: color-mix(in srgb, var(--line) 86%, transparent);
+}
+
+.explore__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.explore__filters .chip {
+  display: inline-block;
+}
+
+.explore__filters + ul,
+.explore__lead + ul {
+  margin-top: 24px;
+}
+
+.explore__empty {
+  margin-top: 24px;
 }
