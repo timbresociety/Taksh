@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Calibrator } from "@/lib/motion/calibrate";
+import { saveCamera } from "@/lib/motion/camera";
 import { cameraProblem } from "@/lib/motion/camera-error";
 import { PoseFeed } from "@/lib/motion/feed";
 import { drawSkeleton } from "@/lib/motion/overlay";
+import CameraPicker from "./CameraPicker";
 
 export default function CalibrateStage({ feed, framing, onDone, onKeyboard }) {
   const video = useRef(null);
@@ -12,6 +14,7 @@ export default function CalibrateStage({ feed, framing, onDone, onKeyboard }) {
   const [status, setStatus] = useState({ message: "Starting the camera", progress: 0 });
   const [failure, setFailure] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const [camera, setCamera] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +31,7 @@ export default function CalibrateStage({ feed, framing, onDone, onKeyboard }) {
         await feed.current.starting;
       }
       if (cancelled) return;
+      setCamera(feed.current.deviceId);
       unsubscribe = feed.current.subscribe(({ points, t, aspect }) => {
         if (overlay.current) drawSkeleton(overlay.current, points, aspect); // a last frame can land after this screen has gone
         const result = calibrator.push(points, t);
@@ -53,6 +57,18 @@ export default function CalibrateStage({ feed, framing, onDone, onKeyboard }) {
     setAttempt((count) => count + 1);
   }
 
+  // Another camera frames the player differently, so calibration starts over on it.
+  async function pick(deviceId) {
+    if (!deviceId || deviceId === camera) return;
+    try {
+      if (feed.current?.running) await feed.current.useCamera(deviceId);
+      else saveCamera(deviceId); // the camera failed to start, so the next try opens this one
+      retry();
+    } catch (error) {
+      setFailure(cameraProblem(error, window.location.port));
+    }
+  }
+
   return (
     <main className="calibrate">
       <div className="mirror">
@@ -67,6 +83,7 @@ export default function CalibrateStage({ feed, framing, onDone, onKeyboard }) {
         <p className="calibrate__hint">
           {framing === "full" ? "Stand about two to three metres back with your whole body in view, arms at your sides." : "Sit or stand with your head, shoulders and both hands in view."} Video stays on this device.
         </p>
+        <CameraPicker current={camera} onPick={pick} />
         {failure && (
           <button type="button" className="button button--go" onClick={retry}>
             Try again
