@@ -11,7 +11,7 @@ cp .env.example .env.local   # add OG_API_KEY (or ANTHROPIC_API_KEY) for real ge
 npm run build && npm start   # or: npm run dev
 ```
 
-Open http://localhost:3000. The input lab is at `/debug`, and the hand cursor test at `/debug/cursor`. `/debug/rig` shows the characters, and `/debug/stage?template=hop&world=moon&style=toon` plays any combination with its bot, and `&tune=waves:1,boss:1` sets tuning, so a boss can be looked at straight away.
+Open http://localhost:3000. The input lab is at `/debug`, and the hand cursor test at `/debug/cursor`. `/debug/rig` shows the characters, and `/debug/stage?template=hop&world=moon&style=toon` plays any combination with its bot, and `&tune=waves:1,boss:1` sets tuning, so a boss can be looked at straight away. `/debug/record` records a 60-second webcam clip of the moves, with cues on screen, to stand in for a camera in `scripts/camera-play.mjs` (convert it with `ffmpeg -i taksh-moves.mp4 -q:v 4 -f mjpeg clip.mjpeg`).
 
 Without a key the app runs on fixtures and says so on screen. Fixtures match keywords against the game templates, so they exercise the runtime and UI but show nothing about how well a model reads an idea.
 
