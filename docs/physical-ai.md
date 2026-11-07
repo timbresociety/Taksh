@@ -18,7 +18,7 @@ A decision costs about $0.0004 and takes 3 to 5 s.
 
 ## A second rival: the striker in Last Line
 
-Last Line is a goal cut into nine zones, and each zone takes a different move to save: a hand up for a top corner, a leg out for a low one, a squat for the bottom. With 0G on, the striker's zones come from `glm-5.3` the same way: the browser sends which zones you saved and which went in, and 0G plans the next three. With no plan the striker waits, the HUD says "Striker waiting", and after 20 s with no plan the match ends. It never picks a zone itself.
+Last Line is a goal cut into nine zones, and each zone takes a different move to save: a hand up for a top corner, a leg out for a low one, a squat for the bottom. With 0G on, the striker's zones come from `glm-5.3` the same way: the browser sends which zones you saved and which went in, and 0G plans the next three. With no plan the striker sways on its feet, the HUD says "Striker thinking on 0G…", and after 20 s with no plan the match ends. It never picks a zone itself.
 
 A real-time match on 2026-11-07, with a keeper who saved every high shot and none of the low ones:
 
@@ -38,7 +38,7 @@ Both games share one route, one ledger and one set of checks. `src/lib/agent/riv
 | A 0G call inside the decision loop | `src/app/api/rival/decide/route.js` calls the 0G Router. The rival can't throw a shot 0G didn't plan: `src/lib/agent/rival-brain.js` feeds the plans into the game, and nothing else queues shots. |
 | An episode log on 0G Storage with a request ID per decision | `src/app/api/rival/episode/route.js` uploads each round to 0G Storage on Galileo testnet. Every decision in it carries its 0G request ID, the provider address and the cost from `x_0g_trace`. |
 | A replayable simulation | `npm run replay-episode -- <rootHash>` downloads the round with Merkle proof checking, replays every step from the seed and exits 1 if the score differs. |
-| A safe stop if 0G is unreachable | If 0G errors, takes over 9 s or sends no usable move, no plan arrives. The rival holds its guard and throws nothing, the HUD says "0G signal lost", and the episode logs the stop with its reason. It never makes up a shot. Punches don't land on a guarding rival, so a player gains nothing by cutting 0G off. |
+| A safe stop if 0G is unreachable | If 0G errors, takes over 9 s or sends no usable move, no plan arrives. The rival keeps its guard up and its feet moving, throws nothing, the HUD says "Rival thinking on 0G…", and the episode logs the stop with its reason. It never makes up a shot. Punches don't land on a guarding rival, so a player gains nothing by cutting 0G off. |
 
 ## A stored round
 

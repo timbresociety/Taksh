@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { POSES } from "../../motion/poses.js";
 import { aimBone } from "../character.js";
 import { MOVE_POSES, applyPose } from "../coach.js";
+import boutRules from "../../templates/bout.js";
 import { damp, gloves, holdOnBone } from "./shared.js";
 
 const flat = (width, depth, material, y = 0.03) => {
@@ -414,6 +415,7 @@ export const bout = {
     let riseMs = 0;
     let stance = 1;
     let follow = { side: null, amount: 0, dodged: false };
+    const thinking = { x: 0, bob: 0, turn: 0 }; // footwork while 0G plans, eased so a shot never snaps in
 
     return {
       update(state, dt, elapsed) {
@@ -454,11 +456,14 @@ export const bout = {
         const twist = shotSide && shotSide !== "high" ? -SAFE[shotSide] : 0;
         const winding = attack ? wind : 0;
         const swung = attack ? swing : follow.amount;
-        rival.root.rotation.y = twist * (0.4 * winding - 0.75 * swung) + flinchSide * flinch * 0.35;
+        const think = boutRules.thinking(state);
+        for (const key of ["x", "bob", "turn"]) thinking[key] = damp(thinking[key], think?.[key] ?? 0, 6, dt);
+        rival.root.rotation.y = twist * (0.4 * winding - 0.75 * swung) + flinchSide * flinch * 0.35 + thinking.turn;
         rival.root.rotation.x = (shotSide === "high" ? -0.15 * winding + 0.25 * swung : 0.08 * swung) - 0.2 * flinch + (open ? 0.12 : 0);
         rival.root.rotation.z = open ? Math.sin(elapsed * 8) * 0.07 : 0;
         rivalX = damp(rivalX, x * 0.35, 3, dt);
-        rival.root.position.x = rivalX;
+        rival.root.position.x = rivalX + thinking.x;
+        rival.root.position.y = thinking.bob * stance;
         rival.root.position.z = RIVAL_Z + 0.3 * swung - 0.18 * flinch;
 
         // The glove that is about to hit glows hotter as the shot comes, and both glow gold while open.

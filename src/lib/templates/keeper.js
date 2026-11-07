@@ -47,6 +47,9 @@ function spawn(state) {
   return shot;
 }
 
+// A 0G striker with nothing planned and the goal empty, while there are shots still to take.
+const waitingOnPlan = (state) => state.rival === "0g" && state.status === "playing" && state.finaleMs <= 0 && !state.shots.length && !state.plan.length && state.toSpawn > 0;
+
 // The next shot waits for this one to be settled, so there is only ever one zone to read.
 function settle(state) {
   const played = 1 - state.toSpawn / state.total;
@@ -176,7 +179,7 @@ export default {
     return {
       score: state.score, label: "Score", lives: state.lives, maxLives: state.startLives,
       clock: state.won ? "Full time" : `${state.toSpawn + state.shots.length} left`,
-      extra: state.won ? "Clean hands" : zone ? null : state.waiting ? "Striker waiting" : "Get set",
+      extra: state.won ? "Clean hands" : zone ? null : state.waiting || waitingOnPlan(state) ? "Striker thinking on 0G…" : "Get set",
       cue: zone && state.finaleMs <= 0 ? moveCue(zone.gesture, shot.ms / shot.lifeMs) : null,
       keys: ZONES.map(({ id }) => `save_${id}`), // all nine, which the key bar lays out like the goal
     };
@@ -194,6 +197,9 @@ export default {
 
   // How long after a zone lit up that this move saved it, or null when it doesn't save one.
   reactionMs: (state, action) => state.shots.find((shot) => `save_${shot.zone}` === action)?.ms ?? null,
+
+  // While 0G's next plan is on its way the striker sways on its feet. Motion only: it never shoots.
+  thinking: (state) => (waitingOnPlan(state) ? { x: Math.sin(state.t / 700) * 0.25, bob: Math.abs(Math.sin(state.t / 340)) * 0.05, turn: Math.sin(state.t / 1200) * 0.15 } : null),
 
   // The 0G brain's plan. Only known zones get in, whatever the model sent.
   plan(state, zones) {

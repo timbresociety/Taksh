@@ -35,6 +35,34 @@ describe("0G rival in Counter Bout", () => {
     assert.equal(session.state.hurt, 0);
   });
 
+  it("under a 10 s 0G delay the rival moves within 2 s, and throws nothing until the plan lands", async () => {
+    // The demo case from 2026-11-07: 0G took over 9 s and the rival stood still for half the round.
+    const { startRivalBrain } = await import("../src/lib/agent/rival-brain.js");
+    const session = new GameSession(starterSpec("bout"), { rival: "0g" });
+    let answer;
+    const brain = startRivalBrain(session, { fetch: () => new Promise((resolve) => { answer = resolve; }) });
+    const windups = [];
+    let movedAt = null;
+    const run = (ms) => {
+      for (let t = 0; t < ms && session.phase !== "ended"; t += 16) {
+        brain.tick();
+        for (const event of session.tick(16)) if (event.type === "windup") windups.push(event.side);
+        const motion = session.template.thinking(session.state);
+        if (movedAt === null && motion && Math.abs(motion.x) + motion.bob > 0.02) movedAt = session.state.t;
+      }
+    };
+    run(10000);
+    assert.ok(movedAt !== null && movedAt <= 2000, `the rival moved at ${movedAt} ms`);
+    assert.equal(session.hud().extra, "Rival thinking on 0G…");
+    assert.deepEqual(windups, [], "no shot without a 0G plan");
+    answer({ ok: true, json: async () => ({ roundId: "round-1", plan: ["left", "high"], read: "r", taunt: "t", trace: { requestId: "req-late" } }) });
+    for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    run(4000);
+    assert.deepEqual(windups.slice(0, 2), ["left", "high"], "the 0G plan takes over as soon as it lands");
+    assert.equal(brain.decisions[0].requestId, "req-late");
+    brain.stop();
+  });
+
   it("throws the planned sides in order, and drops anything that is not a side", () => {
     const session = new GameSession(starterSpec("bout"), { rival: "0g" });
     session.plan(["high", "sideways", "left"]);
@@ -91,10 +119,12 @@ describe("0G striker in Last Line", () => {
 
   it("with no plan the striker waits and never shoots", () => {
     const session = new GameSession(starterSpec("keeper"), { rival: "0g" });
+    for (let i = 0; i < 125; i += 1) session.tick(16);
+    assert.ok(session.template.thinking(session.state), "the striker sways within 2 s while it waits");
     const events = [];
     for (let i = 0; i < 2000; i += 1) events.push(...session.tick(16));
     assert.equal(events.filter((event) => event.type === "aim").length, 0);
-    assert.equal(session.hud().extra, "Striker waiting");
+    assert.equal(session.hud().extra, "Striker thinking on 0G…");
     assert.ok(session.template.needsPlan(session.state));
     for (let i = 0; i < 2000 && session.phase !== "ended"; i += 1) session.tick(16);
     assert.equal(session.phase, "ended", "a striker that never hears from 0G ends the match");
@@ -275,7 +305,7 @@ describe("0G rival episodes", async () => {
       session.tick(16);
     }
     assert.equal(session.state.score, 0);
-    assert.equal(session.template.hud(session.state).extra, "Guard up");
+    assert.equal(session.template.hud(session.state).extra, "Rival thinking on 0G…");
   });
 
   it("refuses scripted dodges faster than a person can react", async () => {
