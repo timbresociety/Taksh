@@ -20,8 +20,12 @@ export default async function Page({ searchParams }) {
   const place = WORLDS.some((w) => w.id === world) ? world : undefined;
   let listing = null;
   let failure = null;
+  let shared = null; // templates with at least one shared game in this world
   try {
-    listing = await listGames({ template: filter, world: place });
+    // ponytail: the chips look at the newest 100 games (Arkiv's page maximum). Past that, count per template.
+    const [page, all] = await Promise.all([listGames({ template: filter, world: place }), listGames({ world: place, limit: 100 })]);
+    listing = page;
+    shared = new Set(all.games.map((game) => game.template));
   } catch (error) {
     console.error("Arkiv gallery read failed:", error.shortMessage ?? error.message);
     failure = arkivMessage(error, "shared games are unavailable right now. Games on the main page still play");
@@ -34,13 +38,15 @@ export default async function Page({ searchParams }) {
       </header>
       <section className="shelf" aria-labelledby="gallery-title">
         <h2 id="gallery-title">Shared games{listing ? ` (${listing.count})` : ""}</h2>
-        <p className="examples" aria-label="Game">
+        <p className="examples gallery-filter" aria-label="Game">
+          <span className="gallery-filter__label">Game</span>
           <Link className="chip" href={href({ world: place })} aria-pressed={!filter}>All games</Link>
-          {TEMPLATES.map((t) => (
+          {TEMPLATES.filter((t) => !shared || shared.has(t.id) || t.id === filter).map((t) => (
             <Link key={t.id} className="chip" href={href({ template: t.id, world: place })} aria-pressed={filter === t.id}>{t.name}</Link>
           ))}
         </p>
-        <p className="examples" aria-label="World">
+        <p className="examples gallery-filter" aria-label="World">
+          <span className="gallery-filter__label">World</span>
           <Link className="chip" href={href({ template: filter })} aria-pressed={!place}>All worlds</Link>
           {WORLDS.map((w) => (
             <Link key={w.id} className="chip" href={href({ template: filter, world: w.id })} aria-pressed={place === w.id}>{w.label}</Link>
